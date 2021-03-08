@@ -1,0 +1,22 @@
+[package]
+name = "librpysight-render"
+version = "0.1.0"
+authors = ["HagaiHargil <hagaihargil@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+kiss3d = "0.30"
+nalgebra = "0.25"
+rand = "0.8.3"
+crossbeam-channel = "0.5.0"
+
+[lib]
+name = "librpysight_render"
+
+[[bin]]
+name = "rpyrender"
+path = "src/bin.rs"
+
+
