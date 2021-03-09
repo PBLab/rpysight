@@ -16,7 +16,7 @@ name = "librpysight_parse"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "rpyparse"
+name = "rpysight_parse"
 path = "src/bin.rs"
 
 [package.metadata.maturin]
