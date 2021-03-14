@@ -1,6 +1,30 @@
-[workspace]
+[package]
+name = "rpysight"
+version = "0.1.0"
+authors = ["HagaiHargil <hagaihargil@gmail.com>"]
+edition = "2018"
 
-members = [
-    "librpysight-parse",
-    "librpysight-render",
-]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+kiss3d = "0.30"
+nalgebra = "0.25"
+nalgebra-numpy = "0.3.0"
+rand = "0.8.3"
+pyo3 = { version = "0.11", features = ["extension-module"] }
+
+[dev-dependencies]
+numpy = "0.11"
+
+[lib]
+name = "rpysight"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "rpyrender"
+path = "src/bin.rs"
+
+[package.metadata.maturin]
+requires-dist = ["ipython>=7", "numpy>=1.20", "pandas>=1.2", "numba>=0.51", "pytest>=6.2", "matplotlib>=3.3",]
+classifier = ["Programming Language :: Python", "Programming Language :: Rust"]
+maintainer = "Hagai Har-Gil"                                                        ~
