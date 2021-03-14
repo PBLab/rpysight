@@ -159,28 +159,28 @@ mod tests {
     use std::fs::read_to_string;
 
     use pyo3::{prelude::*, types::PyModule};
-    use kiss3d::nalgebra::{U10, Scalar};
+    use kiss3d::nalgebra::{U10, Scalar, Matrix, ArrayStorage, Dynamic};
     use numpy::Element;
     use nalgebra_numpy::matrix_slice_from_numpy;
 
-    use super::{process_event, U1};
+    use super::{process_event, U1, EventStream};
 
-    // fn generate_event_stream<'a>() -> EventStream<'a> {
-    //     let len: usize = 10;
-    //     let type_ = unsafe { gen_matrix_slice_from_numpy(vec![0u8; len]) };
-    //     let missed_events = unsafe { gen_matrix_slice_from_numpy(vec![1u16; len]) };
-    //     let channel = unsafe { gen_matrix_slice_from_numpy(vec![2i32; len]) };
-    //     let time = unsafe { gen_matrix_slice_from_numpy(vec![3i64; len]) };
-    //     EventStream {
-    //         type_,
-    //         missed_events,
-    //         channel,
-    //         time,
-    //         len,
-    //     }
-    // }
+    fn generate_event_stream<'a>() -> EventStream<'a> {
+        let type_ = get_arr_from_python_file::<u8>(String::from("type_"));
+        let missed_events = get_arr_from_python_file::<u16>(String::from("missed_events"));
+        let channel = get_arr_from_python_file::<i32>(String::from("channel"));
+        let time = get_arr_from_python_file::<i64>(String::from("time"));
+        let len = 10;
+        EventStream {
+            type_,
+            missed_events,
+            channel,
+            time,
+            len,
+        }
+    }
 
-    fn get_arr_from_python_file<T: Scalar + Element>(arr_name: String) -> Vec<T> {
+    fn get_arr_from_python_file<T: Scalar + Element>(arr_name: String) -> Matrix<T, U10, U1, ArrayStorage<T, U10, U1>> {
         let gil = Python::acquire_gil();
         let py = gil.python();
         let python_code = read_to_string("tests/numpy_test.py").expect("No numpy array file found");
@@ -188,13 +188,13 @@ mod tests {
         let gil = Python::acquire_gil();
         let arr = testfile.getattr(&arr_name).expect("Array name not found");
         let b = unsafe { matrix_slice_from_numpy::<T, U10, U1>(gil.python(), arr).unwrap().into_owned() };
-        b.data.to_vec()
+        b
     }
 
     #[test]
     fn test_simple_arange() {
         let data = get_arr_from_python_file::<i64>(String::from("simple_arange"));
-        assert_eq!(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9], data);
+        assert_eq!(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9], data.data.to_vec());
 
     }
 }
