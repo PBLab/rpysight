@@ -8,7 +8,7 @@ use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::post_processing::PostProcessingEffect;
 use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
-use kiss3d::nalgebra::{Dynamic, MatrixSlice, Point3, U1, U10, DMatrix, SliceStorage, Scalar, Matrix, Dim};
+use kiss3d::nalgebra::{Dynamic, MatrixSlice, Point3, U1};
 
 pub type ImageCoor = Point3<f32>;
 
@@ -156,74 +156,45 @@ pub fn run_render() {
 mod tests {
     extern crate numpy;
     extern crate pyo3;
-    use std::io;
     use std::fs::read_to_string;
 
-    use pyo3::{prelude::*, types::{PyModule, PyDict}};
-    use super::{process_event, EventStream, Matrix, Dynamic, MatrixSlice, SliceStorage, U1, U10, Dim, Scalar, DMatrix};
+    use pyo3::{prelude::*, types::PyModule};
+    use kiss3d::nalgebra::{U10, Scalar};
     use numpy::Element;
     use nalgebra_numpy::matrix_slice_from_numpy;
 
-    unsafe fn gen_matrix_slice_from_numpy<'a, N, R, C>(
-        array: Vec<N>,
-    ) -> MatrixSlice<'a, N, R, C, Dynamic, Dynamic>
-    where
-        N: Scalar + Element,
-        R: Dim,
-        C: Dim,
-    {
-        let mat = DMatrix::from_vec(array.len(), 1, array.clone());
-        // let row_stride = Dynamic::new(mat.strides().0 as usize / std::mem::size_of::<N>());
-        let row_stride = Dynamic::new(array.len() * std::mem::size_of::<N>());
-        // let col_stride = Dynamic::new(mat.strides().1 as usize / std::mem::size_of::<N>());
-        let col_stride = Dynamic::new(std::mem::size_of::<N>());
-        let shape = (R::from_usize(array.len()), C::from_usize(1));
-        let storage = SliceStorage::<N, R, C, Dynamic, Dynamic>::from_raw_parts(
-            mat.as_ptr(),
-            shape,
-            (row_stride, col_stride),
-        );
-        Matrix::from_data(storage)
-    }
+    use super::{process_event, U1};
 
-    fn generate_event_stream<'a>() -> EventStream<'a> {
-        let len: usize = 10;
-        let type_ = unsafe { gen_matrix_slice_from_numpy(vec![0u8; len]) };
-        let missed_events = unsafe { gen_matrix_slice_from_numpy(vec![1u16; len]) };
-        let channel = unsafe { gen_matrix_slice_from_numpy(vec![2i32; len]) };
-        let time = unsafe { gen_matrix_slice_from_numpy(vec![3i64; len]) };
-        EventStream {
-            type_,
-            missed_events,
-            channel,
-            time,
-            len,
-        }
-    }
-    // fn get_numpy_test_array<'a, N, R, C>() -> MatrixSlice<'a, N, R, C, Dynamic, Dynamic> 
-    // where N: Scalar + Element,
-    // R: Dim,
-    // C: Dim {
-    fn get_numpy_test_array() {
+    // fn generate_event_stream<'a>() -> EventStream<'a> {
+    //     let len: usize = 10;
+    //     let type_ = unsafe { gen_matrix_slice_from_numpy(vec![0u8; len]) };
+    //     let missed_events = unsafe { gen_matrix_slice_from_numpy(vec![1u16; len]) };
+    //     let channel = unsafe { gen_matrix_slice_from_numpy(vec![2i32; len]) };
+    //     let time = unsafe { gen_matrix_slice_from_numpy(vec![3i64; len]) };
+    //     EventStream {
+    //         type_,
+    //         missed_events,
+    //         channel,
+    //         time,
+    //         len,
+    //     }
+    // }
+
+    fn get_arr_from_python_file<T: Scalar + Element>(arr_name: String) -> Vec<T> {
         let gil = Python::acquire_gil();
         let py = gil.python();
         let python_code = read_to_string("tests/numpy_test.py").expect("No numpy array file found");
-        let testarr = PyModule::from_code(py, &python_code, "testing.py", "testarr").expect("fdsf");
-        let arr = testarr.getattr("a").expect("No array in file");
-        
-        let arr2 = testarr.getattr("b").expect("no fff");
-        let b = unsafe { matrix_slice_from_numpy::<i64, U10, U1>(gil.python(), &arr2).unwrap() };
-        println!("{:?}", b);
-
+        let testfile = PyModule::from_code(py, &python_code, "testing.py", "testarr").expect("Couldn't parse file");
+        let gil = Python::acquire_gil();
+        let arr = testfile.getattr(&arr_name).expect("Array name not found");
+        let b = unsafe { matrix_slice_from_numpy::<T, U10, U1>(gil.python(), arr).unwrap().into_owned() };
+        b.data.to_vec()
     }
 
     #[test]
-    fn test_event_stream() {
-        // let st = generate_event_stream();
-        get_numpy_test_array();
-        // for event in st {
-        //     process_event(event);
-        // }
-        println!("hi");
+    fn test_simple_arange() {
+        let data = get_arr_from_python_file::<i64>(String::from("simple_arange"));
+        assert_eq!(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9], data);
+
     }
 }
