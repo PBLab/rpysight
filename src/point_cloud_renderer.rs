@@ -159,7 +159,7 @@ mod tests {
     use std::fs::read_to_string;
 
     use pyo3::{prelude::*, types::PyModule};
-    use kiss3d::nalgebra::{U10, Scalar, Matrix, ArrayStorage, Dynamic};
+    use kiss3d::nalgebra::{U10, Scalar, Matrix, ArrayStorage, Dynamic, SliceStorage};
     use numpy::Element;
     use nalgebra_numpy::matrix_slice_from_numpy;
 
@@ -180,21 +180,21 @@ mod tests {
         }
     }
 
-    fn get_arr_from_python_file<T: Scalar + Element>(arr_name: String) -> Matrix<T, U10, U1, ArrayStorage<T, U10, U1>> {
+    fn get_arr_from_python_file<'a, T: Scalar + Element>(arr_name: String) -> Matrix<T, U10, U1, SliceStorage<'a, T, U10, U1, Dynamic, Dynamic>> {
         let gil = Python::acquire_gil();
         let py = gil.python();
         let python_code = read_to_string("tests/numpy_test.py").expect("No numpy array file found");
         let testfile = PyModule::from_code(py, &python_code, "testing.py", "testarr").expect("Couldn't parse file");
         let gil = Python::acquire_gil();
         let arr = testfile.getattr(&arr_name).expect("Array name not found");
-        let b = unsafe { matrix_slice_from_numpy::<T, U10, U1>(gil.python(), arr).unwrap().into_owned() };
+        let b = unsafe { matrix_slice_from_numpy::<T, U10, U1>(gil.python(), arr).unwrap() };
         b
     }
 
     #[test]
     fn test_simple_arange() {
         let data = get_arr_from_python_file::<i64>(String::from("simple_arange"));
-        assert_eq!(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9], data.data.to_vec());
+        assert_eq!(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9], data.into_owned().data.to_vec());
 
     }
 }
