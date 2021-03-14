@@ -1,7 +1,4 @@
 extern crate kiss3d;
-extern crate nalgebra as na;
-
-use std::ops::Index;
 
 use kiss3d::point_renderer::PointRenderer;
 use rand::prelude::*;
@@ -11,7 +8,7 @@ use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::post_processing::PostProcessingEffect;
 use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
-use na::{Dynamic, MatrixSlice, Point3, U1};
+use kiss3d::nalgebra::{Dynamic, MatrixSlice, Point3, U1, U10, DMatrix, SliceStorage, Scalar, Matrix, Dim};
 
 pub type ImageCoor = Point3<f32>;
 
@@ -163,8 +160,7 @@ mod tests {
     use std::fs::read_to_string;
 
     use pyo3::{prelude::*, types::{PyModule, PyDict}};
-    use super::{process_event, EventStream};
-    use nalgebra::{Dim, DimName, Dynamic, Matrix, DMatrix, MatrixSlice, Scalar, SliceStorage, U1, U10};
+    use super::{process_event, EventStream, Matrix, Dynamic, MatrixSlice, SliceStorage, U1, U10, Dim, Scalar, DMatrix};
     use numpy::Element;
     use nalgebra_numpy::matrix_slice_from_numpy;
 
@@ -204,27 +200,30 @@ mod tests {
             len,
         }
     }
-
-    fn get_numpy_test_array<'a, N, R, C>() -> MatrixSlice<'a, N, R, C, Dynamic, Dynamic> 
-    where N: Scalar + Element,
-    R: Dim,
-    C: Dim {
-       let gil = Python::acquire_gil();
-       let py = gil.python();
-       let python_code = read_to_string("tests/numpy_test.py").expect("No numpy array file found");
-       let testarr = PyModule::from_code(py, &python_code, "numpy_test.py", "testarr").expect("fdsf");
-       let arr = testarr.getattr("arr").expect("No array in file");
-       matrix_slice_from_numpy(py, arr).unwrap()
+    // fn get_numpy_test_array<'a, N, R, C>() -> MatrixSlice<'a, N, R, C, Dynamic, Dynamic> 
+    // where N: Scalar + Element,
+    // R: Dim,
+    // C: Dim {
+    fn get_numpy_test_array() {
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let python_code = read_to_string("tests/numpy_test.py").expect("No numpy array file found");
+        let testarr = PyModule::from_code(py, &python_code, "testing.py", "testarr").expect("fdsf");
+        let arr = testarr.getattr("a").expect("No array in file");
+        
+        let arr2 = testarr.getattr("b").expect("no fff");
+        let b = unsafe { matrix_slice_from_numpy::<i64, U10, U1>(gil.python(), &arr2).unwrap() };
+        println!("{:?}", b);
 
     }
 
     #[test]
     fn test_event_stream() {
         // let st = generate_event_stream();
-        let arr = get_numpy_test_array();
-        for event in st {
-            process_event(event);
-        }
+        get_numpy_test_array();
+        // for event in st {
+        //     process_event(event);
+        // }
         println!("hi");
     }
 }

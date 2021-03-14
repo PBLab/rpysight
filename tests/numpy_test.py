@@ -1,3 +1,4 @@
 import numpy as np
 
-data = np.arange(10)
+a = [1, 2, 3]
+b = np.atleast_2d(np.arange(10)).T
