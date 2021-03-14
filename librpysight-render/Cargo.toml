@@ -11,6 +11,7 @@ kiss3d = "0.30"
 nalgebra = "0.25"
 nalgebra-numpy = "0.3.0"
 rand = "0.8.3"
+pyo3 = "0.11.1"
 
 [dev-dependencies]
 numpy = "0.11"
