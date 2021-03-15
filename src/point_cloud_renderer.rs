@@ -189,9 +189,8 @@ mod tests {
         let channel = get_arr_from_python_file::<i32>(String::from("channel"));
         let time = get_arr_from_python_file::<i64>(String::from("time"));
         let len = 10;
-        EventStream {
-            type_,
-            missed_events,
+        EventStream { type_,
+                       missed_events,
             channel,
             time,
             len,
