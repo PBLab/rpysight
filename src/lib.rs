@@ -2,6 +2,8 @@ mod photon;
 pub mod point_cloud_renderer;
 
 use kiss3d::nalgebra::DVector;
+use pyo3::prelude::*;
+use pyo3::wrap_pyfunction;
 
 use self::photon::ImageCoor;
 
@@ -51,6 +53,18 @@ fn process_tags(types: Vec<u8>, missed_events: Vec<u16>,  channels: Vec<i32>, ti
             }
         }
         }
+}
+
+#[pyfunction]
+fn process_stream(length: i64) {
+    println!("{}", length);    
+}
+
+#[pymodule]
+fn librpysight(py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_wrapped(wrap_pyfunction!(process_stream))?;
+
+    Ok(())
 }
 
 
