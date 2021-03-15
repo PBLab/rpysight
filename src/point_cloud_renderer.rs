@@ -9,6 +9,7 @@ use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::post_processing::PostProcessingEffect;
 use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
+use pyo3::prelude::*;
 
 pub type ImageCoor = Point3<f32>;
 
@@ -87,6 +88,10 @@ impl<'a> EventStream<'a> {
             idx: 0usize,
         }
     }
+
+    pub(crate) fn make_vec(self) -> Vec<u8> {
+        vec![10, 20, 30]
+    }
 }
 
 impl<'a> IntoIterator for EventStream<'a> {
@@ -163,11 +168,11 @@ impl State for AppState {
     }
 }
 
-pub fn run_render() {
+pub fn setup_renderer(tt_module: PyObject) -> (Window, AppState) {
     let window = Window::new("RPySight");
-    let app = AppState::new(PointRenderer::new());
+    let app = AppState::new(PointRenderer::new(), tt_module);
 
-    window.render_loop(app)
+    (window, app)
 }
 
 #[cfg(test)]

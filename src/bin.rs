@@ -1,14 +1,22 @@
-use pyo3::{prelude::*, types::PyModule}; 
 use std::fs::read_to_string;
+use std::path::PathBuf;
+
+use pyo3::{prelude::*, types::PyModule}; 
+
+use librpysight::point_cloud_renderer::run_render;
+use librpysight::load_timetagger_module;
 
 fn main() -> Result<(), std::io::Error> {
+    // Set up the Python side
+    let filename = PathBuf::from("rpysight/call_timetagger.py");
+    let timetagger_module: PyObject = load_timetagger_module(filename)?;
     let gil = Python::acquire_gil();
-    let py = gil.python();
-    let python_code = read_to_string("rpysight/__init__.py").expect("No TimeTagger class file");
-    println!("{}", python_code);
-    let run_tt = PyModule::from_code(py, &python_code, "run_tt.py", "run_tt")?;
-    println!("OK");
-    // let tt_starter = run_tt.getattr("CustomStartMultipleStop").expect("Class not found");
-    // let existing = tt_starter.getattr("from_existing_tagger").expect("Class method not found").call0().expect("Failed to call the class");
+
+    // Set up the renderer side
+    let (window, app) = setup_renderer(timetagger_module);
+
+    // Start the TT inside the app and render the photons
+    let parsed_data = timetagger_module.call0(gil.python())?;
+    window.render_loop(app);
     Ok(())
 }
