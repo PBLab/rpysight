@@ -1,9 +1,11 @@
 mod photon;
 pub mod point_cloud_renderer;
 
-use kiss3d::nalgebra::DVector;
+use kiss3d::nalgebra::{DVector, Dynamic, U1, Dim};
+use nalgebra::Dynamic;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use nalgebra_numpy::{matrix_slice_from_numpy, matrix_slice_from_numpy_ptr};
 
 use self::photon::ImageCoor;
 
@@ -55,14 +57,22 @@ fn process_tags(types: Vec<u8>, missed_events: Vec<u16>,  channels: Vec<i32>, ti
         }
 }
 
-#[pyfunction]
-fn process_stream(length: i64) {
-    println!("{}", length);    
-}
+// #[pyfunction]
+// fn process_stream(arr: &PyAny) {
+//     println!("{:?}", arr);    
+// }
 
 #[pymodule]
 fn librpysight(py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(process_stream))?;
+    // m.add_wrapped(wrap_pyfunction!(process_stream))?;
+    #[pyfn(m, "process_stream")]
+    fn convert_py_stream(py: Python, type_: &PyAny, missing_events: &PyAny, channel: &PyAny, time: &PyAny) -> {
+		let type_ = unsafe { matrix_slice_from_numpy::<u8, Dynamic, U1>(py, type_).unwrap() };
+		let missing_events = unsafe { matrix_slice_from_numpy::<u16, Dynamic, U1>(py, missing_events).unwrap() };
+		let channel = unsafe { matrix_slice_from_numpy::<i32, Dynamic, U1>(py, channel).unwrap() };
+		let time = unsafe { matrix_slice_from_numpy::<i64, Dynamic, U1>(py, time).unwrap() };
+        println!("{:?}", time[0] );
+    }
 
     Ok(())
 }

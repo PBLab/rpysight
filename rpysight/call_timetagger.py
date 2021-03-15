@@ -150,16 +150,7 @@ class CustomStartMultipleStop(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        # self.last_start_timestamp = CustomStartMultipleStop.fast_process(
-        #     incoming_tags,
-        #     self.data,
-        #     self.click_channel,
-        #     self.start_channel,
-        #     self.binwidth,
-        #     self.last_start_timestamp)
-        # process_stream(len(incoming_tags), incoming_tags.type, incoming_tags.missed_events, incoming_tags.channel, incoming_tags.time)
-        print("Rust thinks that the length is:")
-        process_stream(len(incoming_tags))
+        process_stream(np.atleast_2d(incoming_tags['type']).T, np.atleast_2d(incoming_tags['missed_events']).T, np.atleast_2d(incoming_tags['channel']).T, np.atleast_2d(incoming_tags['time']).T)
 
 
 if __name__ == '__main__':
