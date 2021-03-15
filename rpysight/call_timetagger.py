@@ -1,4 +1,4 @@
- # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Taken directly from Swabian's examples. Written on 132.66.42.158 (laser
 room computer) for realtime interaction with the TT. This somehow works
 without any PYTHONPATH manipulation - someone has already added the 
@@ -14,9 +14,7 @@ replaced that function with my own mock function defined in lib.rs just to make
 it work once, and it did, which is great.
 """
 from time import sleep
-import matplotlib.pyplot as plt
 import numpy as np
-import numba
 
 import TimeTagger
 from librpysight import process_stream
@@ -97,34 +95,6 @@ class CustomStartMultipleStop(TimeTagger.CustomMeasurement):
     def on_stop(self):
         # The lock is already acquired within the backend.
         pass
-
-    @staticmethod
-    @numba.jit(nopython=True, nogil=True)
-    def fast_process(
-        tags, data, click_channel, start_channel, binwidth, last_start_timestamp
-    ):
-        """
-        A precompiled version of the histogram algorithm for better performance
-        nopython=True: Only a subset of the python syntax is supported.
-                       Avoid everything but primitives and numpy arrays.
-                       All slow operation will yield an exception
-        nogil=True:    This method will release the global interpreter lock. So
-                       this method can run in parallel with other python code
-        """
-        for tag in tags:
-            # tag.type can be: 0 - TimeTag, 1- Error, 2 - OverflowBegin, 3 -
-            # OverflowEnd, 4 - MissedEvents
-            if tag["type"] != 0:
-                # tag is not a TimeTag, so we are in an error state, e.g. overflow
-                last_start_timestamp = 0
-            elif tag["channel"] == click_channel and last_start_timestamp != 0:
-                # valid event
-                index = (tag["time"] - last_start_timestamp) // binwidth
-                if index < data.shape[0]:
-                    data[index] += 1
-            if tag["channel"] == start_channel:
-                last_start_timestamp = tag["time"]
-        return last_start_timestamp
 
     def process(self, incoming_tags, begin_time, end_time):
         """
