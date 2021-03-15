@@ -33,7 +33,13 @@ pub(crate) struct Photon {
 
 impl Photon {
     pub fn from_arrival_time(arrival_time: ArrivalTime) -> Self {
-        Self { arrival_time, row: None, column: None, plane: None, lifetime: None }
+        Self {
+            arrival_time,
+            row: None,
+            column: None,
+            plane: None,
+            lifetime: None,
+        }
     }
 }
 
@@ -52,7 +58,13 @@ pub(crate) struct BinPointer {
 
 impl BinPointer {
     pub(crate) fn new() -> Self {
-        Self { row: 0, column: 0, plane: 0, ydirection: YScanDirection::LeftToRight, zdirection: ZScanDirection::TopToBottom }
+        Self {
+            row: 0,
+            column: 0,
+            plane: 0,
+            ydirection: YScanDirection::LeftToRight,
+            zdirection: ZScanDirection::TopToBottom,
+        }
     }
 
     #[inline]
@@ -71,29 +83,28 @@ impl BinPointer {
         };
     }
 
-
     #[inline]
     pub(crate) fn next_row(&mut self, bidir: Bidirectionality) {
         self.row += 1;
         match bidir {
             Bidirectionality::Bidir => self.reverse_yscan_direction(),
-            Bidirectionality::Unidir => {self.column = 0},
+            Bidirectionality::Unidir => self.column = 0,
         }
     }
 
     #[inline]
     pub(crate) fn next_column(&mut self) {
         match self.ydirection {
-            YScanDirection::LeftToRight => { self.column += 1 },
-            YScanDirection::RightToLeft => { self.column -= 1 },
+            YScanDirection::LeftToRight => self.column += 1,
+            YScanDirection::RightToLeft => self.column -= 1,
         }
     }
 
     #[inline]
     pub(crate) fn next_plane(&mut self) {
         match self.zdirection {
-            ZScanDirection::TopToBottom => { self.plane += 1 },
-            ZScanDirection::BottomToTop => { self.plane -= 1 },
+            ZScanDirection::TopToBottom => self.plane += 1,
+            ZScanDirection::BottomToTop => self.plane -= 1,
         }
     }
 
@@ -105,4 +116,3 @@ impl BinPointer {
         self.ydirection = YScanDirection::LeftToRight;
     }
 }
-

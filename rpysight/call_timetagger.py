@@ -100,12 +100,8 @@ class CustomStartMultipleStop(TimeTagger.CustomMeasurement):
     @staticmethod
     @numba.jit(nopython=True, nogil=True)
     def fast_process(
-            tags,
-            data,
-            click_channel,
-            start_channel,
-            binwidth,
-            last_start_timestamp):
+        tags, data, click_channel, start_channel, binwidth, last_start_timestamp
+    ):
         """
         A precompiled version of the histogram algorithm for better performance
         nopython=True: Only a subset of the python syntax is supported.
@@ -117,16 +113,16 @@ class CustomStartMultipleStop(TimeTagger.CustomMeasurement):
         for tag in tags:
             # tag.type can be: 0 - TimeTag, 1- Error, 2 - OverflowBegin, 3 -
             # OverflowEnd, 4 - MissedEvents
-            if tag['type'] != 0:
+            if tag["type"] != 0:
                 # tag is not a TimeTag, so we are in an error state, e.g. overflow
                 last_start_timestamp = 0
-            elif tag['channel'] == click_channel and last_start_timestamp != 0:
+            elif tag["channel"] == click_channel and last_start_timestamp != 0:
                 # valid event
-                index = (tag['time'] - last_start_timestamp) // binwidth
+                index = (tag["time"] - last_start_timestamp) // binwidth
                 if index < data.shape[0]:
                     data[index] += 1
-            if tag['channel'] == start_channel:
-                last_start_timestamp = tag['time']
+            if tag["channel"] == start_channel:
+                last_start_timestamp = tag["time"]
         return last_start_timestamp
 
     def process(self, incoming_tags, begin_time, end_time):
@@ -150,8 +146,14 @@ class CustomStartMultipleStop(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        process_stream(np.atleast_2d(incoming_tags['type']).T, np.atleast_2d(incoming_tags['missed_events']).T, np.atleast_2d(incoming_tags['channel']).T, np.atleast_2d(incoming_tags['time']).T)
+        process_stream(
+            len(incoming_tags),
+            np.atleast_2d(incoming_tags["type"]).T,
+            np.atleast_2d(incoming_tags["missed_events"]).T,
+            np.atleast_2d(incoming_tags["channel"]).T,
+            np.atleast_2d(incoming_tags["time"]).T,
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     CustomStartMultipleStop.from_existing_tagger()

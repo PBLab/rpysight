@@ -4,11 +4,11 @@ use kiss3d::point_renderer::PointRenderer;
 use rand::prelude::*;
 
 use kiss3d::camera::Camera;
+use kiss3d::nalgebra::{Dynamic, MatrixSlice, Point3, U1};
 use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::post_processing::PostProcessingEffect;
 use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
-use kiss3d::nalgebra::{Dynamic, MatrixSlice, Point3, U1};
 
 pub type ImageCoor = Point3<f32>;
 
@@ -64,10 +64,28 @@ pub(crate) struct EventStream<'a> {
     len: usize,
 }
 
-
 impl<'a> EventStream<'a> {
+    pub(crate) fn new(
+        type_: MatrixSlice<'a, u8, Dynamic, U1, Dynamic, Dynamic>,
+        missed_events: MatrixSlice<'a, u16, Dynamic, U1, Dynamic, Dynamic>,
+        channel: MatrixSlice<'a, i32, Dynamic, U1, Dynamic, Dynamic>,
+        time: MatrixSlice<'a, i64, Dynamic, U1, Dynamic, Dynamic>,
+        len: usize,
+    ) -> Self {
+        EventStream {
+            type_,
+            missed_events,
+            channel,
+            time,
+            len,
+        }
+    }
+
     pub(crate) fn iter(self) -> EventStreamIter<'a> {
-        EventStreamIter { stream: self, idx: 0usize }
+        EventStreamIter {
+            stream: self,
+            idx: 0usize,
+        }
     }
 }
 
@@ -158,12 +176,12 @@ mod tests {
     extern crate pyo3;
     use std::fs::read_to_string;
 
-    use pyo3::{prelude::*, types::PyModule};
-    use kiss3d::nalgebra::{U10, Scalar, Matrix, ArrayStorage, Dynamic, SliceStorage};
-    use numpy::Element;
+    use kiss3d::nalgebra::{ArrayStorage, Dynamic, Matrix, Scalar, SliceStorage, U10};
     use nalgebra_numpy::matrix_slice_from_numpy;
+    use numpy::Element;
+    use pyo3::{prelude::*, types::PyModule};
 
-    use super::{process_event, U1, EventStream};
+    use super::{process_event, EventStream, U1};
 
     fn generate_event_stream<'a>() -> EventStream<'a> {
         let type_ = get_arr_from_python_file::<u8>(String::from("type_"));
@@ -180,11 +198,14 @@ mod tests {
         }
     }
 
-    fn get_arr_from_python_file<'a, T: Scalar + Element>(arr_name: String) -> Matrix<T, U10, U1, SliceStorage<'a, T, U10, U1, Dynamic, Dynamic>> {
+    fn get_arr_from_python_file<'a, T: Scalar + Element>(
+        arr_name: String,
+    ) -> Matrix<T, U10, U1, SliceStorage<'a, T, U10, U1, Dynamic, Dynamic>> {
         let gil = Python::acquire_gil();
         let py = gil.python();
         let python_code = read_to_string("tests/numpy_test.py").expect("No numpy array file found");
-        let testfile = PyModule::from_code(py, &python_code, "testing.py", "testarr").expect("Couldn't parse file");
+        let testfile = PyModule::from_code(py, &python_code, "testing.py", "testarr")
+            .expect("Couldn't parse file");
         let gil = Python::acquire_gil();
         let arr = testfile.getattr(&arr_name).expect("Array name not found");
         let b = unsafe { matrix_slice_from_numpy::<T, U10, U1>(gil.python(), arr).unwrap() };
@@ -194,7 +215,9 @@ mod tests {
     #[test]
     fn test_simple_arange() {
         let data = get_arr_from_python_file::<i64>(String::from("simple_arange"));
-        assert_eq!(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9], data.into_owned().data.to_vec());
-
+        assert_eq!(
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            data.into_owned().data.to_vec()
+        );
     }
 }
