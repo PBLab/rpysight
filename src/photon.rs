@@ -43,20 +43,20 @@ impl Photon {
 // the next photon in line should be placed in. We also keep track of the
 // scanning direction (important for Bidirectional scanning).
 pub(crate) struct BinPointer {
-    pub(crate) row: ImageCoor,
-    pub(crate) column: ImageCoor,
-    pub(crate) plane: ImageCoor,
+    pub(crate) row: i32,
+    pub(crate) column: i32,
+    pub(crate) plane: i32,
     ydirection: YScanDirection,
     zdirection: ZScanDirection,
 }
 
 impl BinPointer {
     pub(crate) fn new() -> Self {
-        Self { row: 0, column: 0, plane: 0, direction: ScanDirection::LeftToRight }
+        Self { row: 0, column: 0, plane: 0, ydirection: YScanDirection::LeftToRight, zdirection: ZScanDirection::TopToBottom }
     }
 
     #[inline]
-    fn reverse_yscan_direction(self) {
+    fn reverse_yscan_direction(&mut self) {
         self.ydirection = match self.ydirection {
             YScanDirection::LeftToRight => YScanDirection::RightToLeft,
             YScanDirection::RightToLeft => YScanDirection::LeftToRight,
@@ -64,7 +64,7 @@ impl BinPointer {
     }
 
     #[inline]
-    fn reverse_zscan_direction(self) {
+    fn reverse_zscan_direction(&mut self) {
         self.zdirection = match self.zdirection {
             ZScanDirection::TopToBottom => ZScanDirection::BottomToTop,
             ZScanDirection::BottomToTop => ZScanDirection::TopToBottom,
@@ -73,32 +73,32 @@ impl BinPointer {
 
 
     #[inline]
-    pub(crate) fn next_row(self, bidir: Bidirectionality) {
+    pub(crate) fn next_row(&mut self, bidir: Bidirectionality) {
         self.row += 1;
         match bidir {
-            Bidir => self.reverse_yscan_direction(),
-            Unidir => {self.column = 0},
+            Bidirectionality::Bidir => self.reverse_yscan_direction(),
+            Bidirectionality::Unidir => {self.column = 0},
         }
     }
 
     #[inline]
-    pub(crate) fn next_column(self) {
-        match self.direction {
-            LeftToRight => { self.column += 1 },
-            RightToLeft => { self.column -= 1 },
+    pub(crate) fn next_column(&mut self) {
+        match self.ydirection {
+            YScanDirection::LeftToRight => { self.column += 1 },
+            YScanDirection::RightToLeft => { self.column -= 1 },
         }
     }
 
     #[inline]
-    pub(crate) fn next_plane(self) {
+    pub(crate) fn next_plane(&mut self) {
         match self.zdirection {
-            TopToBottom => { self.plane += 1 },
-            BottomToTop => { self.plane -= 1 },
+            ZScanDirection::TopToBottom => { self.plane += 1 },
+            ZScanDirection::BottomToTop => { self.plane -= 1 },
         }
     }
 
     #[inline]
-    pub(crate) fn new_volume(self) {
+    pub(crate) fn new_volume(&mut self) {
         self.row = 0;
         self.column = 0;
         self.plane = 0;

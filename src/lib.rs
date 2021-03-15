@@ -1,4 +1,5 @@
 mod photon;
+pub mod point_cloud_renderer;
 
 use kiss3d::nalgebra::DVector;
 
@@ -35,7 +36,7 @@ const CH2: i32 = 2;
 const CH_LINE: i32 = 3;
 const CH_FRAME: i32 = 4;
 
-fn process_tags(types: Vec<u8>, missed_events: Vec<u16>,  channels: Vec<i32>, times: Vec<i64>, resulting_coords: Vec<ImageCoor>, context: Context) {
+fn process_tags(types: Vec<u8>, missed_events: Vec<u16>,  channels: Vec<i32>, times: Vec<i64>, resulting_coords: &mut Vec<ImageCoor>, context: &mut Context) {
     for ((idx, type_), (missed_event, (channel, time))) in types.iter().enumerate().zip(missed_events.iter().zip(channels.iter().zip(times.iter()))) {
         if type_ != &0u8 {
             let coordinate = match channel {
@@ -46,13 +47,14 @@ fn process_tags(types: Vec<u8>, missed_events: Vec<u16>,  channels: Vec<i32>, ti
                 _ => panic!(),
             };
             if let Some(coord) = coordinate {
-                render(coord);
+                todo!()
             }
+        }
         }
 }
 
 
-fn convert_time_to_coord(time: &i64, channel: i32, mut coord_vec: Vec<ImageCoor>) -> Option<ImageCoor> {
+fn convert_time_to_coord(time: &i64, channel: i32, coord_vec: &mut Vec<ImageCoor>) -> Option<ImageCoor> {
     todo!()
 }
 
@@ -73,6 +75,7 @@ mod tests {
     #[test]
     fn generate_tags() {
         let (types_, missed_events, channels, times, results) = make_tag_vectors();
-        process_tags(types_, missed_events, channels, times, results);
+        // process_tags(types_, missed_events, channels, times, results);
+        todo!()
     }
 }
