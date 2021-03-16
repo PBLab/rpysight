@@ -4,7 +4,7 @@ pub mod point_cloud_renderer;
 use std::path::PathBuf;
 use std::fs::read_to_string;
 
-use kiss3d::nalgebra::{DVector, Dynamic, MatrixSlice, SliceStorage, U1};
+use kiss3d::nalgebra::{DVector, Dynamic, U1};
 use nalgebra_numpy::matrix_slice_from_numpy;
 use pyo3::prelude::*;
 
@@ -56,10 +56,10 @@ pub fn load_timetagger_module(fname: PathBuf) -> PyResult<PyObject> {
     Ok(from_existing_tagger.to_object(py))
 }
 
-const CH1: i32 = 1;
-const CH2: i32 = 2;
-const CH_LINE: i32 = 3;
-const CH_FRAME: i32 = 4;
+// const CH1: i32 = 1;
+// const CH2: i32 = 2;
+// const CH_LINE: i32 = 3;
+// const CH_FRAME: i32 = 4;
 
 
 #[pymodule]
