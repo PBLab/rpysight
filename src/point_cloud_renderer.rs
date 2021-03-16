@@ -11,14 +11,17 @@ use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use pyo3::prelude::*;
 
+use crate::Context;
+
 pub type ImageCoor = Point3<f32>;
 
-#[derive(Debug)]
+#[pyclass]
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct Event {
-    type_: u8,
-    missed_event: u16,
-    channel: i32,
-    time: i64,
+    pub type_: u8,
+    pub missed_event: u16,
+    pub channel: i32,
+    pub time: i64,
 }
 
 impl Event {
@@ -103,17 +106,23 @@ impl<'a> IntoIterator for EventStream<'a> {
     }
 }
 
-// Holds the custom renderer that will be used for rendering the
-// point cloud
-struct AppState {
+/// Holds the custom renderer that will be used for rendering the
+/// point cloud and the needed data streams for it
+pub struct AppState {
     point_cloud_renderer: PointRenderer,
+    gil: GILGuard,
+    pub tt_module: PyObject,
+    context: Context,
 }
 
 impl AppState {
-    // Generates a new app from a renderer and a receiving end of a channel
-    pub fn new(point_cloud_renderer: PointRenderer) -> Self {
+    /// Generates a new app from a renderer and a receiving end of a channel
+    pub fn new(point_cloud_renderer: PointRenderer,  tt_module: PyObject, gil: GILGuard, context: Context) -> Self {
         AppState {
             point_cloud_renderer,
+            tt_module,
+            gil,
+            context,
         }
     }
 
@@ -137,7 +146,7 @@ impl AppState {
 
 fn process_event(event: Event) -> Option<ImageCoor> {
     println!("{:?}", event);
-    Some(ImageCoor::new(1.0, 0.0, 2.0))
+    Some(ImageCoor::new(1.0, 0.0, 0.5))
 }
 
 impl State for AppState {
@@ -157,21 +166,25 @@ impl State for AppState {
     // Main logic per step - required by the State trait. The function reads
     // data awaiting in the channel and draws each of these points
     // individually.
-    fn step(&mut self, window: &mut Window) {
+    fn step(&mut self, _window: &mut Window) {
         let white = Point3::new(1.0, 1.0, 1.0);
-        let event_stream = self.get_event_stream();
+        let event_stream: Vec<Event> = self.tt_module.call0(self.gil.python()).unwrap().extract(self.gil.python()).unwrap();
+        // let event_stream = self.get_event_stream();
         for event in event_stream {
-            if let Some(point) = process_event(event) {
-                self.point_cloud_renderer.draw_point(point, white);
-            }
+            println!("{:?}", event);
+            break;
+                     
+            // if let Some(point) = process_event(event) {
+            //     self.point_cloud_renderer.draw_point(point, white);
+            // }
         }
     }
 }
 
-pub fn setup_renderer(tt_module: PyObject) -> (Window, AppState) {
+pub fn setup_renderer(gil: GILGuard, tt_module: PyObject) -> (Window, AppState) {
     let window = Window::new("RPySight");
-    let app = AppState::new(PointRenderer::new(), tt_module);
-
+    let context = Context::new();
+    let app = AppState::new(PointRenderer::new(), tt_module, gil, context);
     (window, app)
 }
 
@@ -181,18 +194,18 @@ mod tests {
     extern crate pyo3;
     use std::fs::read_to_string;
 
-    use kiss3d::nalgebra::{ArrayStorage, Dynamic, Matrix, Scalar, SliceStorage, U10};
+    use kiss3d::nalgebra::{Dynamic, MatrixSlice, Scalar};
     use nalgebra_numpy::matrix_slice_from_numpy;
     use numpy::Element;
     use pyo3::{prelude::*, types::PyModule};
 
     use super::{process_event, EventStream, U1};
 
-    fn generate_event_stream<'a>() -> EventStream<'a> {
-        let type_ = get_arr_from_python_file::<u8>(String::from("type_"));
-        let missed_events = get_arr_from_python_file::<u16>(String::from("missed_events"));
-        let channel = get_arr_from_python_file::<i32>(String::from("channel"));
-        let time = get_arr_from_python_file::<i64>(String::from("time"));
+    fn generate_event_stream<'a>(gil: &'a mut GILGuard) -> EventStream<'a> {
+        let type_ = get_arr_from_python_file::<u8>(String::from("type_"), gil);
+        let missed_events = get_arr_from_python_file::<u16>(String::from("missed_events"), gil);
+        let channel = get_arr_from_python_file::<i32>(String::from("channel"), &mut gil);
+        let time = get_arr_from_python_file::<i64>(String::from("time"), &mut gil);
         let len = 10;
         EventStream { type_,
                        missed_events,
@@ -203,25 +216,31 @@ mod tests {
     }
 
     fn get_arr_from_python_file<'a, T: Scalar + Element>(
-        arr_name: String,
-    ) -> Matrix<T, U10, U1, SliceStorage<'a, T, U10, U1, Dynamic, Dynamic>> {
-        let gil = Python::acquire_gil();
+        arr_name: String, gil: &'a mut GILGuard,
+    ) -> MatrixSlice<'a, T, Dynamic, U1, Dynamic, Dynamic> {
         let py = gil.python();
         let python_code = read_to_string("tests/numpy_test.py").expect("No numpy array file found");
         let testfile = PyModule::from_code(py, &python_code, "testing.py", "testarr")
             .expect("Couldn't parse file");
-        let gil = Python::acquire_gil();
         let arr = testfile.getattr(&arr_name).expect("Array name not found");
-        let b = unsafe { matrix_slice_from_numpy::<T, U10, U1>(gil.python(), arr).unwrap() };
+        let b = unsafe { matrix_slice_from_numpy::<T, Dynamic, U1>(gil.python(), arr).unwrap() };
         b
     }
 
     #[test]
+    fn test_simple_stream() {
+        let mut gil = Python::acquire_gil();
+        let stream = generate_event_stream(&mut gil);
+        println!("{:?}", stream);
+    }
+
+    #[test]
     fn test_simple_arange() {
-        let data = get_arr_from_python_file::<i64>(String::from("simple_arange"));
+        let mut gil = Python::acquire_gil();
+        let data = get_arr_from_python_file::<i64>(String::from("simple_arange"), &mut gil);
         assert_eq!(
-            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-            data.into_owned().data.to_vec()
+            &vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            data.into_owned().data.as_vec()
         );
     }
 }

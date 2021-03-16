@@ -9,11 +9,11 @@ use nalgebra_numpy::matrix_slice_from_numpy;
 use pyo3::prelude::*;
 
 use self::photon::ImageCoor;
-use point_cloud_renderer::{EventStream, EventStreamIter};
+use point_cloud_renderer::{EventStream, Event};
 
 pub type ArrivalTimes = DVector<i64>;
 
-struct Context {
+pub struct Context {
     last_line: i64,
     last_line_image_coor: f32,
     last_frame: i64,
@@ -21,17 +21,9 @@ struct Context {
 }
 
 impl Context {
-    pub(crate) fn new(
-        last_line: i64,
-        last_line_image_coor: f32,
-        last_frame: i64,
-        typical_frame_period: i64,
-    ) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            last_line,
-            last_line_image_coor,
-            last_frame,
-            typical_frame_period,
+            last_line: 0, last_line_image_coor: 0.0, last_frame: 0, typical_frame_period: 0
         }
     }
 
@@ -69,58 +61,32 @@ const CH2: i32 = 2;
 const CH_LINE: i32 = 3;
 const CH_FRAME: i32 = 4;
 
-fn process_tags(
-    types: Vec<u8>,
-    missed_events: Vec<u16>,
-    channels: Vec<i32>,
-    times: Vec<i64>,
-    resulting_coords: &mut Vec<ImageCoor>,
-    context: &mut Context,
-) {
-    for ((idx, type_), (missed_event, (channel, time))) in types
-        .iter()
-        .enumerate()
-        .zip(missed_events.iter().zip(channels.iter().zip(times.iter())))
-    {
-        if type_ != &0u8 {
-            let coordinate = match channel {
-                &CH1 => convert_time_to_coord(time, CH1, resulting_coords),
-                &CH2 => convert_time_to_coord(time, CH2, resulting_coords),
-                &CH_LINE => context.set_last_line(*time),
-                &CH_FRAME => context.set_last_frame(*time),
-                _ => panic!(),
-            };
-            if let Some(coord) = coordinate {
-                todo!()
-            }
-        }
-    }
-}
 
 #[pymodule]
-fn librpysight(_py: Python, m: &PyModule) -> PyResult<()> {
-    // m.add_wrapped(wrap_pyfunction!(process_stream))?;
+fn librpysight<'a>(_py: Python, m: &PyModule) -> PyResult<()> {
     #[pyfn(m, "process_stream")]
-    fn convert_py_stream<'a>(
+    fn convert_py_stream(
         py: Python,
         len: usize,
         type_: &PyAny,
         missed_events: &PyAny,
         channel: &PyAny,
-        time: &'a PyAny,
-    ) -> Vec<u8> {
+        time: &PyAny,
+    ) -> PyResult<Vec<Event>> {
         let type_ = unsafe { matrix_slice_from_numpy::<u8, Dynamic, U1>(py, type_).unwrap() };
         let missed_events =
             unsafe { matrix_slice_from_numpy::<u16, Dynamic, U1>(py, missed_events).unwrap() };
         let channel = unsafe { matrix_slice_from_numpy::<i32, Dynamic, U1>(py, channel).unwrap() };
         let time = unsafe { matrix_slice_from_numpy::<i64, Dynamic, U1>(py, time).unwrap() };
         let stream = EventStream::new(type_, missed_events, channel, time, len);
-        // println!("{:?}", stream.iter().next());
-        let vecs = stream.make_vec();
-        vecs
+        let image_coor_vec: Vec<Event> = stream.iter().filter(|a| a.type_ == 0).collect();
+        Ok(image_coor_vec)
     }
-
     Ok(())
+}
+
+fn render_stream(stream: Vec<Event>) {
+    todo!()
 }
 
 fn convert_time_to_coord(
@@ -133,8 +99,6 @@ fn convert_time_to_coord(
 
 #[cfg(test)]
 mod tests {
-    use super::process_tags;
-
     fn make_tag_vectors() -> (Vec<u8>, Vec<u16>, Vec<i32>, Vec<i64>, Vec<f32>) {
         const SIZE: usize = 100;
         let types = vec![1; SIZE];
