@@ -139,7 +139,7 @@ impl AppState {
         }
     }
 
-    pub fn mock_get_data_from_channel(&self) -> Vec<Point3<f32>> {
+    pub fn mock_get_data_from_channel(&self) -> Vec<ImageCoor> {
         let mut rng = rand::thread_rng();
         let mut data = Vec::with_capacity(10_000);
         for i in 1..10_000 {
@@ -180,15 +180,18 @@ impl State for AppState {
     /// data awaiting from the TimeTagger and then pushes it into the renderer.
     fn step(&mut self, _window: &mut Window) {
         let white = Point3::new(1.0, 1.0, 1.0);
-        let event_stream: Vec<Event> = self.tt_module.call0(self.gil.python()).unwrap().extract(self.gil.python()).unwrap();
-        // let event_stream = self.get_event_stream();
-        for event in event_stream {
-            println!("{:?}", event);
-            break;
-                     
-            // if let Some(point) = process_event(event) {
-            //     self.point_cloud_renderer.draw_point(point, white);
-            // }
+        let event_stream= self.tt_module.call0(self.gil.python()).unwrap();
+        println!("Event stream object: {:?}", event_stream);
+        // let evs: Vec<Event> = event_stream.extract(self.gil.python()).unwrap();
+        // println!("{:?}", evs);
+        // for event in evs {
+        //     println!("{:?}", event);
+        //     if let Some(point) = process_event(event) {
+        //         self.point_cloud_renderer.draw_point(point, white);
+        //     }
+        let v = self.mock_get_data_from_channel();
+        for p in v {
+            self.point_cloud_renderer.draw_point(p, white);
         }
     }
 }
