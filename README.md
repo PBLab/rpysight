@@ -9,3 +9,7 @@ This project is a mixed Rust-Python project built using [maturin](https://github
 Even though this project is published to PyPI (eventually), the main configuration file is `Cargo.toml` that contains most of the metadata for both the Python and Rust bits of this work.  
 
 https://play.rust-lang.org/?version=nightly&mode=release&edition=2018&gist=70482ff3b2f6a0923452daca083df220
+
+## Requirements
+
+A TimeTagger, Rust, Python and a 2P microscope.

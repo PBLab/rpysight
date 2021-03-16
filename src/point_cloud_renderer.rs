@@ -13,8 +13,12 @@ use pyo3::prelude::*;
 
 use crate::Context;
 
+/// A coordinate in image space, i.e. a float in the range [0, 1].
+/// Used for the rendering part of the code, since that's the type the renderer
+/// requires.
 pub type ImageCoor = Point3<f32>;
 
+/// A single tag\event that arrives from the Time Tagger.
 #[pyclass]
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Event {
@@ -25,6 +29,7 @@ pub(crate) struct Event {
 }
 
 impl Event {
+    /// Create a new Event with the given values
     pub(crate) fn new(type_: u8, missed_event: u16, channel: i32, time: i64) -> Self {
         Event {
             type_,
@@ -35,6 +40,7 @@ impl Event {
     }
 }
 
+/// An iterator wrapper for [`EventStream`]
 pub(crate) struct EventStreamIter<'a> {
     stream: EventStream<'a>,
     idx: usize,
@@ -59,6 +65,12 @@ impl<'a> Iterator for EventStreamIter<'a> {
     }
 }
 
+/// A struct of arrays containing data from the TimeTagger.
+///
+/// Each field is its own array with some specific data arriving via FFI. Since
+/// there are only slices here, the main goal of this stream is to provide easy
+/// iteration over the tags for the downstream 'user', via the accompanying 
+/// ['EventStreamIter`].
 #[derive(Debug, Clone)]
 pub(crate) struct EventStream<'a> {
     type_: MatrixSlice<'a, u8, Dynamic, U1, Dynamic, Dynamic>,
@@ -69,6 +81,7 @@ pub(crate) struct EventStream<'a> {
 }
 
 impl<'a> EventStream<'a> {
+    /// Creates a new stream with views over the arriving data.
     pub(crate) fn new(
         type_: MatrixSlice<'a, u8, Dynamic, U1, Dynamic, Dynamic>,
         missed_events: MatrixSlice<'a, u16, Dynamic, U1, Dynamic, Dynamic>,
@@ -150,8 +163,8 @@ fn process_event(event: Event) -> Option<ImageCoor> {
 }
 
 impl State for AppState {
-    // Return the renderer that will be called at each render loop. Without
-    // returning it the loop still runs but the screen is blank.
+    /// Return the renderer that will be called at each render loop. Without
+    /// returning it the loop still runs but the screen is blank.
     fn cameras_and_effect_and_renderer(
         &mut self,
     ) -> (
@@ -163,9 +176,8 @@ impl State for AppState {
         (None, None, Some(&mut self.point_cloud_renderer), None)
     }
 
-    // Main logic per step - required by the State trait. The function reads
-    // data awaiting in the channel and draws each of these points
-    // individually.
+    /// Main logic per step - required by the State trait. The function reads
+    /// data awaiting from the TimeTagger and then pushes it into the renderer.
     fn step(&mut self, _window: &mut Window) {
         let white = Point3::new(1.0, 1.0, 1.0);
         let event_stream: Vec<Event> = self.tt_module.call0(self.gil.python()).unwrap().extract(self.gil.python()).unwrap();
@@ -199,7 +211,7 @@ mod tests {
     use numpy::Element;
     use pyo3::{prelude::*, types::PyModule};
 
-    use super::{process_event, EventStream, U1};
+    use super::{EventStream, U1};
 
     fn generate_event_stream<'a>(gil: &'a mut GILGuard) -> EventStream<'a> {
         let type_ = get_arr_from_python_file::<u8>(String::from("type_"), gil);

@@ -1,3 +1,5 @@
+//! Real time parsing and rendering of data coming from a TimeTagger
+
 mod photon;
 pub mod point_cloud_renderer;
 
@@ -11,8 +13,7 @@ use pyo3::prelude::*;
 use self::photon::ImageCoor;
 use point_cloud_renderer::{EventStream, Event};
 
-pub type ArrivalTimes = DVector<i64>;
-
+/// Current state of the app and renderer.
 pub struct Context {
     last_line: i64,
     last_line_image_coor: f32,
