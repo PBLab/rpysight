@@ -180,11 +180,11 @@ impl State for AppState {
     /// data awaiting from the TimeTagger and then pushes it into the renderer.
     fn step(&mut self, _window: &mut Window) {
         let white = Point3::new(1.0, 1.0, 1.0);
-        println!("Acquiring gil");
-        let py = self.gil.python();
-        println!("Acquired and calling fn");
-        let event_stream= self.tt_module.call0(py).unwrap();
-        println!("Got result back, generating random data");
+        // println!("Acquiring gil");
+        // let py = self.gil.python();
+        // println!("Acquired and calling fn");
+        // let event_stream= self.tt_module.call0(py).unwrap();
+        // println!("Got result back, generating random data");
         // let evs: Vec<Event> = event_stream.extract(self.gil.python()).unwrap();
         // println!("{:?}", evs);
         // for event in evs {

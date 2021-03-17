@@ -16,7 +16,7 @@ fn main() -> Result<(), std::io::Error> {
     // Set up the renderer side
     let (window, app) = setup_renderer(gil, timetagger_module);
     // Start the TT inside the app and render the photons
-    // let parsed_data = app.tt_module.call0(Python::acquire_gil().python())?;
+    app.tt_module.call0(Python::acquire_gil().python())?;
     window.render_loop(app);
     Ok(())
 }

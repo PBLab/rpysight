@@ -85,16 +85,14 @@ class CustomTT(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        print(begin_time / 1e12)
-        # as_vec = process_stream(
-            # len(incoming_tags),
-            # np.atleast_2d(incoming_tags["type"]).T,
-            # np.atleast_2d(incoming_tags["missed_events"]).T,
-            # np.atleast_2d(incoming_tags["channel"]).T,
-            # np.atleast_2d(incoming_tags["time"]).T,
-        # )
-        # print("ended process")
-        # return as_vec
+        as_vec = process_stream(
+            len(incoming_tags),
+            np.atleast_2d(incoming_tags["type"]).T,
+            np.atleast_2d(incoming_tags["missed_events"]).T,
+            np.atleast_2d(incoming_tags["channel"]).T,
+            np.atleast_2d(incoming_tags["time"]).T,
+        )
+        return as_vec
 
 
 def run_tagger():

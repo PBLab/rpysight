@@ -51,10 +51,9 @@ pub fn load_timetagger_module(fname: PathBuf) -> PyResult<PyObject> {
     let py = gil.python();
     let python_code = read_to_string(fname)?;
     let run_tt = PyModule::from_code(py, &python_code, "run_tt.py", "run_tt")?;
-    let tt_starter = run_tt.getattr("CustomTT")?;
-    let from_existing_tagger = tt_starter.getattr("run_tagger")?;
+    let tt_starter = run_tt.getattr("run_tagger")?;
     // Generate an owned object to be returned by value
-    Ok(from_existing_tagger.to_object(py))
+    Ok(tt_starter.to_object(py))
 }
 
 // const CH1: i32 = 1;
