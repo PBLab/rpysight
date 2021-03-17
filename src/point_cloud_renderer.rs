@@ -146,7 +146,7 @@ impl AppState {
             let x: f32 = rng.gen::<f32>(); 
             let y: f32 = rng.gen::<f32>();
             let z: f32 = rng.gen::<f32>();
-            let point = Point3::new(x, y, z);
+            let point = ImageCoor::new(x, y, z);
             data.push(point);
         }
         data
