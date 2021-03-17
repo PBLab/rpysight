@@ -24,41 +24,29 @@ CHAN_START = 1
 CHAN_STOP = 2
 
 
-class CustomStartMultipleStop(TimeTagger.CustomMeasurement):
+class CustomTT(TimeTagger.CustomMeasurement):
     """
     Example for a single start - multiple stop measurement.
         The class shows how to access the raw time-tag stream.
     """
 
-    @classmethod
-    def from_existing_tagger(cls):
-        tagger = TimeTagger.createTimeTagger()
+    # @classmethod
+    # def from_existing_tagger(cls):
+        # tagger = TimeTagger.createTimeTagger()
 
         # enable the test signal
-        tagger.setTestSignal([CHAN_START, CHAN_STOP], True)
+        # tagger.setTestSignal([CHAN_START, CHAN_STOP], True)
         # delay the stop channel by 2 ns to make sure it is later than the start
-        tagger.setInputDelay(CHAN_STOP, 2000)
+        # tagger.setInputDelay(CHAN_STOP, 2000)
 
-        BINWIDTH = 1  # ps
-        BINS = 4000
 
-        return cls(tagger, CHAN_STOP, CHAN_START, binwidth=BINWIDTH, n_bins=BINS)
+        # return cls(tagger, CHAN_STOP, CHAN_START)
 
-    def __init__(self, tagger, click_channel, start_channel, binwidth, n_bins):
+    def __init__(self, tagger, channels: list):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
-        self.click_channel = click_channel
-        self.start_channel = start_channel
-        self.binwidth = binwidth
-        self.max_bins = n_bins
-
-        # The method register_channel(channel) activates
-        # that data from the respective channels is transferred
-        # from the Time Tagger to the PC.
-        self.register_channel(channel=click_channel)
-        self.register_channel(channel=start_channel)
-
-        self.clear_impl()
-
+        for channel in channels:
+            self.register_channel(channel)
+            
         # At the end of a CustomMeasurement construction,
         # we must indicate that we have finished.
         self.finalize_init()
@@ -67,26 +55,6 @@ class CustomStartMultipleStop(TimeTagger.CustomMeasurement):
         # The measurement must be stopped before deconstruction to avoid
         # concurrent process() calls.
         self.stop()
-
-    def getData(self):
-        # Acquire a lock this instance to guarantee that process() is not running in parallel
-        # This ensures to return a consistent data.
-        self._lock()
-        arr = self.data.copy()
-        # We have gathered the data, unlock, so measuring can continue.
-        self._unlock()
-        return arr
-
-    def getIndex(self):
-        # This method does not depend on the internal state, so there is no
-        # need for a lock.
-        arr = np.arange(0, self.max_bins) * self.binwidth
-        return arr
-
-    def clear_impl(self):
-        # The lock is already acquired within the backend.
-        self.last_start_timestamp = 0
-        self.data = np.zeros((self.max_bins,), dtype=np.uint64)
 
     def on_start(self):
         # The lock is already acquired within the backend.
@@ -117,17 +85,28 @@ class CustomStartMultipleStop(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        print("Starting process")
-        as_vec = process_stream(
-            len(incoming_tags),
-            np.atleast_2d(incoming_tags["type"]).T,
-            np.atleast_2d(incoming_tags["missed_events"]).T,
-            np.atleast_2d(incoming_tags["channel"]).T,
-            np.atleast_2d(incoming_tags["time"]).T,
-        )
-        print("ended process")
-        return as_vec
+        print(begin_time / 1e12)
+        # as_vec = process_stream(
+            # len(incoming_tags),
+            # np.atleast_2d(incoming_tags["type"]).T,
+            # np.atleast_2d(incoming_tags["missed_events"]).T,
+            # np.atleast_2d(incoming_tags["channel"]).T,
+            # np.atleast_2d(incoming_tags["time"]).T,
+        # )
+        # print("ended process")
+        # return as_vec
 
+
+def run_tagger():
+    # c = CustomStartMultipleStop.from_existing_tagger()
+    tagger = TimeTagger.createTimeTagger()
+    tagger.reset()
+    # enable the test signal
+    tagger.setTestSignal([CHAN_START, CHAN_STOP], True)
+    tag = CustomTT(tagger, [CHAN_START, CHAN_STOP])
+    print("setup complete")
+    tag.startFor(int(2e12))
+    tag.waitUntilFinished()
 
 if __name__ == "__main__":
-    CustomStartMultipleStop.from_existing_tagger()
+    run_tagger()
