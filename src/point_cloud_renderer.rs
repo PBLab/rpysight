@@ -142,12 +142,12 @@ impl AppState {
     pub fn mock_get_data_from_channel(&self) -> Vec<ImageCoor> {
         let mut rng = rand::thread_rng();
         let mut data = Vec::with_capacity(10_000);
-        for i in 1..10_000 {
-            let x: f32 = rng.gen();
-            let y: f32 = rng.gen();
-            let z: f32 = rng.gen();
+        for i in 0..10_000 {
+            let x: f32 = rng.gen::<f32>(); 
+            let y: f32 = rng.gen::<f32>();
+            let z: f32 = rng.gen::<f32>();
             let point = Point3::new(x, y, z);
-            data[i] = point;
+            data.push(point);
         }
         data
     }
@@ -180,8 +180,11 @@ impl State for AppState {
     /// data awaiting from the TimeTagger and then pushes it into the renderer.
     fn step(&mut self, _window: &mut Window) {
         let white = Point3::new(1.0, 1.0, 1.0);
-        let event_stream= self.tt_module.call0(self.gil.python()).unwrap();
-        println!("Event stream object: {:?}", event_stream);
+        println!("Acquiring gil");
+        let py = self.gil.python();
+        println!("Acquired and calling fn");
+        let event_stream= self.tt_module.call0(py).unwrap();
+        println!("Got result back, generating random data");
         // let evs: Vec<Event> = event_stream.extract(self.gil.python()).unwrap();
         // println!("{:?}", evs);
         // for event in evs {
@@ -190,6 +193,7 @@ impl State for AppState {
         //         self.point_cloud_renderer.draw_point(point, white);
         //     }
         let v = self.mock_get_data_from_channel();
+        println!("Generated random data, now drawing");
         for p in v {
             self.point_cloud_renderer.draw_point(p, white);
         }
