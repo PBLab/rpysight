@@ -15,6 +15,7 @@ it work once, and it did, which is great.
 """
 from time import sleep
 import numpy as np
+import pyarrow as pa
 
 import TimeTagger
 from librpysight import process_stream
@@ -22,6 +23,7 @@ from librpysight import process_stream
 # Channel definitions
 CHAN_START = 1
 CHAN_STOP = 2
+TT_DATA_STREAM = '__tt_data_stream.dat'
 
 
 class CustomTT(TimeTagger.CustomMeasurement):
@@ -46,7 +48,8 @@ class CustomTT(TimeTagger.CustomMeasurement):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
         for channel in channels:
             self.register_channel(channel)
-            
+        self.schema = pa.schema(('type_', pa.uint8()), ('missed_events', pa.uint16()), ('channel', pa.int32()), ('time', pa.int64()))
+        self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
         # At the end of a CustomMeasurement construction,
         # we must indicate that we have finished.
         self.finalize_init()
@@ -54,6 +57,7 @@ class CustomTT(TimeTagger.CustomMeasurement):
     def __del__(self):
         # The measurement must be stopped before deconstruction to avoid
         # concurrent process() calls.
+        self.stream.close()
         self.stop()
 
     def on_start(self):
@@ -85,14 +89,9 @@ class CustomTT(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        as_vec = process_stream(
-            len(incoming_tags),
-            np.atleast_2d(incoming_tags["type"]).T,
-            np.atleast_2d(incoming_tags["missed_events"]).T,
-            np.atleast_2d(incoming_tags["channel"]).T,
-            np.atleast_2d(incoming_tags["time"]).T,
-        )
-        return as_vec
+        print(f"Python num rows: {len(incoming_tags)}")
+        batch = pa.record_batch([incoming_tags['type'], incoming_tags['missed_events'], incoming_tags['channel'], incoming_tags['time']], schema=self.schema)
+        self.stream.write(batch)
 
 
 def run_tagger():
@@ -105,6 +104,7 @@ def run_tagger():
     print("setup complete")
     tag.startFor(int(2e12))
     tag.waitUntilFinished()
+
 
 if __name__ == "__main__":
     run_tagger()
