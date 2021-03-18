@@ -26,6 +26,6 @@ name = "rpyrender"
 path = "src/bin.rs"
 
 [package.metadata.maturin]
-requires-dist = ["ipython>=7", "numpy>=1.20", "pandas>=1.2", "numba>=0.51", "pytest>=6.2", "matplotlib>=3.3",]
+requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "numba>=0.51", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=3.0.0",]
 classifier = ["Programming Language :: Python", "Programming Language :: Rust"]
 maintainer = "Hagai Har-Gil"

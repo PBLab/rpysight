@@ -23,20 +23,21 @@ fn main() -> Result<(), std::io::Error> {
     // Start the TT inside the app and render the photons
     app.tt_module.call0(Python::acquire_gil().python())?;
     // window.render_loop(app);
-    // let mut point_holder: Vec<ImageCoor> = Vec::with_capacity(10_001);
+    let mut point_holder: Vec<ImageCoor> = Vec::with_capacity(10_001);
     let mut rng = rand::thread_rng();
     let white = ImageCoor::new(1.0, 1.0, 1.0);
     let stream = File::open(TT_DATA_STREAM)?;
     let mut stream = StreamReader::try_new(stream).expect("Stream file missing");
     while window.render() {
-        for data in stream.into_iter() {
-            let point = generate_coor(&mut rng);
-            window.draw_point(&point, &white);
+        if let Some(batch) = stream.next() {
+            for _ in 0..batch.unwrap().num_rows() {
+                let point = generate_coor(&mut rng);
+                window.draw_point(&point, &white);
+            }
             // point_holder.push(point);
-            println!("Rust num rows: {}", data.unwrap().num_rows());
+        } else {
+            break
         }
-        // point_holder.clear();
-        break;
     }
     Ok(())
 }

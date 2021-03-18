@@ -14,11 +14,12 @@ replaced that function with my own mock function defined in lib.rs just to make
 it work once, and it did, which is great.
 """
 from time import sleep
+import pathlib
+
 import numpy as np
 import pyarrow as pa
 
 import TimeTagger
-from librpysight import process_stream
 
 # Channel definitions
 CHAN_START = 1
@@ -48,16 +49,26 @@ class CustomTT(TimeTagger.CustomMeasurement):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
         for channel in channels:
             self.register_channel(channel)
-        self.schema = pa.schema(('type_', pa.uint8()), ('missed_events', pa.uint16()), ('channel', pa.int32()), ('time', pa.int64()))
-        self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
+
+        self.init_stream_and_schema()
+
         # At the end of a CustomMeasurement construction,
         # we must indicate that we have finished.
         self.finalize_init()
 
+    def init_stream_and_schema(self):
+        self.schema = pa.schema([
+            ('type_', pa.uint8()), 
+            ('missed_events', pa.uint16()), 
+            ('channel', pa.int32()), 
+            ('time', pa.int64()),
+            ])
+        pathlib.Path(TT_DATA_STREAM).unlink(missing_ok=True)
+        self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
+
     def __del__(self):
         # The measurement must be stopped before deconstruction to avoid
         # concurrent process() calls.
-        self.stream.close()
         self.stop()
 
     def on_start(self):
@@ -89,7 +100,6 @@ class CustomTT(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        print(f"Python num rows: {len(incoming_tags)}")
         batch = pa.record_batch([incoming_tags['type'], incoming_tags['missed_events'], incoming_tags['channel'], incoming_tags['time']], schema=self.schema)
         self.stream.write(batch)
 
@@ -102,7 +112,7 @@ def run_tagger():
     tagger.setTestSignal([CHAN_START, CHAN_STOP], True)
     tag = CustomTT(tagger, [CHAN_START, CHAN_STOP])
     print("setup complete")
-    tag.startFor(int(2e12))
+    tag.startFor(int(5e12))
     tag.waitUntilFinished()
 
 
