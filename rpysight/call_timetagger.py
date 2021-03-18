@@ -32,19 +32,6 @@ class CustomTT(TimeTagger.CustomMeasurement):
     Example for a single start - multiple stop measurement.
         The class shows how to access the raw time-tag stream.
     """
-
-    # @classmethod
-    # def from_existing_tagger(cls):
-        # tagger = TimeTagger.createTimeTagger()
-
-        # enable the test signal
-        # tagger.setTestSignal([CHAN_START, CHAN_STOP], True)
-        # delay the stop channel by 2 ns to make sure it is later than the start
-        # tagger.setInputDelay(CHAN_STOP, 2000)
-
-
-        # return cls(tagger, CHAN_STOP, CHAN_START)
-
     def __init__(self, tagger, channels: list):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
         for channel in channels:
@@ -57,12 +44,9 @@ class CustomTT(TimeTagger.CustomMeasurement):
         self.finalize_init()
 
     def init_stream_and_schema(self):
-        self.schema = pa.schema([
-            ('type_', pa.uint8()), 
-            ('missed_events', pa.uint16()), 
-            ('channel', pa.int32()), 
-            ('time', pa.int64()),
-            ])
+        struct = pa.StructArray.from_arrays([pa.array([], type=pa.int8()), pa.array([], type=pa.uint16()), pa.array([], type=pa.int32()), pa.array([], type=pa.int64())], ['type_', 'missed_events', 'channel', 'time'])
+        batch = pa.record_batch([struct], ['tt_batch'])
+        self.schema = batch.schema
         pathlib.Path(TT_DATA_STREAM).unlink(missing_ok=True)
         self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
 
