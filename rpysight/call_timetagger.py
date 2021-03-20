@@ -84,7 +84,13 @@ class CustomTT(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        batch = pa.record_batch([incoming_tags['type'], incoming_tags['missed_events'], incoming_tags['channel'], incoming_tags['time']], schema=self.schema)
+        num_tags = len(incoming_tags)
+        type_ = pa.Uint8Array.from_buffers(pa.uint8(), num_tags, [None, pa.py_buffer(incoming_tags['type'])], null_count=0)
+        missed_events = pa.Uint16Array.from_buffers(pa.uint16(), num_tags, [None, pa.py_buffer(incoming_tags['missed_events'])], null_count=0)
+        channel = pa.Int32Array.from_buffers(pa.int32(), num_tags, [None, pa.py_buffer(incoming_tags['channel'])], null_count=0)
+        time = pa.Int64Array.from_buffers(pa.int64(), num_tags, [None, pa.py_buffer(incoming_tags['time'])], null_count=0)
+        struct = pa.StructArray.from_arrays((type_, missed_events, channel, time), ('type_', 'missed_events', 'channel', 'time'))
+        batch = pa.record_batch([struct], schema=self.schema)
         self.stream.write(batch)
 
 
