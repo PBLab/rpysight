@@ -11,7 +11,7 @@ use nalgebra_numpy::matrix_slice_from_numpy;
 use pyo3::prelude::*;
 
 use self::photon::ImageCoor;
-use point_cloud_renderer::{EventStream, Event};
+use point_cloud_renderer::Event;
 
 /// Current state of the app and renderer.
 pub struct Context {
@@ -68,37 +68,6 @@ pub fn load_timetagger_module(fname: PathBuf) -> PyResult<PyObject> {
     // Generate an owned object to be returned by value
     Ok(tt_starter.to_object(py))
 }
-
-// const CH1: i32 = 1;
-// const CH2: i32 = 2;
-// const CH_LINE: i32 = 3;
-// const CH_FRAME: i32 = 4;
-
-
-#[pymodule]
-fn librpysight<'a>(_py: Python, m: &PyModule) -> PyResult<()> {
-    #[pyfn(m, "process_stream")]
-    fn convert_py_stream(
-        py: Python,
-        len: usize,
-        type_: &PyAny,
-        missed_events: &PyAny,
-        channel: &PyAny,
-        time: &PyAny,
-    ) -> PyResult<Vec<Event>> {
-        let type_ = unsafe { matrix_slice_from_numpy::<u8, Dynamic, U1>(py, type_).unwrap() };
-        let missed_events =
-            unsafe { matrix_slice_from_numpy::<u16, Dynamic, U1>(py, missed_events).unwrap() };
-        let channel = unsafe { matrix_slice_from_numpy::<i32, Dynamic, U1>(py, channel).unwrap() };
-        let time = unsafe { matrix_slice_from_numpy::<i64, Dynamic, U1>(py, time).unwrap() };
-        let stream = EventStream::new(type_, missed_events, channel, time, len);
-        let image_coor_vec: Vec<Event> = stream.iter().filter(|a| a.type_ == 0).collect();
-        Ok(image_coor_vec)
-    }
-    Ok(())
-}
-
-
 
 #[cfg(test)]
 mod tests {

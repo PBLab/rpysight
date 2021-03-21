@@ -8,7 +8,7 @@ use rand::prelude::*;
 
 use arrow::ipc::reader::StreamReader;
 use kiss3d::camera::Camera;
-use kiss3d::nalgebra::{Dynamic, MatrixSlice, Point3, U1};
+use kiss3d::nalgebra::Point3;
 use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::post_processing::PostProcessingEffect;
 use kiss3d::renderer::Renderer;
@@ -44,85 +44,6 @@ impl Event {
     }
 }
 
-/// An iterator wrapper for [`EventStream`]
-pub(crate) struct EventStreamIter<'a> {
-    stream: EventStream<'a>,
-    idx: usize,
-}
-
-impl<'a> Iterator for EventStreamIter<'a> {
-    type Item = Event;
-
-    fn next(&mut self) -> Option<Event> {
-        if self.idx >= self.stream.len {
-            return None;
-        };
-        let row = (self.idx, 0usize);
-        let cur_row = Event::new(
-            self.stream.type_[row],
-            self.stream.missed_events[row],
-            self.stream.channel[row],
-            self.stream.time[row],
-        );
-        self.idx += 1;
-        Some(cur_row)
-    }
-}
-
-/// A struct of arrays containing data from the TimeTagger.
-///
-/// Each field is its own array with some specific data arriving via FFI. Since
-/// there are only slices here, the main goal of this stream is to provide easy
-/// iteration over the tags for the downstream 'user', via the accompanying 
-/// ['EventStreamIter`].
-#[derive(Debug, Clone)]
-pub(crate) struct EventStream<'a> {
-    type_: MatrixSlice<'a, u8, Dynamic, U1, Dynamic, Dynamic>,
-    missed_events: MatrixSlice<'a, u16, Dynamic, U1, Dynamic, Dynamic>,
-    channel: MatrixSlice<'a, i32, Dynamic, U1, Dynamic, Dynamic>,
-    time: MatrixSlice<'a, i64, Dynamic, U1, Dynamic, Dynamic>,
-    len: usize,
-}
-
-impl<'a> EventStream<'a> {
-    /// Creates a new stream with views over the arriving data.
-    pub(crate) fn new(
-        type_: MatrixSlice<'a, u8, Dynamic, U1, Dynamic, Dynamic>,
-        missed_events: MatrixSlice<'a, u16, Dynamic, U1, Dynamic, Dynamic>,
-        channel: MatrixSlice<'a, i32, Dynamic, U1, Dynamic, Dynamic>,
-        time: MatrixSlice<'a, i64, Dynamic, U1, Dynamic, Dynamic>,
-        len: usize,
-    ) -> Self {
-        EventStream {
-            type_,
-            missed_events,
-            channel,
-            time,
-            len,
-        }
-    }
-
-    pub(crate) fn iter(self) -> EventStreamIter<'a> {
-        EventStreamIter {
-            stream: self,
-            idx: 0usize,
-        }
-    }
-
-    pub(crate) fn make_vec(self) -> Vec<u8> {
-        vec![10, 20, 30]
-    }
-}
-
-impl<'a> IntoIterator for EventStream<'a> {
-    type Item = Event;
-    type IntoIter = EventStreamIter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
 /// Holds the custom renderer that will be used for rendering the
 /// point cloud and the needed data streams for it
 pub struct AppState<R: Read> {
@@ -147,23 +68,6 @@ impl AppState<File> {
             data_stream: None,
             appconfig: AppConfig::new(),
         }
-    }
-
-    pub fn mock_get_data_from_channel(&self) -> Vec<ImageCoor> {
-        let mut rng = rand::thread_rng();
-        let mut data = Vec::with_capacity(10_000);
-        for i in 0..10_000 {
-            let x: f32 = rng.gen::<f32>(); 
-            let y: f32 = rng.gen::<f32>();
-            let z: f32 = rng.gen::<f32>();
-            let point = ImageCoor::new(x, y, z);
-            data.push(point);
-        }
-        data
-    }
-
-    fn get_event_stream<'a>(&self) -> EventStream<'a> {
-        todo!()
     }
 
     pub fn start_timetagger_acq(&self) {
@@ -204,12 +108,17 @@ impl<R: 'static + Read> State for AppState<R> {
     fn step(&mut self, _window: &mut Window) {
         let mut rng = rand::thread_rng();
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
+            // let point = batch.iter.map(|event| tag_to_coordiante(event));
             for _ in 0..batch.unwrap().num_rows() {
                 let point = generate_coor(&mut rng);
                 self.point_cloud_renderer.draw_point(point, self.appconfig.point_color);
             }
         }
     }
+}
+
+fn tag_to_coordiante(tag: (u8, u16, i32, i64)) -> ImageCoor {
+    todo!()
 }
 
 pub fn setup_renderer(gil: GILGuard, tt_module: PyObject, data_stream_fh: String) -> (Window, AppState<File>) {
@@ -230,7 +139,6 @@ mod tests {
     use numpy::Element;
     use pyo3::{prelude::*, types::PyModule};
 
-    use super::{EventStream, U1};
 
     fn generate_event_stream<'a>(gil: &'a mut GILGuard) -> EventStream<'a> {
         let type_ = get_arr_from_python_file::<u8>(String::from("type_"), gil);
