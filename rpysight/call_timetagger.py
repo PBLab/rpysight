@@ -45,7 +45,7 @@ class CustomTT(TimeTagger.CustomMeasurement):
         self.finalize_init()
 
     def init_stream_and_schema(self):
-        self.schema = pa.struct(
+        self.struct = pa.struct(
             [
                 ("type", pa.uint8()),
                 ("missed_events", pa.uint16()),
@@ -53,6 +53,8 @@ class CustomTT(TimeTagger.CustomMeasurement):
                 ("time", pa.int64()),
             ]
         )
+        arr = pa.array([], type=self.struct)
+        self.schema = pa.record_batch(arr, names=['tt_batch']).schema
         pathlib.Path(TT_DATA_STREAM).unlink(missing_ok=True)
         self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
 
@@ -103,7 +105,8 @@ class CustomTT(TimeTagger.CustomMeasurement):
         return batch
 
     def convert_tags_to_batch_inefficient(self, incoming_tags):
-        batch = pa.array(incoming_tags, type=self.schema)
+        batch = pa.array(incoming_tags, type=self.struct)
+        batch = pa.record_batch([batch], schema=self.schema)
         return batch
 
     def process(self, incoming_tags, begin_time, end_time):
