@@ -90,7 +90,7 @@ class CustomTT(TimeTagger.CustomMeasurement):
         channel = pa.Int32Array.from_buffers(pa.int32(), num_tags, [None, pa.py_buffer(incoming_tags['channel'])], null_count=0)
         time = pa.Int64Array.from_buffers(pa.int64(), num_tags, [None, pa.py_buffer(incoming_tags['time'])], null_count=0)
         struct = pa.StructArray.from_arrays((type_, missed_events, channel, time), ('type_', 'missed_events', 'channel', 'time'))
-        batch = pa.record_batch([struct], schema=self.schema)
+        batch = pa.record_batch((struct,), schema=self.schema)
         self.stream.write(batch)
 
 

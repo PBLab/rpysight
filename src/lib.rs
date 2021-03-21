@@ -6,7 +6,7 @@ pub mod point_cloud_renderer;
 use std::path::PathBuf;
 use std::fs::read_to_string;
 
-use kiss3d::nalgebra::{DVector, Dynamic, U1};
+use kiss3d::nalgebra::{Point3, Dynamic, U1};
 use nalgebra_numpy::matrix_slice_from_numpy;
 use pyo3::prelude::*;
 
@@ -38,6 +38,19 @@ impl Context {
     pub(crate) fn set_last_frame(&mut self, last_frame: i64) -> Option<ImageCoor> {
         self.last_frame = last_frame;
         None
+    }
+}
+
+/// Configs
+pub struct AppConfig {
+    point_color: Point3<f32>,
+}
+
+impl AppConfig {
+    pub fn new() -> Self {
+        AppConfig {
+            point_color: Point3::new(1.0f32, 1.0, 1.0),
+        }
     }
 }
 

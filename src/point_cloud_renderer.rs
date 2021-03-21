@@ -1,8 +1,12 @@
 extern crate kiss3d;
 
+use std::fs::File;
+use std::io::Read;
+
 use kiss3d::point_renderer::PointRenderer;
 use rand::prelude::*;
 
+use arrow::ipc::reader::StreamReader;
 use kiss3d::camera::Camera;
 use kiss3d::nalgebra::{Dynamic, MatrixSlice, Point3, U1};
 use kiss3d::planar_camera::PlanarCamera;
@@ -11,7 +15,7 @@ use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use pyo3::prelude::*;
 
-use crate::Context;
+use crate::{Context, AppConfig};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -121,21 +125,27 @@ impl<'a> IntoIterator for EventStream<'a> {
 
 /// Holds the custom renderer that will be used for rendering the
 /// point cloud and the needed data streams for it
-pub struct AppState {
+pub struct AppState<R: Read> {
     point_cloud_renderer: PointRenderer,
     gil: GILGuard,
-    pub tt_module: PyObject,
+    data_stream_fh: String,
+    tt_module: PyObject,
     context: Context,
+    pub data_stream: Option<StreamReader<R>>,
+    appconfig: AppConfig,
 }
 
-impl AppState {
+impl AppState<File> {
     /// Generates a new app from a renderer and a receiving end of a channel
-    pub fn new(point_cloud_renderer: PointRenderer,  tt_module: PyObject, gil: GILGuard, context: Context) -> Self {
+    pub fn new(point_cloud_renderer: PointRenderer, tt_module: PyObject, gil: GILGuard, data_stream_fh: String, context: Context) -> Self {
         AppState {
             point_cloud_renderer,
             tt_module,
             gil,
+            data_stream_fh,
             context,
+            data_stream: None,
+            appconfig: AppConfig::new(),
         }
     }
 
@@ -155,6 +165,16 @@ impl AppState {
     fn get_event_stream<'a>(&self) -> EventStream<'a> {
         todo!()
     }
+
+    pub fn start_timetagger_acq(&self) {
+        self.tt_module.call0(self.gil.python()).unwrap();
+    }
+
+    pub fn acquire_stream_filehandle(&mut self) {
+        let stream = File::open(&self.data_stream_fh).unwrap();
+        let stream = StreamReader::try_new(stream).expect("Stream file missing");
+        self.data_stream = Some(stream);
+    }
 }
 
 fn process_event(event: Event) -> Option<ImageCoor> {
@@ -162,7 +182,15 @@ fn process_event(event: Event) -> Option<ImageCoor> {
     Some(ImageCoor::new(1.0, 0.0, 0.5))
 }
 
-impl State for AppState {
+fn generate_coor(rng: &mut ThreadRng) -> ImageCoor {
+    let x: f32 = rng.gen::<f32>(); 
+    let y: f32 = rng.gen::<f32>();
+    let z: f32 = rng.gen::<f32>();
+    let point = ImageCoor::new(x, y, z);
+    point
+}
+
+impl<R: 'static + Read> State for AppState<R> {
     /// Return the renderer that will be called at each render loop. Without
     /// returning it the loop still runs but the screen is blank.
     fn cameras_and_effect_and_renderer(
@@ -179,31 +207,20 @@ impl State for AppState {
     /// Main logic per step - required by the State trait. The function reads
     /// data awaiting from the TimeTagger and then pushes it into the renderer.
     fn step(&mut self, _window: &mut Window) {
-        let white = Point3::new(1.0, 1.0, 1.0);
-        // println!("Acquiring gil");
-        // let py = self.gil.python();
-        // println!("Acquired and calling fn");
-        // let event_stream= self.tt_module.call0(py).unwrap();
-        // println!("Got result back, generating random data");
-        // let evs: Vec<Event> = event_stream.extract(self.gil.python()).unwrap();
-        // println!("{:?}", evs);
-        // for event in evs {
-        //     println!("{:?}", event);
-        //     if let Some(point) = process_event(event) {
-        //         self.point_cloud_renderer.draw_point(point, white);
-        //     }
-        let v = self.mock_get_data_from_channel();
-        println!("Generated random data, now drawing");
-        for p in v {
-            self.point_cloud_renderer.draw_point(p, white);
+        let mut rng = rand::thread_rng();
+        if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
+            for _ in 0..batch.unwrap().num_rows() {
+                let point = generate_coor(&mut rng);
+                self.point_cloud_renderer.draw_point(point, self.appconfig.point_color);
+            }
         }
     }
 }
 
-pub fn setup_renderer(gil: GILGuard, tt_module: PyObject) -> (Window, AppState) {
+pub fn setup_renderer(gil: GILGuard, tt_module: PyObject, data_stream_fh: String) -> (Window, AppState<File>) {
     let window = Window::new("RPySight");
     let context = Context::new();
-    let app = AppState::new(PointRenderer::new(), tt_module, gil, context);
+    let app = AppState::new(PointRenderer::new(), tt_module, gil, data_stream_fh, context);
     (window, app)
 }
 
