@@ -1,13 +1,10 @@
 // Remember to  $Env:PYTHONHOME = "C:\Users\PBLab\.conda\envs\timetagger\"
 // because powershell is too dumb to remember.
 use std::path::PathBuf;
-use std::fs::File;
 
 use pyo3::prelude::*;
-use rand::prelude::*;
-use arrow::ipc::reader::StreamReader;
 
-use librpysight::point_cloud_renderer::{setup_renderer, ImageCoor};
+use librpysight::point_cloud_renderer::setup_renderer;
 use librpysight::load_timetagger_module;
 
 const TT_DATA_STREAM: &'static str = "__tt_data_stream.dat";
@@ -19,7 +16,7 @@ fn main() -> Result<(), std::io::Error> {
     let gil = Python::acquire_gil();
 
     // Set up the renderer side
-    let (mut window, mut app) = setup_renderer(gil, timetagger_module, TT_DATA_STREAM.into(),);
+    let (window, mut app) = setup_renderer(gil, timetagger_module, TT_DATA_STREAM.into(),);
     app.start_timetagger_acq();
     app.acquire_stream_filehandle(); 
     window.render_loop(app);

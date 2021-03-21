@@ -24,7 +24,7 @@ import TimeTagger
 # Channel definitions
 CHAN_START = 1
 CHAN_STOP = 2
-TT_DATA_STREAM = '__tt_data_stream.dat'
+TT_DATA_STREAM = "__tt_data_stream.dat"
 
 
 class CustomTT(TimeTagger.CustomMeasurement):
@@ -32,6 +32,7 @@ class CustomTT(TimeTagger.CustomMeasurement):
     Example for a single start - multiple stop measurement.
         The class shows how to access the raw time-tag stream.
     """
+
     def __init__(self, tagger, channels: list):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
         for channel in channels:
@@ -44,9 +45,14 @@ class CustomTT(TimeTagger.CustomMeasurement):
         self.finalize_init()
 
     def init_stream_and_schema(self):
-        struct = pa.StructArray.from_arrays([pa.array([], type=pa.uint8()), pa.array([], type=pa.uint16()), pa.array([], type=pa.int32()), pa.array([], type=pa.int64())], ['type_', 'missed_events', 'channel', 'time'])
-        batch = pa.record_batch([struct], ['tt_batch'])
-        self.schema = batch.schema
+        self.schema = pa.struct(
+            [
+                ("type", pa.uint8()),
+                ("missed_events", pa.uint16()),
+                ("channel", pa.int32),
+                ("time", pa.int64()),
+            ]
+        )
         pathlib.Path(TT_DATA_STREAM).unlink(missing_ok=True)
         self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
 
@@ -65,21 +71,39 @@ class CustomTT(TimeTagger.CustomMeasurement):
 
     def convert_tags_to_recordbatch(self, incoming_tags):
         num_tags = len(incoming_tags)
-        type_ = pa.UInt8Array.from_buffers(pa.uint8(), num_tags, [None, pa.py_buffer(incoming_tags['type'])], null_count=0)
-        missed_events = pa.UInt16Array.from_buffers(pa.uint16(), num_tags, [None, pa.py_buffer(incoming_tags['missed_events'])], null_count=0)
-        channel = pa.Int32Array.from_buffers(pa.int32(), num_tags, [None, pa.py_buffer(incoming_tags['channel'])], null_count=0)
-        time = pa.Int64Array.from_buffers(pa.int64(), num_tags, [None, pa.py_buffer(incoming_tags['time'])], null_count=0)
-        struct = pa.StructArray.from_arrays((type_, missed_events, channel, time), ('type_', 'missed_events', 'channel', 'time'))
+        type_ = pa.UInt8Array.from_buffers(
+            pa.uint8(),
+            num_tags,
+            [None, pa.py_buffer(incoming_tags["type"])],
+            null_count=0,
+        )
+        missed_events = pa.UInt16Array.from_buffers(
+            pa.uint16(),
+            num_tags,
+            [None, pa.py_buffer(incoming_tags["missed_events"])],
+            null_count=0,
+        )
+        channel = pa.Int32Array.from_buffers(
+            pa.int32(),
+            num_tags,
+            [None, pa.py_buffer(incoming_tags["channel"])],
+            null_count=0,
+        )
+        time = pa.Int64Array.from_buffers(
+            pa.int64(),
+            num_tags,
+            [None, pa.py_buffer(incoming_tags["time"])],
+            null_count=0,
+        )
+        struct = pa.StructArray.from_arrays(
+            (type_, missed_events, channel, time),
+            ("type_", "missed_events", "channel", "time"),
+        )
         batch = pa.record_batch((struct,), schema=self.schema)
         return batch
-    
+
     def convert_tags_to_batch_inefficient(self, incoming_tags):
-        type_ = pa.array(incoming_tags['type'])
-        missed_events = pa.array(incoming_tags['missed_events'])
-        channel = pa.array(incoming_tags['channel'])
-        time = pa.array(incoming_tags['time'])
-        struct = pa.StructArray.from_arrays([type_, missed_events, channel, time], ('type_', 'missed_events', 'channel', 'time'))
-        batch = pa.record_batch([struct], schema=self.schema)
+        batch = pa.array(incoming_tags, type=self.schema)
         return batch
 
     def process(self, incoming_tags, begin_time, end_time):

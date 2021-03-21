@@ -177,11 +177,6 @@ impl AppState<File> {
     }
 }
 
-fn process_event(event: Event) -> Option<ImageCoor> {
-    println!("{:?}", event);
-    Some(ImageCoor::new(1.0, 0.0, 0.5))
-}
-
 fn generate_coor(rng: &mut ThreadRng) -> ImageCoor {
     let x: f32 = rng.gen::<f32>(); 
     let y: f32 = rng.gen::<f32>();

@@ -98,17 +98,7 @@ fn librpysight<'a>(_py: Python, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
-fn render_stream(stream: Vec<Event>) {
-    todo!()
-}
 
-fn convert_time_to_coord(
-    time: &i64,
-    channel: i32,
-    coord_vec: &mut Vec<ImageCoor>,
-) -> Option<ImageCoor> {
-    todo!()
-}
 
 #[cfg(test)]
 mod tests {
