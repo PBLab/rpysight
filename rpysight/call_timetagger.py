@@ -49,12 +49,12 @@ class CustomTT(TimeTagger.CustomMeasurement):
             [
                 ("type", pa.uint8()),
                 ("missed_events", pa.uint16()),
-                ("channel", pa.int32),
+                ("channel", pa.int32()),
                 ("time", pa.int64()),
             ]
         )
         arr = pa.array([], type=self.struct)
-        self.schema = pa.record_batch(arr, names=['tt_batch']).schema
+        self.schema = pa.record_batch([arr], names=['tt_batch']).schema
         pathlib.Path(TT_DATA_STREAM).unlink(missing_ok=True)
         self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
 
