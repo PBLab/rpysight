@@ -49,7 +49,7 @@ class CustomTT(TimeTagger.CustomMeasurement):
             [
                 pa.array([], type=pa.uint8()),
                 pa.array([], type=pa.uint16()),
-                pa.array([], type=pa.int3290),
+                pa.array([], type=pa.int32()),
                 pa.array([], type=pa.int64()),
             ],
             names=["type_", "missed_events", "channel", "time"],
@@ -75,25 +75,25 @@ class CustomTT(TimeTagger.CustomMeasurement):
         type_ = pa.UInt8Array.from_buffers(
             pa.uint8(),
             num_tags,
-            [None, pa.py_buffer(incoming_tags["type"])],
+            [None, pa.py_buffer(np.ascontiguousarray(incoming_tags["type"]))],
             null_count=0,
         )
         missed_events = pa.UInt16Array.from_buffers(
             pa.uint16(),
             num_tags,
-            [None, pa.py_buffer(incoming_tags["missed_events"])],
+            [None, pa.py_buffer(np.ascontiguousarray(incoming_tags["missed_events"]))],
             null_count=0,
         )
         channel = pa.Int32Array.from_buffers(
             pa.int32(),
             num_tags,
-            [None, pa.py_buffer(incoming_tags["channel"])],
+            [None, pa.py_buffer(np.ascontiguousarray(incoming_tags["channel"]))],
             null_count=0,
         )
         time = pa.Int64Array.from_buffers(
             pa.int64(),
             num_tags,
-            [None, pa.py_buffer(incoming_tags["time"])],
+            [None, pa.py_buffer(np.ascontiguousarray(incoming_tags["time"]))],
             null_count=0,
         )
         batch = pa.record_batch(
