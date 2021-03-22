@@ -1,17 +1,9 @@
+use crate::rendering_helpers::Bidirectionality;
+
 pub(crate) type ArrivalTime = u64;
 pub(crate) type Coordinate = usize;
 pub(crate) type Lifetime = f32;
 
-pub(crate) struct ImageCoor {
-    x: f32,
-    y: f32,
-    z: Option<f32>,
-}
-
-pub(crate) enum Bidirectionality {
-    Bidir,
-    Unidir,
-}
 
 pub(crate) enum YScanDirection {
     LeftToRight,

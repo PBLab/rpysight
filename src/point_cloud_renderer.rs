@@ -14,7 +14,8 @@ use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use pyo3::prelude::*;
 
-use crate::{Context, AppConfig};
+use crate::rendering_helpers::{Context, AppConfig};
+use crate::interval_tree::ArrayBackedIntervalTree;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -155,8 +156,22 @@ impl AppState<File> {
         self.data_stream = Some(stream);
     }
 
-    pub fn event_to_coordinate(&mut self, event: Event) -> ImageCoor {
-        todo!()
+    /// Convert a raw event tag to a coordinate which will be displayed on the
+    /// screen.
+    ///
+    /// This is the core of the rendering logic of this application, where all
+    /// metadata (row, column info) is used to decide where to place a given
+    /// event.
+    ///
+    /// None is returned if the tag isn't a time tag. Currently we discard all
+    /// such events.
+    pub fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor> {
+        if event.type_ != 0 {
+            return None
+        } else {
+            todo!()
+        }
+
     }
 }
 
@@ -176,13 +191,17 @@ impl State for AppState<File> {
 
     /// Main logic per step - required by the State trait. The function reads
     /// data awaiting from the TimeTagger and then pushes it into the renderer.
+    /// Each recorded tag (=Event) can be a Time tag or a tag signaling
+    /// overflow. This iteration process filters these non-time tags from the
+    /// more relevant tags.
     fn step(&mut self, _window: &mut Window) {
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
             let event_stream = EventStream::from_streamed_batch(&batch);
             for event in event_stream.into_iter() {
-                let point = self.event_to_coordinate(event);
-                self.point_cloud_renderer.draw_point(point, self.appconfig.point_color)
+                if let Some(point) = self.event_to_coordinate(event) {
+                    self.point_cloud_renderer.draw_point(point, self.appconfig.point_color)
+                }
             }
         }
     }
@@ -201,25 +220,10 @@ mod tests {
     extern crate pyo3;
     use std::fs::read_to_string;
 
-    use kiss3d::nalgebra::{Dynamic, MatrixSlice, Scalar};
+    use kiss3d::nalgebra::{Dynamic, U1, MatrixSlice, Scalar};
     use nalgebra_numpy::matrix_slice_from_numpy;
     use numpy::Element;
     use pyo3::{prelude::*, types::PyModule};
-
-
-    fn generate_event_stream<'a>(gil: &'a mut GILGuard) -> EventStream<'a> {
-        let type_ = get_arr_from_python_file::<u8>(String::from("type_"), gil);
-        let missed_events = get_arr_from_python_file::<u16>(String::from("missed_events"), gil);
-        let channel = get_arr_from_python_file::<i32>(String::from("channel"), &mut gil);
-        let time = get_arr_from_python_file::<i64>(String::from("time"), &mut gil);
-        let len = 10;
-        EventStream { type_,
-                       missed_events,
-            channel,
-            time,
-            len,
-        }
-    }
 
     fn get_arr_from_python_file<'a, T: Scalar + Element>(
         arr_name: String, gil: &'a mut GILGuard,
@@ -233,20 +237,4 @@ mod tests {
         b
     }
 
-    #[test]
-    fn test_simple_stream() {
-        let mut gil = Python::acquire_gil();
-        let stream = generate_event_stream(&mut gil);
-        println!("{:?}", stream);
-    }
-
-    #[test]
-    fn test_simple_arange() {
-        let mut gil = Python::acquire_gil();
-        let data = get_arr_from_python_file::<i64>(String::from("simple_arange"), &mut gil);
-        assert_eq!(
-            &vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-            data.into_owned().data.as_vec()
-        );
-    }
 }

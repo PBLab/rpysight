@@ -2,58 +2,14 @@
 
 mod photon;
 pub mod point_cloud_renderer;
+mod interval_tree;
+mod rendering_helpers;
 
 use std::path::PathBuf;
 use std::fs::read_to_string;
 
-use kiss3d::nalgebra::{Point3, Dynamic, U1};
-use nalgebra_numpy::matrix_slice_from_numpy;
 use pyo3::prelude::*;
-
-use self::photon::ImageCoor;
-use point_cloud_renderer::Event;
-
-/// Current state of the app and renderer.
-pub struct Context {
-    last_line: i64,
-    last_line_image_coor: f32,
-    last_frame: i64,
-    typical_frame_period: i64,
-}
-
-impl Context {
-    pub(crate) fn new() -> Self {
-        Self {
-            last_line: 0, last_line_image_coor: 0.0, last_frame: 0, typical_frame_period: 0
-        }
-    }
-
-    pub(crate) fn set_last_line(&mut self, last_line: i64) -> Option<ImageCoor> {
-        self.last_line = last_line;
-        self.last_line_image_coor =
-            ((self.last_frame - last_line) / self.typical_frame_period) as f32;
-        None
-    }
-
-    pub(crate) fn set_last_frame(&mut self, last_frame: i64) -> Option<ImageCoor> {
-        self.last_frame = last_frame;
-        None
-    }
-}
-
-/// Configs
-pub struct AppConfig {
-    point_color: Point3<f32>,
-}
-
-impl AppConfig {
-    pub fn new() -> Self {
-        AppConfig {
-            point_color: Point3::new(1.0f32, 1.0, 1.0),
-        }
-    }
-}
-
+///
 /// Loads the Python file with the TimeTagger start up script. 
 ///
 /// The given filename should point to a Python file that can run the
