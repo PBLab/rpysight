@@ -6,30 +6,26 @@ use crate::point_cloud_renderer::ImageCoor;
 
 type Picosecond = i64;
 
+/// Picosecond and Hz aware period
 #[derive(Clone, Copy, Debug)]
-struct EndAndCoord {
-    end_time: Picosecond,
-    coord: ImageCoor,
+pub struct Period {
+    pub period: Picosecond
 }
 
-pub(crate) struct TimeToCoord {
-    data: Vec<EndAndCoord>,
-    last_idx: usize,
+impl Period {
+    /// Convert a Hz-based frequency into units of picoseconds
+    pub(crate) fn from_freq(hz: Picosecond) -> Period {
+        let hz = hz as f64;
+        Period { period: ((1.0 / hz) * 1e12).round() as Picosecond }
+    }
 }
 
-impl TimeToCoord {
-    pub(crate) fn from_acq_params(config: AppConfig) -> TimeToCoord {
-        let starting_point = ImageCoor::new(0.0, 0.0, 0.0);
-        TimeToCoord::from_acq_params_and_start_point(config, starting_point)
-    }
+impl Deref for Period {
+    type Target = Picosecond;
 
-    pub(crate) fn from_acq_params_and_start_point(config: AppConfig, starting_point: ImageCoor) -> TimeToCoord {
-        let time_between_pixels = (*config.scan_period / 2) / (config.columns as Picosecond);
-        let time_between_rows = config.convert_fillfrac_to_deadtime();
-        let time_between_frames = config.frame_dead_time;
-        todo!()
+    fn deref(&self) -> &Picosecond {
+        &self.period
     }
-
 }
 
 /// Determines whether the scan was bidirectional or unidirectional
@@ -67,27 +63,6 @@ impl Context {
     }
 }
 
-/// Picosecond and Hz aware period
-#[derive(Clone, Copy, Debug)]
-pub struct Period {
-    pub period: Picosecond
-}
-
-impl Period {
-    /// Convert a Hz-based frequency into units of picoseconds
-    pub(crate) fn from_freq(hz: Picosecond) -> Period {
-        let hz = hz as f64;
-        Period { period: ((1.0 / hz) * 1e12).round() as Picosecond }
-    }
-}
-
-impl Deref for Period {
-    type Target = Picosecond;
-
-    fn deref(&self) -> &Picosecond {
-        &self.period
-    }
-}
 
 /// Configs
 pub(crate) struct AppConfig {
@@ -229,6 +204,48 @@ impl AppConfigBuilder {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct EndAndCoord {
+    end_time: Picosecond,
+    coord: ImageCoor,
+}
+
+pub(crate) struct TimeToCoord {
+    data: Vec<EndAndCoord>,
+    last_idx: usize,
+}
+
+impl TimeToCoord {
+    pub(crate) fn from_acq_params(config: AppConfig) -> TimeToCoord {
+        let starting_point = ImageCoor::new(0.0, 0.0, 0.0);
+        TimeToCoord::from_acq_params_and_start_point(config, starting_point)
+    }
+
+    pub(crate) fn from_acq_params_and_start_point(config: AppConfig, starting_point: ImageCoor) -> TimeToCoord {
+        let time_between_pixels = (*config.scan_period / 2) / (config.columns as Picosecond);
+        let time_between_rows = config.convert_fillfrac_to_deadtime();
+        let time_between_frames = config.frame_dead_time;
+        let capacity = ((config.rows * config.columns * config.planes) / 10) as usize;
+        let snake: Vec<EndAndCoord> = Vec::with_capacity(capacity);
+        let max_possible_time = calculate_max_possible_time(config, time_between_pixels, time_between_rows);
+        todo!()
+    }
+
+}
+
+/// The ending time, in ps, of the current volume.
+///
+/// This function takes into account the volume sizes and the delays between
+/// pixels and tries to find the maximal time in ps that this frame will be
+/// active.
+fn calculate_max_possible_time(config: AppConfig, time_between_pixels: Picosecond, time_between_rows: Picosecond) -> i64 {
+    let pixels_per_frame = config.rows * config.columns * config.planes;
+    let max_time = i64::from(pixels_per_frame) * time_between_pixels + (i64::from(config.rows - 1) * time_between_rows);
+    max_time
+}
+
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,6 +272,11 @@ mod tests {
     fn test_convert_fillfrac_unidir_to_deadtime() {
         let config = AppConfigBuilder::default().with_bidir(Bidirectionality::Unidir).build();
         assert_eq!(config.convert_fillfrac_to_deadtime(), 99_709_709);
+    }
+
+    #[test]
+    fn test_max_possible_time() {
+        assert!(false)
     }
     
 }
