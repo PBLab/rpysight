@@ -2,10 +2,8 @@ extern crate kiss3d;
 
 use std::fs::File;
 use std::io::Read;
-use std::convert::From;
 
 use kiss3d::point_renderer::PointRenderer;
-use rand::prelude::*;
 
 use arrow::{array::{UInt16Array, Int32Array, Int64Array, UInt8Array}, ipc::reader::StreamReader, record_batch::RecordBatch};
 use kiss3d::camera::Camera;
@@ -26,7 +24,7 @@ pub type ImageCoor = Point3<f32>;
 /// A single tag\event that arrives from the Time Tagger.
 #[pyclass]
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct Event {
+pub struct Event {
     pub type_: u8,
     pub missed_event: u16,
     pub channel: i32,
@@ -55,12 +53,11 @@ impl<'a> Iterator for EventStreamIter<'a> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Event> {
-        let row = (self.idx, 0usize);
         let cur_row = Event::new(
-            self.stream.type_[row],
-            self.stream.missed_events[row],
-            self.stream.channel[row],
-            self.stream.time[row],
+            self.stream.type_.value(self.idx),
+            self.stream.missed_events.value(self.idx),
+            self.stream.channel.value(self.idx),
+            self.stream.time.value(self.idx),
         );
         self.idx += 1;
         Some(cur_row)
@@ -97,15 +94,19 @@ impl<'a> EventStream<'a> {
         }
     }
 
+    pub(crate) fn from_streamed_batch(batch: &'a RecordBatch) -> EventStream<'a> {
+        let type_ = batch.column(0).as_any().downcast_ref::<UInt8Array>().expect("Type field conversion failed");
+        let missed_events = batch.column(1).as_any().downcast_ref::<UInt16Array>().expect("Missed events field conversion failed");
+        let channel = batch.column(2).as_any().downcast_ref::<Int32Array>().expect("Channel field conversion failed");
+        let time = batch.column(3).as_any().downcast_ref::<Int64Array>().expect("Time field conversion failed");
+        EventStream::new(type_, missed_events, channel, time)
+    }
+
     pub(crate) fn iter(self) -> EventStreamIter<'a> {
         EventStreamIter {
             stream: self,
             idx: 0usize,
         }
-    }
-
-    pub(crate) fn make_vec(self) -> Vec<u8> {
-        vec![10, 20, 30]
     }
 }
 
@@ -115,16 +116,6 @@ impl<'a> IntoIterator for EventStream<'a> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
-    }
-}
-
-impl<'a> From<RecordBatch> for EventStream<'a> {
-    fn from(item: RecordBatch) -> EventStream<'a> {
-        let type_ = item.column(0).as_any().downcast_ref::<UInt8Array>().expect("Type field conversion failed");
-        let missed_events = item.column(1).as_any().downcast_ref::<UInt16Array>().expect("Missed events field conversion failed");
-        let channel = item.column(2).as_any().downcast_ref::<Int32Array>().expect("Channel field conversion failed");
-        let time = item.column(3).as_any().downcast_ref::<Int64Array>().expect("Time field conversion failed");
-        EventStream::new(type_, missed_events, channel, time)
     }
 }
 
@@ -163,17 +154,13 @@ impl AppState<File> {
         let stream = StreamReader::try_new(stream).expect("Stream file missing");
         self.data_stream = Some(stream);
     }
+
+    pub fn event_to_coordinate(&mut self, event: Event) -> ImageCoor {
+        todo!()
+    }
 }
 
-fn generate_coor(rng: &mut ThreadRng) -> ImageCoor {
-    let x: f32 = rng.gen::<f32>(); 
-    let y: f32 = rng.gen::<f32>();
-    let z: f32 = rng.gen::<f32>();
-    let point = ImageCoor::new(x, y, z);
-    point
-}
-
-impl<R: 'static + Read> State for AppState<R> {
+impl State for AppState<File> {
     /// Return the renderer that will be called at each render loop. Without
     /// returning it the loop still runs but the screen is blank.
     fn cameras_and_effect_and_renderer(
@@ -190,25 +177,15 @@ impl<R: 'static + Read> State for AppState<R> {
     /// Main logic per step - required by the State trait. The function reads
     /// data awaiting from the TimeTagger and then pushes it into the renderer.
     fn step(&mut self, _window: &mut Window) {
-        let mut rng = rand::thread_rng();
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
-            // let point = batch.iter.map(|event| tag_to_coordiante(event));
-            let event: Event = extract_event_from_batch(batch.unwrap());
-            let type_ = dbg!(&batch.unwrap().columns()[0]);
-            // for _ in 0..batch.unwrap().num_rows() {
-            //     let point = generate_coor(&mut rng);
-            //     self.point_cloud_renderer.draw_point(point, self.appconfig.point_color);
-            // }
+            let batch = batch.unwrap();
+            let event_stream = EventStream::from_streamed_batch(&batch);
+            for event in event_stream.into_iter() {
+                let point = self.event_to_coordinate(event);
+                self.point_cloud_renderer.draw_point(point, self.appconfig.point_color)
+            }
         }
     }
-}
-
-fn extract_event_from_batch(batch: RecordBatch) -> EventStream {
-    
-}
-
-fn tag_to_coordiante(tag: (u8, u16, i32, i64)) -> ImageCoor {
-    todo!()
 }
 
 pub fn setup_renderer(gil: GILGuard, tt_module: PyObject, data_stream_fh: String) -> (Window, AppState<File>) {
