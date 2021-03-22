@@ -45,16 +45,15 @@ class CustomTT(TimeTagger.CustomMeasurement):
         self.finalize_init()
 
     def init_stream_and_schema(self):
-        self.struct = pa.struct(
+        self.schema = pa.record_batch(
             [
-                ("type", pa.uint8()),
-                ("missed_events", pa.uint16()),
-                ("channel", pa.int32()),
-                ("time", pa.int64()),
-            ]
-        )
-        arr = pa.array([], type=self.struct)
-        self.schema = pa.record_batch([arr], names=['tt_batch']).schema
+                pa.array([], type=pa.uint8()),
+                pa.array([], type=pa.uint16()),
+                pa.array([], type=pa.int3290),
+                pa.array([], type=pa.int64()),
+            ],
+            names=["type_", "missed_events", "channel", "time"],
+        ).schema
         pathlib.Path(TT_DATA_STREAM).unlink(missing_ok=True)
         self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
 
@@ -97,11 +96,10 @@ class CustomTT(TimeTagger.CustomMeasurement):
             [None, pa.py_buffer(incoming_tags["time"])],
             null_count=0,
         )
-        struct = pa.StructArray.from_arrays(
-            (type_, missed_events, channel, time),
-            ("type_", "missed_events", "channel", "time"),
+        batch = pa.record_batch(
+            [type_, missed_events, channel, time],
+            schema=self.schema
         )
-        batch = pa.record_batch((struct,), schema=self.schema)
         return batch
 
     def convert_tags_to_batch_inefficient(self, incoming_tags):
@@ -130,7 +128,7 @@ class CustomTT(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        batch = self.convert_tags_to_batch_inefficient(incoming_tags)
+        batch = self.convert_tags_to_recordbatch(incoming_tags)
         self.stream.write(batch)
 
 

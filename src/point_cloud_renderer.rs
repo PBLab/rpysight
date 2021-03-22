@@ -109,6 +109,7 @@ impl<R: 'static + Read> State for AppState<R> {
         let mut rng = rand::thread_rng();
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             // let point = batch.iter.map(|event| tag_to_coordiante(event));
+            let type_ = dbg!(&batch.unwrap().columns()[0]);
             for _ in 0..batch.unwrap().num_rows() {
                 let point = generate_coor(&mut rng);
                 self.point_cloud_renderer.draw_point(point, self.appconfig.point_color);
