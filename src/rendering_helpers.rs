@@ -26,12 +26,14 @@ impl TimeToCoord {
     pub(crate) fn from_acq_params_and_start_point(config: AppConfig, starting_point: ImageCoor) -> TimeToCoord {
         let time_between_pixels = (*config.scan_period / 2) / (config.columns as Picosecond);
         let time_between_rows = config.convert_fillfrac_to_deadtime();
+        let time_between_frames = config.frame_dead_time;
         todo!()
     }
 
 }
 
 /// Determines whether the scan was bidirectional or unidirectional
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum Bidirectionality {
     Bidir,
     Unidir,
@@ -97,10 +99,11 @@ pub(crate) struct AppConfig {
     tag_period: Period,
     bidir: Bidirectionality,
     fill_fraction: f32,  // (0..100)
+    frame_dead_time: Picosecond,
 }
 
 impl AppConfig {
-    pub(crate) fn new(point_color: Point3<f32>, rows: u32, columns: u32, planes: u32, scan_period: Period, tag_period: Period, bidir: Bidirectionality, fill_fraction: f32) -> Self {
+    pub(crate) fn new(point_color: Point3<f32>, rows: u32, columns: u32, planes: u32, scan_period: Period, tag_period: Period, bidir: Bidirectionality, fill_fraction: f32, frame_dead_time: Picosecond) -> Self {
         AppConfig {
             point_color,
             rows,
@@ -110,6 +113,7 @@ impl AppConfig {
             tag_period,
             bidir,
             fill_fraction,
+            frame_dead_time,
         }
     }
     
@@ -140,6 +144,7 @@ pub(crate) struct AppConfigBuilder {
     tag_period: Period,
     bidir: Bidirectionality,
     fill_fraction: f32,  // (0..100)
+    frame_dead_time: Picosecond,
 }
 
 impl AppConfigBuilder {
@@ -153,6 +158,7 @@ impl AppConfigBuilder {
             tag_period: Period::from_freq(1898000),
             bidir: Bidirectionality::Bidir,
             fill_fraction: 71.0,
+            frame_dead_time: 1_310_000_000,
         }
     }
 
@@ -166,6 +172,7 @@ impl AppConfigBuilder {
             tag_period: self.tag_period,
             bidir: self.bidir,
             fill_fraction: self.fill_fraction,
+            frame_dead_time: self.frame_dead_time,
         }
     }
 
@@ -175,26 +182,31 @@ impl AppConfigBuilder {
     }
 
     pub(crate) fn with_rows(&mut self, rows: u32) -> &mut Self {
+        assert!(rows < 100_000);
         self.rows = rows;
         self
     }
     
     pub(crate) fn with_columns(&mut self, columns: u32) -> &mut Self {
+        assert!(columns < 100_000);
         self.columns = columns;
         self
     }
         
     pub(crate) fn with_planes(&mut self, planes: u32) -> &mut Self {
+        assert!(planes < 100_000);
         self.planes = planes;
         self
     }
 
     pub(crate) fn with_scan_period(&mut self, scan_period: Period) -> &mut Self {
+        assert!(*scan_period > 10_000_000);
         self.scan_period = scan_period;
         self
     }
 
     pub(crate) fn with_tag_period(&mut self, tag_period: Period) -> &mut Self {
+        assert!(*tag_period > 10_000_000);
         self.tag_period = tag_period;
         self
     }
@@ -205,12 +217,17 @@ impl AppConfigBuilder {
     }
 
     pub(crate) fn with_fill_fraction(&mut self, fill_fraction: f32) -> &mut Self {
+        assert!(fill_fraction >= 0.0 && fill_fraction <= 100.0);
         self.fill_fraction = fill_fraction;
         self
     }
+
+    pub(crate) fn with_frame_dead_time(&mut self, frame_dead_time: Picosecond) -> &mut Self {
+        assert!(frame_dead_time >= 0 && frame_dead_time <= 10_000_000_000_000);
+        self.frame_dead_time = frame_dead_time;
+        self
+    }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -229,9 +246,15 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_fillfrac_to_deadtime() {
+    fn test_convert_fillfrac_bidir_to_deadtime() {
         let config = AppConfigBuilder::default().with_bidir(Bidirectionality::Bidir).build();
         assert_eq!(config.convert_fillfrac_to_deadtime(), 18_301_150);
+    }
+
+    #[test]
+    fn test_convert_fillfrac_unidir_to_deadtime() {
+        let config = AppConfigBuilder::default().with_bidir(Bidirectionality::Unidir).build();
+        assert_eq!(config.convert_fillfrac_to_deadtime(), 99_709_709);
     }
     
 }

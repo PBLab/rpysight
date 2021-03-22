@@ -14,8 +14,7 @@ use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use pyo3::prelude::*;
 
-use crate::rendering_helpers::{Context, AppConfig};
-use crate::interval_tree::ArrayBackedIntervalTree;
+use crate::rendering_helpers::{Context, AppConfig, AppConfigBuilder};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -142,7 +141,7 @@ impl AppState<File> {
             data_stream_fh,
             context,
             data_stream: None,
-            appconfig: AppConfig::new(),
+            appconfig: AppConfigBuilder::default().build(),
         }
     }
 
