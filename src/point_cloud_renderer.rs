@@ -2,11 +2,12 @@ extern crate kiss3d;
 
 use std::fs::File;
 use std::io::Read;
+use std::convert::From;
 
 use kiss3d::point_renderer::PointRenderer;
 use rand::prelude::*;
 
-use arrow::ipc::reader::StreamReader;
+use arrow::{array::{UInt16Array, Int32Array, Int64Array, UInt8Array}, ipc::reader::StreamReader, record_batch::RecordBatch};
 use kiss3d::camera::Camera;
 use kiss3d::nalgebra::Point3;
 use kiss3d::planar_camera::PlanarCamera;
@@ -41,6 +42,89 @@ impl Event {
             channel,
             time,
         }
+    }
+}
+
+/// An iterator wrapper for [`EventStream`]
+pub(crate) struct EventStreamIter<'a> {
+    stream: EventStream<'a>,
+    idx: usize,
+}
+
+impl<'a> Iterator for EventStreamIter<'a> {
+    type Item = Event;
+
+    fn next(&mut self) -> Option<Event> {
+        let row = (self.idx, 0usize);
+        let cur_row = Event::new(
+            self.stream.type_[row],
+            self.stream.missed_events[row],
+            self.stream.channel[row],
+            self.stream.time[row],
+        );
+        self.idx += 1;
+        Some(cur_row)
+    }
+}
+
+/// A struct of arrays containing data from the TimeTagger.
+///
+/// Each field is its own array with some specific data arriving via FFI. Since
+/// there are only slices here, the main goal of this stream is to provide easy
+/// iteration over the tags for the downstream 'user', via the accompanying 
+/// ['EventStreamIter`].
+#[derive(Debug)]
+pub(crate) struct EventStream<'a> {
+    type_: &'a UInt8Array,
+    missed_events: &'a UInt16Array,
+    channel: &'a Int32Array,
+    time: &'a Int64Array,
+}
+
+impl<'a> EventStream<'a> {
+    /// Creates a new stream with views over the arriving data.
+    pub(crate) fn new(
+        type_: &'a UInt8Array,
+        missed_events: &'a UInt16Array,
+        channel: &'a Int32Array,
+        time: &'a Int64Array,
+    ) -> Self {
+        EventStream {
+            type_,
+            missed_events,
+            channel,
+            time,
+        }
+    }
+
+    pub(crate) fn iter(self) -> EventStreamIter<'a> {
+        EventStreamIter {
+            stream: self,
+            idx: 0usize,
+        }
+    }
+
+    pub(crate) fn make_vec(self) -> Vec<u8> {
+        vec![10, 20, 30]
+    }
+}
+
+impl<'a> IntoIterator for EventStream<'a> {
+    type Item = Event;
+    type IntoIter = EventStreamIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> From<RecordBatch> for EventStream<'a> {
+    fn from(item: RecordBatch) -> EventStream<'a> {
+        let type_ = item.column(0).as_any().downcast_ref::<UInt8Array>().expect("Type field conversion failed");
+        let missed_events = item.column(1).as_any().downcast_ref::<UInt16Array>().expect("Missed events field conversion failed");
+        let channel = item.column(2).as_any().downcast_ref::<Int32Array>().expect("Channel field conversion failed");
+        let time = item.column(3).as_any().downcast_ref::<Int64Array>().expect("Time field conversion failed");
+        EventStream::new(type_, missed_events, channel, time)
     }
 }
 
@@ -109,13 +193,18 @@ impl<R: 'static + Read> State for AppState<R> {
         let mut rng = rand::thread_rng();
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             // let point = batch.iter.map(|event| tag_to_coordiante(event));
+            let event: Event = extract_event_from_batch(batch.unwrap());
             let type_ = dbg!(&batch.unwrap().columns()[0]);
-            for _ in 0..batch.unwrap().num_rows() {
-                let point = generate_coor(&mut rng);
-                self.point_cloud_renderer.draw_point(point, self.appconfig.point_color);
-            }
+            // for _ in 0..batch.unwrap().num_rows() {
+            //     let point = generate_coor(&mut rng);
+            //     self.point_cloud_renderer.draw_point(point, self.appconfig.point_color);
+            // }
         }
     }
+}
+
+fn extract_event_from_batch(batch: RecordBatch) -> EventStream {
+    
 }
 
 fn tag_to_coordiante(tag: (u8, u16, i32, i64)) -> ImageCoor {
