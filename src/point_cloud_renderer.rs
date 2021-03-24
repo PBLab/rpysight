@@ -215,25 +215,5 @@ pub fn setup_renderer(gil: GILGuard, tt_module: PyObject, data_stream_fh: String
 
 #[cfg(test)]
 mod tests {
-    extern crate numpy;
-    extern crate pyo3;
-    use std::fs::read_to_string;
-
-    use kiss3d::nalgebra::{Dynamic, U1, MatrixSlice, Scalar};
-    use nalgebra_numpy::matrix_slice_from_numpy;
-    use numpy::Element;
-    use pyo3::{prelude::*, types::PyModule};
-
-    fn get_arr_from_python_file<'a, T: Scalar + Element>(
-        arr_name: String, gil: &'a mut GILGuard,
-    ) -> MatrixSlice<'a, T, Dynamic, U1, Dynamic, Dynamic> {
-        let py = gil.python();
-        let python_code = read_to_string("tests/numpy_test.py").expect("No numpy array file found");
-        let testfile = PyModule::from_code(py, &python_code, "testing.py", "testarr")
-            .expect("Couldn't parse file");
-        let arr = testfile.getattr(&arr_name).expect("Array name not found");
-        let b = unsafe { matrix_slice_from_numpy::<T, Dynamic, U1>(gil.python(), arr).unwrap() };
-        b
-    }
 
 }
