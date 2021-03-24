@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use kiss3d::nalgebra::Point3;
+use kiss3d::nalgebra::{Point3, DVector, Dynamic};
 
 use crate::point_cloud_renderer::ImageCoor;
 
@@ -192,16 +192,35 @@ impl AppConfigBuilder {
     }
 }
 
+/// Marker trait to allow specific types to be used as deltas between pixels -
+/// for the image space rendering case the deltas are in f32, while for the 
+/// rendering the deltas are in Picoseconds.
+trait ImageDelta { }
+
+impl ImageDelta for f32 { }
+impl ImageDelta for Picosecond { }
+
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct VoxelDelta {
-    column: Picosecond,
-    row: Picosecond,
-    plane: Picosecond,
-    frame: Picosecond,
+struct VoxelDelta<T: ImageDelta> {
+    column: T,
+    row: T,
+    plane: T,
+    frame: T,
 }
 
-impl VoxelDelta {
-    pub(crate) fn from_config(config: &AppConfig) -> VoxelDelta {
+impl VoxelDelta<f32> {
+    pub(crate) fn from_config(config: &AppConfig) -> VoxelDelta<f32> {
+        let jump_between_columns = 1.0f32 / (config.columns as f32 - 1.0);
+        let jump_between_rows = 1.0f32 / (config.rows as f32 - 1.0);
+        let jump_between_planes = 1.0f32 / (config.planes as f32 - 1.0);
+
+        VoxelDelta { column: jump_between_columns, row: jump_between_rows, plane: jump_between_planes, frame: f32::NAN }
+    }
+
+}
+
+impl VoxelDelta<Picosecond> {
+    pub(crate) fn from_config(config: &AppConfig) -> VoxelDelta<Picosecond> {
         let time_between_columns = VoxelDelta::calc_time_between_columns(&config);
         let time_between_rows = VoxelDelta::calc_time_between_rows(&config);
         let time_between_planes = VoxelDelta::calc_time_between_planes(&config);
@@ -246,44 +265,75 @@ impl VoxelDelta {
 }
 
 
-#[derive(Clone, Copy, Debug)]
-struct EndAndCoord {
-    end_time: Picosecond,
-    coord: ImageCoor,
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct EndAndCoord {
+    pub(crate) end_time: Picosecond,
+    pub(crate) coord: ImageCoor,
 }
 
+impl EndAndCoord {
+    pub(crate) fn new(end_time: Picosecond, coord: ImageCoor) -> EndAndCoord {
+        EndAndCoord { end_time, coord }
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct TimeToCoord {
-    data: Vec<EndAndCoord>,
+    data: &'static mut Vec<EndAndCoord>,
     last_idx: usize,
 }
 
 impl TimeToCoord {
     pub(crate) fn from_acq_params(config: AppConfig) -> TimeToCoord {
         let starting_point = ImageCoor::new(0.0, 0.0, 0.0);
-        TimeToCoord::from_acq_params_and_start_point(config, starting_point)
+        let frame_start = 0;
+        TimeToCoord::from_acq_params_and_start_point(config, starting_point, frame_start)
     }
 
-    pub(crate) fn from_acq_params_and_start_point(config: AppConfig, starting_point: ImageCoor) -> TimeToCoord {
-        let voxel_delta = VoxelDelta::from_config(&config);
+    pub(crate) fn from_acq_params_and_start_point(config: AppConfig, starting_point: ImageCoor, frame_start: Picosecond) -> TimeToCoord {
+        let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
+        let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
         if config.planes > 1 {
-            TimeToCoord::generate_snake_2d(&config, &voxel_delta)
+            TimeToCoord::generate_snake_2d(&config, &voxel_delta_ps, &voxel_delta_im)
         } else {
-            TimeToCoord::generate_snake_3d(&config, &voxel_delta)
+            TimeToCoord::generate_snake_3d(&config, &voxel_delta_ps, &voxel_delta_im)
         }
     }
 
-    fn generate_snake_2d(config: &AppConfig, voxel_delta: &VoxelDelta) -> TimeToCoord {
+    fn prep_snake_metadata(config: &AppConfig, voxel_delta_ps: &VoxelDelta<Picosecond>, voxel_delta_im: &VoxelDelta<f32>) -> (usize, Vec<EndAndCoord>, DVector<Picosecond>, DVector<f32>) {
         let capacity = (config.rows * config.columns) as usize;
-        let max_possible_time = TimeToCoord::calculate_max_possible_time(&config);
-        let row_deltas_ps = kiss3d::nalgebra::DVector::<Picosecond>::from_fn(capacity, |i, _| ((i as Picosecond) * voxel_delta.column + voxel_delta.column));
-        for pixnum in 0..capacity {
-
-
-        }
-        todo!()
+        let mut snake: Vec<EndAndCoord> = Vec::with_capacity(capacity);
+        let mut column_deltas_ps = DVector::<Picosecond>::from_fn(config.columns as usize, |i, _| ((i as Picosecond) * voxel_delta_ps.column + voxel_delta_ps.column));
+        let column_deltas_imagespace = DVector::<f32>::from_fn(config.columns as usize, |i, _| (i as f32) * voxel_delta_im.column);
+        (capacity, snake, column_deltas_ps, column_deltas_imagespace)
     }
 
-    fn generate_snake_3d(config: &AppConfig, voxel_delta: &VoxelDelta) -> TimeToCoord {
+    fn generate_snake_2d(config: &AppConfig, voxel_delta_ps: &VoxelDelta<Picosecond>, voxel_delta_im: &VoxelDelta<f32>) -> TimeToCoord {
+        let (capacity, mut snake, mut column_deltas_ps, column_deltas_imagespace) = TimeToCoord::prep_snake_metadata(&config, &voxel_delta_ps, &voxel_delta_im);
+        TimeToCoord::generate_snake_2d_from_metadata(&config, &voxel_delta_ps, &voxel_delta_im, &mut snake, &mut column_deltas_ps, &column_deltas_imagespace)
+    }
+
+    fn generate_snake_2d_from_metadata(config: &AppConfig, voxel_delta_ps: &VoxelDelta<Picosecond>, voxel_delta_im: &VoxelDelta<f32>, snake: &'static mut Vec<EndAndCoord>, column_deltas_ps: &mut DVector<Picosecond>, column_deltas_imagespace: &DVector<f32>) -> TimeToCoord {
+        for row in 0..config.rows {
+            let row_coord = (row as f32) * voxel_delta_im.row;
+            if row % 2 == 0 {
+                for (column_delta_im, column_delta_ps) in column_deltas_imagespace.into_iter().zip(column_deltas_ps.into_iter()) {
+                    let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
+                    snake.push(EndAndCoord::new(*column_delta_ps, cur_imcoor));
+                }
+            } else {
+                for (column_delta_im, column_delta_ps) in column_deltas_imagespace.into_iter().rev().zip(column_deltas_ps.into_iter()) {
+                    let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
+                    snake.push(EndAndCoord::new(*column_delta_ps, cur_imcoor));
+                }
+            }
+            let line_end = DVector::<Picosecond>::repeat(config.columns as usize, voxel_delta_ps.row + column_deltas_ps[(config.columns - 1) as usize]);
+            *column_deltas_ps += &line_end;
+        }
+        TimeToCoord { data: snake, last_idx: 0 }
+    }
+
+    fn generate_snake_3d(config: &AppConfig, voxel_delta_ps: &VoxelDelta<Picosecond>, voxel_delta_im: &VoxelDelta<f32>) -> TimeToCoord {
         todo!()
     }
 
@@ -301,8 +351,6 @@ impl TimeToCoord {
     }
 
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -346,13 +394,22 @@ mod tests {
     fn voxel_delta_default_config_calcs() {
         let config = setup_default_config().build();
         let voxel_delta = VoxelDelta { row: 18_104_579, column: 175_693, plane: 263_435, frame: 1_009_314_712 };
-        assert_eq!(VoxelDelta::from_config(&config), voxel_delta)
+        assert_eq!(VoxelDelta::<Picosecond>::from_config(&config), voxel_delta)
     }
 
     #[test]
     fn voxel_delta_time_between_rows() {
         let config = setup_default_config().with_bidir(Bidirectionality::Bidir).build();
         assert_eq!(VoxelDelta::calc_time_between_rows(&config), 18_104_579);
+    }
+
+    #[test]
+    fn voxel_delta_imcoord_config() {
+        let config = setup_default_config().with_rows(3).with_columns(5).with_planes(2).build();
+        let vd = VoxelDelta::<f32>::from_config(&config);
+        assert_eq!(vd.row, 0.5);
+        assert_eq!(vd.column, 0.25);
+        assert_eq!(vd.plane, 1.0);
     }
 
     #[test]
@@ -373,5 +430,15 @@ mod tests {
     fn time_to_coord_max_possible_time_default() {
         let config = setup_default_config().build();
         assert_eq!(TimeToCoord::calculate_max_possible_time(&config), 16_149_035_264);
+    }
+
+    #[test]
+    fn time_to_coord_snake_2d() {
+        let config = setup_default_config().with_rows(3).with_columns(3).with_planes(1).build();
+        let vd_ps = VoxelDelta::<Picosecond>::from_config(&config);
+        let vd_im = VoxelDelta::<f32>::from_config(&config);
+        let snake = TimeToCoord::generate_snake_2d(&config, &vd_ps, &vd_im);
+        assert_eq!(snake.data[0], EndAndCoord::new(14992530, ImageCoor::new(0.0, 0.0, 0.5)));
+        assert_eq!(snake.data[3], EndAndCoord::new(78074699, ImageCoor::new(0.5, 1.0, 0.5)));
     }
 }
