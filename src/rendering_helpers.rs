@@ -14,8 +14,8 @@ pub struct Period {
 
 impl Period {
     /// Convert a Hz-based frequency into units of picoseconds
-    pub(crate) fn from_freq(hz: Picosecond) -> Period {
-        let hz = hz as f64;
+    pub(crate) fn from_freq<T: Into<f64>>(hz: T) -> Period {
+        let hz = hz.into();
         Period { period: ((1.0 / hz) * 1e12).round() as Picosecond }
     }
 }
@@ -65,6 +65,7 @@ impl Context {
 
 
 /// Configs
+#[derive(Debug, Clone)]
 pub(crate) struct AppConfig {
     pub point_color: Point3<f32>,
     rows: u32,
@@ -92,24 +93,9 @@ impl AppConfig {
         }
     }
     
-    /// Returns the number of picoseconds since we last were on a pixel.
-    ///
-    /// If the scan is bidirectional, this time corresponds to the time it
-    /// the mirror to slow down, turn and accelerate back to the next line in
-    /// the opposite direction. If the scan is unidirectional then the method
-    /// factors in the time it takes the mirror to move to its starting
-    /// position in the opposite side of the image.
-    pub(crate) fn convert_fillfrac_to_deadtime(&self) -> Picosecond {
-        let full_time_per_line = (*self.scan_period / 2) as f64;
-        let time_per_line_after_ff = (*self.scan_period / 2) as f64 * (self.fill_fraction / 100.0) as f64;
-        let deadtime_during_rotation = full_time_per_line - time_per_line_after_ff;
-        match self.bidir {
-            Bidirectionality::Bidir => { deadtime_during_rotation.round() as i64 },
-            Bidirectionality::Unidir => { (full_time_per_line as i64) + (2 * deadtime_during_rotation.round() as i64) },
-        }
-    }
 }
 
+#[derive(Clone)]
 pub(crate) struct AppConfigBuilder {
     point_color: Point3<f32>,
     rows: u32,
@@ -123,14 +109,16 @@ pub(crate) struct AppConfigBuilder {
 }
 
 impl AppConfigBuilder {
+    /// Generate an instance with default values. Useful mainly for quick
+    /// testing.
     pub(crate) fn default() -> AppConfigBuilder {
         AppConfigBuilder {
             point_color: Point3::new(1.0f32, 1.0, 1.0),
             rows: 256,
             columns: 256,
             planes: 10,
-            scan_period: Period::from_freq(7923),
-            tag_period: Period::from_freq(1898000),
+            scan_period: Period::from_freq(7923.0),
+            tag_period: Period::from_freq(189800.0),
             bidir: Bidirectionality::Bidir,
             fill_fraction: 71.0,
             frame_dead_time: 1_310_000_000,
@@ -181,7 +169,7 @@ impl AppConfigBuilder {
     }
 
     pub(crate) fn with_tag_period(&mut self, tag_period: Period) -> &mut Self {
-        assert!(*tag_period > 10_000_000);
+        assert!(*tag_period > 1_000_000);
         self.tag_period = tag_period;
         self
     }
@@ -204,6 +192,60 @@ impl AppConfigBuilder {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct VoxelDelta {
+    column: Picosecond,
+    row: Picosecond,
+    plane: Picosecond,
+    frame: Picosecond,
+}
+
+impl VoxelDelta {
+    pub(crate) fn from_config(config: &AppConfig) -> VoxelDelta {
+        let time_between_columns = VoxelDelta::calc_time_between_columns(&config);
+        let time_between_rows = VoxelDelta::calc_time_between_rows(&config);
+        let time_between_planes = VoxelDelta::calc_time_between_planes(&config);
+        let time_between_frames = config.frame_dead_time;
+        VoxelDelta { column: time_between_columns, row: time_between_rows, plane: time_between_planes, frame: time_between_frames }
+    }
+
+    /// Number of picosecond between consecutive voxels in a single 2D line,
+    /// barring any TAG-related scanning
+    fn calc_time_between_columns(config: &AppConfig) -> Picosecond {
+        let effective_line_period = VoxelDelta::calc_effective_line_period(&config);
+        effective_line_period / (config.columns as Picosecond)
+    }
+
+    /// The time the scanner is effectively inside the image space. This time
+    /// is different than the scan period due to the fill fraction
+    fn calc_effective_line_period(config: &AppConfig) -> Picosecond {
+        ((*config.scan_period / 2) as f64 * (config.fill_fraction / 100.0) as f64).round() as Picosecond
+    }
+
+    /// Number of Picoseconds between consecutive Z-planes
+    fn calc_time_between_planes(config: &AppConfig) -> Picosecond {
+        (*config.tag_period / 2) / (config.planes as Picosecond)
+    }
+    
+    /// Returns the number of picoseconds since we last were on a pixel.
+    ///
+    /// If the scan is bidirectional, this time corresponds to the time it
+    /// the mirror to slow down, turn and accelerate back to the next line in
+    /// the opposite direction. If the scan is unidirectional then the method
+    /// factors in the time it takes the mirror to move to its starting
+    /// position in the opposite side of the image.
+    fn calc_time_between_rows(config: &AppConfig) -> Picosecond {
+        let full_time_per_line = *config.scan_period / 2;
+        let effective_line_period = VoxelDelta::calc_effective_line_period(&config);
+        let deadtime_during_rotation = full_time_per_line - effective_line_period;
+        match config.bidir {
+            Bidirectionality::Bidir => { deadtime_during_rotation },
+            Bidirectionality::Unidir => { (full_time_per_line as i64) + (2 * deadtime_during_rotation) },
+        }
+    }
+}
+
+
 #[derive(Clone, Copy, Debug)]
 struct EndAndCoord {
     end_time: Picosecond,
@@ -222,26 +264,42 @@ impl TimeToCoord {
     }
 
     pub(crate) fn from_acq_params_and_start_point(config: AppConfig, starting_point: ImageCoor) -> TimeToCoord {
-        let time_between_pixels = (*config.scan_period / 2) / (config.columns as Picosecond);
-        let time_between_rows = config.convert_fillfrac_to_deadtime();
-        let time_between_frames = config.frame_dead_time;
-        let capacity = ((config.rows * config.columns * config.planes) / 10) as usize;
-        let snake: Vec<EndAndCoord> = Vec::with_capacity(capacity);
-        let max_possible_time = calculate_max_possible_time(config, time_between_pixels, time_between_rows);
+        let voxel_delta = VoxelDelta::from_config(&config);
+        if config.planes > 1 {
+            TimeToCoord::generate_snake_2d(&config, &voxel_delta)
+        } else {
+            TimeToCoord::generate_snake_3d(&config, &voxel_delta)
+        }
+    }
+
+    fn generate_snake_2d(config: &AppConfig, voxel_delta: &VoxelDelta) -> TimeToCoord {
+        let capacity = (config.rows * config.columns) as usize;
+        let max_possible_time = TimeToCoord::calculate_max_possible_time(&config);
+        let row_deltas_ps = kiss3d::nalgebra::DVector::<Picosecond>::from_fn(capacity, |i, _| ((i as Picosecond) * voxel_delta.column + voxel_delta.column));
+        for pixnum in 0..capacity {
+
+
+        }
         todo!()
     }
 
-}
+    fn generate_snake_3d(config: &AppConfig, voxel_delta: &VoxelDelta) -> TimeToCoord {
+        todo!()
+    }
 
-/// The ending time, in ps, of the current volume.
-///
-/// This function takes into account the volume sizes and the delays between
-/// pixels and tries to find the maximal time in ps that this frame will be
-/// active.
-fn calculate_max_possible_time(config: AppConfig, time_between_pixels: Picosecond, time_between_rows: Picosecond) -> i64 {
-    let pixels_per_frame = config.rows * config.columns * config.planes;
-    let max_time = i64::from(pixels_per_frame) * time_between_pixels + (i64::from(config.rows - 1) * time_between_rows);
-    max_time
+    /// The ending time, in ps, of the current volume.
+    ///
+    /// This function takes into account the volume size and tries to find the
+    /// maximal time in ps that this frame will be active. Note that the number
+    /// of planes doesn't affect this calculation because the Z scanning isn't
+    /// synced to the frame buffer.
+    fn calculate_max_possible_time(config: &AppConfig) -> Picosecond {
+        match config.bidir {
+            Bidirectionality::Bidir => { Picosecond::from(config.rows) * (*config.scan_period / 2) },
+            Bidirectionality::Unidir => { Picosecond::from(config.rows) * *config.scan_period },
+        }
+    }
+
 }
 
 
@@ -249,6 +307,10 @@ fn calculate_max_possible_time(config: AppConfig, time_between_pixels: Picosecon
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn setup_default_config() -> AppConfigBuilder {
+        AppConfigBuilder::default().with_point_color(Point3::new(1.0f32, 1.0, 1.0)).with_rows(256).with_columns(256).with_planes(10).with_scan_period(Period::from_freq(7926.17)).with_tag_period(Period::from_freq(189800)).with_bidir(Bidirectionality::Bidir).with_fill_fraction(71.3).with_frame_dead_time(8 * *Period::from_freq(7926.17)).clone()
+    }
 
     #[test]
     fn test_tag_period_freq_conversion() {
@@ -263,20 +325,53 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_fillfrac_bidir_to_deadtime() {
-        let config = AppConfigBuilder::default().with_bidir(Bidirectionality::Bidir).build();
-        assert_eq!(config.convert_fillfrac_to_deadtime(), 18_301_150);
+    fn voxel_delta_columns_standard() {
+        let config = setup_default_config().build();
+        assert_eq!(VoxelDelta::calc_time_between_columns(&config), 175_693);
+    }
+
+    #[test]
+    fn voxel_delta_effective_line_period() {
+        let config = setup_default_config().build();
+        assert_eq!(VoxelDelta::calc_effective_line_period(&config), 44_977_590);
+    }
+
+    #[test]
+    fn voxel_delta_between_planes() {
+        let config = setup_default_config().build();
+        assert_eq!(VoxelDelta::calc_time_between_planes(&config), 263_435);
+    }
+
+    #[test]
+    fn voxel_delta_default_config_calcs() {
+        let config = setup_default_config().build();
+        let voxel_delta = VoxelDelta { row: 18_104_579, column: 175_693, plane: 263_435, frame: 1_009_314_712 };
+        assert_eq!(VoxelDelta::from_config(&config), voxel_delta)
+    }
+
+    #[test]
+    fn voxel_delta_time_between_rows() {
+        let config = setup_default_config().with_bidir(Bidirectionality::Bidir).build();
+        assert_eq!(VoxelDelta::calc_time_between_rows(&config), 18_104_579);
     }
 
     #[test]
     fn test_convert_fillfrac_unidir_to_deadtime() {
-        let config = AppConfigBuilder::default().with_bidir(Bidirectionality::Unidir).build();
-        assert_eq!(config.convert_fillfrac_to_deadtime(), 99_709_709);
+        let config = setup_default_config().with_bidir(Bidirectionality::Unidir).build();
+        assert_eq!(VoxelDelta::calc_time_between_rows(&config), 99_291_327);
     }
 
     #[test]
-    fn test_max_possible_time() {
-        assert!(false)
+    fn time_to_coord_max_possible_time_single_pixel() {
+        let config = setup_default_config().with_rows(1).with_columns(1).with_planes(1).build();
+        assert_eq!(TimeToCoord::calculate_max_possible_time(&config), 63_082_169);
     }
     
+    /// A standard frame's time is the inverse of the typical frame rate minus
+    /// the time it takes the Y galvo to return back home
+    #[test]
+    fn time_to_coord_max_possible_time_default() {
+        let config = setup_default_config().build();
+        assert_eq!(TimeToCoord::calculate_max_possible_time(&config), 16_149_035_264);
+    }
 }
