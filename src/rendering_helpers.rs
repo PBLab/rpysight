@@ -70,7 +70,7 @@ impl Context {
 
 /// Enumerates all possible data streams that can be handled by RPySight, like
 /// PMT data, line sync events and so on.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum DataType {
     Pmt1,
     Pmt2,
@@ -86,23 +86,54 @@ pub(crate) enum DataType {
 const MAX_TIMETAGGER_INPUTS: usize = 18;
 
 /// A data structure which maps the input channel to the data type it relays.
+///
+/// The underlying storage is a Vec, and due to the way the Index trait is
+/// implemented here we can index into an Inputs instance with a positive or
+/// negative value without any difference.
 #[derive(Clone, Debug)]
 pub(crate) struct Inputs(Vec<DataType>);
 
 impl Inputs {
+    /// Generates a new Inputs instance. Panics if the input channels aren't
+    /// unique or if a channel was accidently assigned to a non-existent input.
     pub(crate) fn from_config(config: &AppConfig) -> Inputs {
         let mut data: Vec<DataType> = Vec::with_capacity(MAX_TIMETAGGER_INPUTS);
         for _ in 0..MAX_TIMETAGGER_INPUTS {
             data.push(DataType::Invalid);
         }
-        data[config.pmt1_ch.abs() as usize] = DataType::Pmt1;
-        data[config.pmt2_ch.abs() as usize] = DataType::Pmt2;
-        data[config.pmt3_ch.abs() as usize] = DataType::Pmt3;
-        data[config.pmt4_ch.abs() as usize] = DataType::Pmt4;
-        data[config.frame_ch.abs() as usize] = DataType::Frame;
-        data[config.line_ch.abs() as usize] = DataType::Line;
-        data[config.taglens_ch.abs() as usize] = DataType::TagLens;
-        data[config.laser_ch.abs() as usize] = DataType::Laser;
+        let mut set = std::collections::HashSet::<usize>::new();
+        let mut used_channels = 0;
+        for (ch, dt) in vec![
+            config.pmt1_ch.abs() as usize,
+            config.pmt2_ch.abs() as usize,
+            config.pmt3_ch.abs() as usize,
+            config.pmt4_ch.abs() as usize,
+            config.frame_ch.abs() as usize,
+            config.line_ch.abs() as usize,
+            config.taglens_ch.abs() as usize,
+            config.laser_ch.abs() as usize,
+        ]
+        .into_iter()
+        .zip(
+            vec![
+                DataType::Pmt1,
+                DataType::Pmt2,
+                DataType::Pmt3,
+                DataType::Pmt4,
+                DataType::Frame,
+                DataType::Line,
+                DataType::TagLens,
+                DataType::Laser,
+            ]
+            .into_iter(),
+        ) {
+            if ch != 0 {
+                set.insert(ch);
+                data[ch] = dt;
+                used_channels += 1;
+            }
+        }
+        assert_eq!(set.len(), used_channels, "One of the channels was a duplicate");
         Inputs(data)
     }
 }
@@ -461,7 +492,7 @@ impl TimeCoordPair {
 /// that scanning element.
 ///
 /// The snake's individual cells are small structs that map the time in ps that
-/// corresponds to this pixel with its coordinate. For example, assuming 256 
+/// corresponds to this pixel with its coordinate. For example, assuming 256
 /// columns in the resulting image and a scanning frequency of about 8 kHz, it
 /// will use a pixel dwell time of about 125,000 ps as the 'bins' between
 /// consecutive pixels or voxels in the image. In this case, the value of the
@@ -487,8 +518,6 @@ impl TimeToCoord {
     /// Initialize the time -> coordinate mapping assuming that we're starting
     /// the imaging at time 0 of the experiment.
     pub(crate) fn from_acq_params(config: &AppConfig) -> TimeToCoord {
-        let starting_point = ImageCoor::new(0.0, 0.0, 0.0);
-        let frame_start = 0;
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
         if config.planes == 1 {
@@ -738,5 +767,62 @@ mod tests {
             snake.data[3],
             TimeCoordPair::new(78074699, ImageCoor::new(0.5, 1.0, 0.5))
         );
+    }
+
+    #[test]
+    fn inputs_indexing_positive() {
+        let config = setup_default_config()
+            .with_pmt1_ch(1)
+            .with_pmt2_ch(2)
+            .with_pmt3_ch(3)
+            .with_pmt4_ch(4)
+            .with_laser_ch(5)
+            .with_frame_ch(6)
+            .with_line_ch(7)
+            .with_taglens_ch(8)
+            .build();
+        let inputs = Inputs::from_config(&config);
+        assert_eq!(inputs[1], DataType::Pmt1);
+    }
+
+    #[test]
+    fn inputs_indexing_negative() {
+        let config = setup_default_config()
+            .with_pmt1_ch(-1)
+            .with_pmt2_ch(2)
+            .with_pmt3_ch(3)
+            .with_pmt4_ch(4)
+            .with_laser_ch(5)
+            .with_frame_ch(6)
+            .with_line_ch(7)
+            .with_taglens_ch(8)
+            .build();
+        let inputs = Inputs::from_config(&config);
+        assert_eq!(inputs[1], DataType::Pmt1);
+    }
+
+    #[test]
+    #[should_panic(expected = "One of the channels was a duplicate")]
+    fn inputs_duplicate_channel() {
+        let config = setup_default_config()
+            .with_pmt1_ch(-1)
+            .with_pmt2_ch(1)
+            .build();
+        let _ = Inputs::from_config(&config);
+    }
+
+    #[test]
+    fn inputs_not_all_channels_are_used() {
+        let config = setup_default_config()
+            .with_pmt1_ch(-1)
+            .with_pmt2_ch(2)
+            .with_pmt3_ch(3)
+            .with_pmt4_ch(4)
+            .with_laser_ch(0)
+            .with_frame_ch(0)
+            .with_line_ch(0)
+            .with_taglens_ch(0)
+            .build();
+        let _ = Inputs::from_config(&config);
     }
 }
