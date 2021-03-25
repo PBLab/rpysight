@@ -14,7 +14,7 @@ use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use pyo3::prelude::*;
 
-use crate::rendering_helpers::{Context, AppConfig, AppConfigBuilder};
+use crate::rendering_helpers::{Inputs, DataType, TimeToCoord, Context, AppConfig, AppConfigBuilder};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -129,6 +129,8 @@ pub struct AppState<R: Read> {
     context: Context,
     pub data_stream: Option<StreamReader<R>>,
     appconfig: AppConfig,
+    time_to_coord: TimeToCoord,
+    inputs: Inputs,
 }
 
 impl AppState<File> {
@@ -142,6 +144,8 @@ impl AppState<File> {
             context,
             data_stream: None,
             appconfig: AppConfigBuilder::default().build(),
+            time_to_coord: TimeToCoord::from_acq_params(&AppConfigBuilder::default().build()),
+            inputs: Inputs::from_config(&AppConfigBuilder::default().build()),
         }
     }
 
@@ -162,15 +166,19 @@ impl AppState<File> {
     /// metadata (row, column info) is used to decide where to place a given
     /// event.
     ///
-    /// None is returned if the tag isn't a time tag. Currently we discard all
-    /// such events.
+    /// None is returned if the tag isn't a time tag. When the tag is from a
+    /// non-imaging channel it's taken into account, but otherwise (i.e. in
+    /// cases of overflow it's discarded at the moment.
     pub fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor> {
         if event.type_ != 0 {
             return None
-        } else {
-            todo!()
         }
-
+        match self.inputs[event.channel] {
+            DataType::Pmt1 => self.time_to_coord.tag_to_coord(event.time),
+            DataType::Line => self.time_to_coord.new_line(event.time),
+            DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
+            _ => panic!("Unsupported event!"),
+        }
     }
 }
 
