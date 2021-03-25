@@ -506,12 +506,25 @@ impl TimeCoordPair {
 /// tag. Once found, return the image-space coordinate of that cell so that the
 /// photon could be placed in that pixel. By pre-populating this snake with the
 /// suitable time -> coordinate conversion we should save some lookup time.
+///
+/// # Fields
+///
+/// * `data`: A vector of end times with their corresponding image-space
+/// coordinates.
+/// * last_accessed_idx: The index in data that was last used to retrieve a
+/// coordinates. We keep it to look for the next matching end time only from
+/// that value onward.
+/// * max_frame_time: The end time for the frame. Useful to quickly check
+/// whether a time tag belongs in the next frame.
+/// * next_frame_starts_at: Starting time of the next frame, including the dead
+/// time between frames. An offset, if you will.
 #[derive(Debug)]
 pub(crate) struct TimeToCoord {
     data: Vec<TimeCoordPair>,
-    last_taglens_time: i64,
-    max_frame_time: i64,
-    next_frame_starts_at: i64,
+    last_accessed_idx: usize,
+    last_taglens_time: Picosecond,
+    max_frame_time: Picosecond,
+    next_frame_starts_at: Picosecond,
 }
 
 impl TimeToCoord {
@@ -590,8 +603,9 @@ impl TimeToCoord {
         let max_frame_time = *&snake[snake.len() - 1].end_time;
         TimeToCoord {
             data: snake,
+            last_accessed_idx: 0,
             last_taglens_time: 0,
-            max_frame_time: max_frame_time,
+            max_frame_time,
             next_frame_starts_at: max_frame_time + voxel_delta_ps.frame,
         }
     }
@@ -617,16 +631,65 @@ impl TimeToCoord {
         }
     }
 
-    pub(crate) fn tag_to_coord(&self, time: i64) -> Option<ImageCoor> {
-        todo!()
+    /// Handle a time tag by finding its corresponding coordinate in image
+    /// space.
+    ///
+    /// The arriving time tag should have a coordinate associated with it. To
+    /// find it we traverse the boundary vector (snake) until we find the 
+    /// coordinate that has an end time longer than the specified time. If the
+    /// tag has a time longer than the end of the current frame this function
+    /// is also in charge of calling the 'update' method to generate a new
+    /// snake for the next frame.
+    pub(crate) fn tag_to_coord(&mut self, time: i64) -> Option<ImageCoor> {
+        if time > self.max_frame_time {
+            self.update_2d_data_for_next_frame();
+            return self.tag_to_coord(time)
+        }
+        let mut last_pixel_time = self.data[self.last_accessed_idx].end_time;
+        let mut additional_steps_taken = 0usize;
+        let mut coord = None;
+        for pair in &self.data[self.last_accessed_idx..] {
+            if time <= pair.end_time {
+                self.last_accessed_idx += additional_steps_taken;
+                coord = Some(pair.coord);
+                break
+            }
+            additional_steps_taken += 1;
+        };
+        // Makes sure that we indeed captured some cell. This can be avoided in
+        // principle but I'm still not confident enough in this implementation.
+        if coord.is_some() {
+            coord
+        } else {
+            panic!("Coordinate remained unpopulated for some reason. Investigate!")
+        }
     }
 
+    /// Update the existing data to accommodate the new frame.
+    ///
+    /// This function is triggered from the 'tag_to_coord' method once an event
+    /// with a time tag later than the last possible voxel is detected. It
+    /// currently updates the exisitng data based on a guesstimation regarding
+    /// data quality, i.e. we don't do any error checking what-so-ever, we
+    /// simply trust in the data being not faulty.
+    fn update_2d_data_for_next_frame(&mut self) {
+        self.last_accessed_idx = 0;
+        for pair in self.data.iter_mut() {
+            pair.end_time += self.next_frame_starts_at;
+        }
+        self.max_frame_time = self.data[self.data.len() -1].end_time;
+        self.next_frame_starts_at = self.max_frame_time + self.voxel_delta_ps.frame;
+        
+    }
+
+    /// Handles a new line event
     pub(crate) fn new_line(&self, time: i64) -> Option<ImageCoor> {
-        todo!()
+        None
     }
 
+    /// Handles a new TAG lens start-of-cycle event
     pub(crate) fn new_taglens_period(&self, time: i64) -> Option<ImageCoor> {
-        todo!()
+        None
     }
 }
 
