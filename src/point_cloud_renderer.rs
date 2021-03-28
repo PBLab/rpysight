@@ -144,7 +144,7 @@ impl AppState<File> {
             context,
             data_stream: None,
             appconfig: AppConfigBuilder::default().build(),
-            time_to_coord: TimeToCoord::from_acq_params(&AppConfigBuilder::default().build()),
+            time_to_coord: TimeToCoord::from_acq_params(&AppConfigBuilder::default().build(), 0),
             inputs: Inputs::from_config(&AppConfigBuilder::default().build()),
         }
     }
@@ -174,7 +174,7 @@ impl AppState<File> {
             return None
         }
         match self.inputs[event.channel] {
-            DataType::Pmt1 => self.time_to_coord.tag_to_coord(event.time),
+            DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),
             DataType::Line => self.time_to_coord.new_line(event.time),
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
             _ => panic!("Unsupported event!"),
