@@ -621,32 +621,17 @@ impl TimeToCoord {
     ) -> TimeToCoord {
         // Add the cell capturing all photons arriving between frames
         snake.push(TimeCoordPair::new(offset, ImageCoor::new(f32::NAN, f32::NAN, f32::NAN)));
+        let line_len = column_deltas_ps.len();
         for row in 0..config.rows {
             let row_coord = (row as f32) * voxel_delta_im.row;
-            if row == 2 { break }
             if row % 2 == 0 {
-                for (column_delta_im, column_delta_ps) in column_deltas_imagespace
-                    .into_iter()
-                    .zip(column_deltas_ps.into_iter())
-                {
-                    let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
-                    snake.push(TimeCoordPair::new(*column_delta_ps, cur_imcoor));
-                }
+                TimeToCoord::push_pair_unidir(&mut snake, &column_deltas_imagespace, &column_deltas_ps, row_coord);
             } else {
-                for (column_delta_im, column_delta_ps) in column_deltas_imagespace.rows(0, column_deltas_imagespace.len() - 1)
-                    .into_iter()
-                    .rev()
-                    .zip(column_deltas_ps.rows(0, column_deltas_ps.len() - 1).into_iter())
-                {
-                    let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
-                    snake.push(dbg!(TimeCoordPair::new(*column_delta_ps, cur_imcoor)));
-                }
-                let end_of_rotation_coord = ImageCoor::new(row_coord, column_deltas_imagespace[column_deltas_imagespace.len() - 1], 0.5);
-                snake.push(TimeCoordPair::new(*&column_deltas_ps[column_deltas_ps.len() - 1], end_of_rotation_coord));
+                TimeToCoord::push_pair_bidir(&mut snake, &column_deltas_imagespace, &column_deltas_ps, row_coord);
             }
             let line_end = DVector::<Picosecond>::repeat(
-                config.columns as usize + 1,
-                column_deltas_ps[config.columns as usize],
+                line_len,
+                column_deltas_ps[(line_len - 1) as usize],
             );
             *column_deltas_ps += &line_end;
         }
@@ -660,6 +645,36 @@ impl TimeToCoord {
             voxel_delta_ps: voxel_delta_ps.clone(),
             voxel_delta_im: voxel_delta_im.clone(),
         }
+    }
+
+    /// Update the time -> coordinate snake when we're scanning unidirectionally.
+    ///
+    /// This method is also used in the bidirectional case, when running on
+    /// even rows.
+    fn push_pair_unidir(snake: &mut Vec<TimeCoordPair>, column_deltas_imagespace: &DVector<f32>, column_deltas_ps: &DVector<Picosecond>, row_coord: f32) {
+        for (column_delta_im, column_delta_ps) in column_deltas_imagespace
+            .into_iter()
+            .zip(column_deltas_ps.into_iter())
+        {
+            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
+            snake.push(TimeCoordPair::new(*column_delta_ps, cur_imcoor));
+        }
+
+    }
+
+    /// Update the time -> coordinate snake when we're scanning bidirectionally.
+    fn push_pair_bidir(snake: &mut Vec<TimeCoordPair>, column_deltas_imagespace: &DVector<f32>, column_deltas_ps: &DVector<Picosecond>, row_coord: f32) {
+        let line_len = column_deltas_ps.len();
+        for (column_delta_im, column_delta_ps) in column_deltas_imagespace.rows(0, line_len - 1)
+            .into_iter()
+            .rev()
+            .zip(column_deltas_ps.rows(0, line_len - 1).into_iter())
+        {
+            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
+            snake.push(TimeCoordPair::new(*column_delta_ps, cur_imcoor));
+        }
+        let end_of_rotation_coord = ImageCoor::new(row_coord, column_deltas_imagespace[line_len - 1], 0.5);
+        snake.push(TimeCoordPair::new(*&column_deltas_ps[line_len - 1], end_of_rotation_coord));
     }
 
     fn generate_snake_3d(
