@@ -180,6 +180,10 @@ enum EdgeDetected {
     Falling,
 }
 
+impl EdgeDetected {
+    const ALL: [EdgeDetected; 2] = [EdgeDetected::Rising, EdgeDetected::Falling];
+}
+
 impl Default for EdgeDetected {
     fn default() -> Self { EdgeDetected::Rising }
 }
@@ -241,17 +245,63 @@ impl Sandbox for ConfigGui {
     fn view(&mut self) -> Element<Message> {
         let rows = TextInput::new(
             &mut self.rows_input,
-            "Rows",
+            "Rows [px]",
             &self.rows_value,
             Message::RowsChanged,
         )
         .padding(10)
         .size(20);
+
         let columns = TextInput::new(
             &mut self.columns_input,
-            "Columns",
+            "Columns [px]",
             &self.columns_value,
             Message::ColumnsChanged,
+        )
+        .padding(10)
+        .size(20);
+
+        let planes = TextInput::new(
+            &mut self.planes_input,
+            "Planes [px] (1 for planar imaging)",
+            &self.planes_value,
+            Message::PlanesChanged,
+        )
+        .padding(10)
+        .size(20);
+
+        let scan_period = TextInput::new(
+            &mut self.scan_period_input,
+            "Scan Period [Hz]",
+            &self.scan_period_value,
+            Message::ScanPeriodChanged,
+        )
+        .padding(10)
+        .size(20);
+
+        let taglens_period = TextInput::new(
+            &mut self.tag_period_input,
+            "TAG Lens Period [Hz]",
+            &self.tag_period_value,
+            Message::TagLensPeriodChanged,
+        )
+        .padding(10)
+        .size(20);
+
+        let fillfrac = TextInput::new(
+            &mut self.fill_fraction_input,
+            "Fill Fraction [%]",
+            &self.fill_fraction_value,
+            Message::FillFractionChanged,
+        )
+        .padding(10)
+        .size(20);
+
+        let deadtime = TextInput::new(
+            &mut self.frame_dead_time_input,
+            "Frame Dead Time [ms]",
+            &self.frame_dead_time_value,
+            Message::FrameDeadTimeChanged,
         )
         .padding(10)
         .size(20);
@@ -261,6 +311,111 @@ impl Sandbox for ConfigGui {
             &ChannelNumber::ALL[..],
             Some(self.pmt1_selected),
             Message::Pmt1Changed,
+        );
+
+        let pmt1_edge = PickList::new(
+            &mut self.pmt1_edge_list, 
+            &EdgeDetected::ALL[..],
+            Some(self.pmt1_edge_selected),
+            Message::Pmt1EdgeChanged,
+        );
+
+        let pmt2 = PickList::new(
+            &mut self.pmt2_pick_list, 
+            &ChannelNumber::ALL[..],
+            Some(self.pmt2_selected),
+            Message::Pmt2Changed,
+        );
+
+        let pmt2_edge = PickList::new(
+            &mut self.pmt2_edge_list, 
+            &EdgeDetected::ALL[..],
+            Some(self.pmt2_edge_selected),
+            Message::Pmt2EdgeChanged,
+        );
+
+        let pmt3 = PickList::new(
+            &mut self.pmt3_pick_list, 
+            &ChannelNumber::ALL[..],
+            Some(self.pmt3_selected),
+            Message::Pmt3Changed,
+        );
+
+        let pmt3_edge = PickList::new(
+            &mut self.pmt3_edge_list, 
+            &EdgeDetected::ALL[..],
+            Some(self.pmt4_edge_selected),
+            Message::Pmt3EdgeChanged,
+        );
+
+        let pmt4 = PickList::new(
+            &mut self.pmt4_pick_list, 
+            &ChannelNumber::ALL[..],
+            Some(self.pmt4_selected),
+            Message::Pmt4Changed,
+        );
+
+        let pmt4_edge = PickList::new(
+            &mut self.pmt4_edge_list, 
+            &EdgeDetected::ALL[..],
+            Some(self.pmt4_edge_selected),
+            Message::Pmt4EdgeChanged,
+        );
+
+        let laser = PickList::new(
+            &mut self.laser_pick_list, 
+            &ChannelNumber::ALL[..],
+            Some(self.laser_selected),
+            Message::LaserChanged,
+        );
+
+        let laser_edge = PickList::new(
+            &mut self.laser_edge_list, 
+            &EdgeDetected::ALL[..],
+            Some(self.laser_edge_selected),
+            Message::LaserEdgeChanged,
+        );
+
+        let frame = PickList::new(
+            &mut self.frame_pick_list, 
+            &ChannelNumber::ALL[..],
+            Some(self.frame_selected),
+            Message::FrameChanged,
+        );
+
+        let frame_edge = PickList::new(
+            &mut self.frame_edge_list, 
+            &EdgeDetected::ALL[..],
+            Some(self.frame_edge_selected),
+            Message::FrameEdgeChanged,
+        );
+
+        let line = PickList::new(
+            &mut self.line_pick_list, 
+            &ChannelNumber::ALL[..],
+            Some(self.line_selected),
+            Message::LineChanged,
+        );
+
+        let line_edge = PickList::new(
+            &mut self.line_edge_list, 
+            &EdgeDetected::ALL[..],
+            Some(self.line_edge_selected),
+            Message::LineEdgeChanged,
+        );
+
+        let taglens_input = PickList::new(
+            &mut self.taglens_pick_list, 
+            &ChannelNumber::ALL[..],
+            Some(self.taglens_selected),
+            Message::TagLensChanged,
+        );
+
+        let taglens_edge = PickList::new(
+            &mut self.taglens_edge_list, 
+            &EdgeDetected::ALL[..],
+            Some(self.taglens_edge_selected),
+            Message::TagLensEdgeChanged,
         );
 
         let bidir = Checkbox::new(
@@ -276,8 +431,20 @@ impl Sandbox for ConfigGui {
             .max_width(600)
             .push(rows)
             .push(columns)
-            .push(pmt1)
-            .push(bidir);
+            .push(planes)
+            .push(scan_period)
+            .push(taglens_period)
+            .push(fillfrac)
+            .push(deadtime)
+            .push(bidir)
+            .push(Row::new().push(Text::new("PMT 1")).push(pmt1).push(pmt1_edge))
+            .push(Row::new().push(Text::new("PMT 2")).push(pmt2).push(pmt2_edge))
+            .push(Row::new().push(Text::new("PMT 3")).push(pmt3).push(pmt3_edge))
+            .push(Row::new().push(Text::new("PMT 4")).push(pmt4).push(pmt4_edge))
+            .push(Row::new().push(Text::new("Laser Trigger")).push(laser).push(laser_edge))
+            .push(Row::new().push(Text::new("Frame Trigger")).push(frame).push(frame_edge))
+            .push(Row::new().push(Text::new("Line Trigger")).push(line).push(line_edge))
+            .push(Row::new().push(Text::new("TAG Lens Trigger")).push(taglens_input).push(taglens_edge));
 
         Container::new(content)
             .width(Length::Fill)
