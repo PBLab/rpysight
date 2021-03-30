@@ -691,21 +691,6 @@ impl TimeToCoord {
 
     }
 
-    /// Update the time -> coordinate snake when we're scanning bidirectionally.
-    fn push_pair_bidir(snake: &mut Vec<TimeCoordPair>, column_deltas_imagespace: &DVector<f32>, column_deltas_ps: &DVector<Picosecond>, row_coord: f32) {
-        let line_len = column_deltas_ps.len();
-        for (column_delta_im, column_delta_ps) in column_deltas_imagespace.rows(0, line_len - 1)
-            .into_iter()
-            .rev()
-            .zip(column_deltas_ps.rows(0, line_len - 1).into_iter())
-        {
-            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
-            snake.push(TimeCoordPair::new(*column_delta_ps, cur_imcoor));
-        }
-        let end_of_rotation_coord = ImageCoor::new(row_coord, column_deltas_imagespace[line_len - 1], 0.5);
-        snake.push(TimeCoordPair::new(*&column_deltas_ps[line_len - 1], end_of_rotation_coord));
-    }
-
     fn generate_snake_2d_unidir_from_metadata(
         config: &AppConfig,
         voxel_delta_ps: &VoxelDelta<Picosecond>,

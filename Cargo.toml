@@ -12,6 +12,7 @@ rand = "0.8.3"
 pyo3 = { version = "0.13", features=['extension-module'] }
 arrow = "3.0.0"
 thiserror = "1.0"
+iced = "0.2"
 
 [lib]
 name = "librpysight"
