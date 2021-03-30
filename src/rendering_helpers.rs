@@ -513,28 +513,25 @@ impl TimeCoordPair {
 /// tag. Once found, return the image-space coordinate of that cell so that the
 /// photon could be placed in that pixel. By pre-populating this snake with the
 /// suitable time -> coordinate conversion we should save some lookup time.
-///
-/// # Fields
-///
-/// * data: A vector of end times with their corresponding image-space
-/// coordinates.
-/// * last_accessed_idx: The index in data that was last used to retrieve a
-/// coordinates. We keep it to look for the next matching end time only from
-/// that value onward.
-/// * max_frame_time: The end time for the frame. Useful to quickly check
-/// whether a time tag belongs in the next frame.
-/// * next_frame_starts_at: Starting time of the next frame, including the dead
-/// time between frames. An offset, if you will.
-/// * voxel_delta_ps: Deltas in ps of consecutive pixels, lines, etc.
-/// * voxel_delta_im: Deltas in image space of consecutive pixels, lines, etc.
 #[derive(Debug)]
 pub(crate) struct TimeToCoord {
+    /// A vector of end times with their corresponding image-space
+    /// coordinates.
     data: Vec<TimeCoordPair>,
+    /// The index in data that was last used to retrieve a
+    /// coordinates. We keep it to look for the next matching end time only from
+    /// that value onward.
     last_accessed_idx: usize,
     last_taglens_time: Picosecond,
+    /// The end time for the frame. Useful to quickly check
+    /// whether a time tag belongs in the next frame.
     max_frame_time: Picosecond,
+    /// Starting time of the next frame, including the dead
+    /// time between frames. An offset, if you will. 
     next_frame_starts_at: Picosecond,
+    /// Deltas in ps of consecutive pixels, lines, etc.
     voxel_delta_ps: VoxelDelta<Picosecond>,
+    /// Deltas in image space of consecutive pixels, lines, etc.
     voxel_delta_im: VoxelDelta<f32>,
 }
 
@@ -552,10 +549,10 @@ impl TimeToCoord {
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
         if config.planes == 1 {
+            let (snake, mut column_deltas_ps, column_deltas_imagespace) =
+                TimeToCoord::prep_snake_2d_metadata(&config, &voxel_delta_ps, &voxel_delta_im, offset);
             match config.bidir {
                 Bidirectionality::Bidir => {
-                    let (snake, mut column_deltas_ps, column_deltas_imagespace) =
-                    TimeToCoord::prep_snake_2d_bidir_metadata(&config, &voxel_delta_ps, &voxel_delta_im, offset);
                     TimeToCoord::generate_snake_2d_bidir_from_metadata(
                         &config,
                         &voxel_delta_ps,
@@ -567,8 +564,6 @@ impl TimeToCoord {
                     )
                 },
                 Bidirectionality::Unidir => {
-                    let (snake, mut column_deltas_ps, column_deltas_imagespace) =
-                    TimeToCoord::prep_snake_2d_unidir_metadata(&config, &voxel_delta_ps, &voxel_delta_im, offset);
                     TimeToCoord::generate_snake_2d_unidir_from_metadata(
                         &config,
                         &voxel_delta_ps,
@@ -586,7 +581,7 @@ impl TimeToCoord {
                     TimeToCoord::generate_snake_3d(&config, &voxel_delta_ps, &voxel_delta_im)
                 },
                 Bidirectionality::Unidir => {
-                    panic!()
+                    todo!()
                 },
             }
         }
@@ -598,7 +593,7 @@ impl TimeToCoord {
     /// To make such a snake we have to get the correct image dimensions and
     /// then populate the 'subsnakes' that will be used as a basis for the
     /// final snake.
-    fn prep_snake_2d_bidir_metadata(
+    fn prep_snake_2d_metadata(
         config: &AppConfig,
         voxel_delta_ps: &VoxelDelta<Picosecond>,
         voxel_delta_im: &VoxelDelta<f32>,
@@ -631,16 +626,17 @@ impl TimeToCoord {
     /// Constructs the 1D vector mapping the time of arrival to image-space
     /// coordinates.
     ///
-    /// This 2D vector is essentially identical to a flattened version of all
+    /// This vector is essentially identical to a flattened version of all
     /// pixels of the image, with two main differences: The first, it takes
     /// into account the bidirectionality of the scanner, i.e. odd rows are
     /// 'concatenated' in reverse. The second, per frame it has an extra "row"
-    /// and two extra columns that should contain photons arriving between
+    /// and an extra column that should contain photons arriving between
     /// frames and while the scanner was rotating, respectively.
     ///
     /// What this function does is traverse all cells of the vector and
     /// populate them with the mapping ps -> coordinate. It's also aware of the
-    /// two side columns in each row which are 'garbage'.
+    /// side column in each row which is 'garbage' and populated with a NaN
+    /// value here to not be rendered.
     fn generate_snake_2d_bidir_from_metadata(
         config: &AppConfig,
         voxel_delta_ps: &VoxelDelta<Picosecond>,
@@ -653,19 +649,20 @@ impl TimeToCoord {
         // Add the cell capturing all photons arriving between frames
         snake.push(TimeCoordPair::new(offset, ImageCoor::new(f32::NAN, f32::NAN, f32::NAN)));
         let line_len = column_deltas_ps.len();
-        for row in 0..config.rows {
-            let row_coord = (row as f32) * voxel_delta_im.row;
-            if row % 2 == 0 {
-                TimeToCoord::push_pair_unidir(&mut snake, &column_deltas_imagespace, &column_deltas_ps, row_coord);
-            } else {
-                TimeToCoord::push_pair_bidir(&mut snake, &column_deltas_imagespace, &column_deltas_ps, row_coord);
-            }
-            let line_end = DVector::<Picosecond>::repeat(
-                line_len,
-                column_deltas_ps[(line_len - 1) as usize],
-            );
-            *column_deltas_ps += &line_end;
-            println!("{:?}", column_deltas_ps);
+        let mut line_offset: Picosecond = 0;
+        let mut column_deltas_imagespace_rev: Vec<f32> = (&column_deltas_imagespace.iter().rev().copied().collect::<Vec<f32>>()).clone();
+        let nan = column_deltas_imagespace_rev.remove(0);
+        column_deltas_imagespace_rev.push(nan);
+        let column_deltas_imagespace_rev = DVector::from_vec(column_deltas_imagespace_rev);
+        for row in (0..config.rows).step_by(2) {
+            // Start with the unidir row
+            let mut row_coord = (row as f32) * voxel_delta_im.row;
+            TimeToCoord::push_pair_unidir(&mut snake, &column_deltas_imagespace, &column_deltas_ps, row_coord, line_offset);
+            line_offset += column_deltas_ps[line_len - 1];
+            // Now the bidir row
+            row_coord = ((row + 1) as f32) * voxel_delta_im.row;
+            TimeToCoord::push_pair_unidir(&mut snake, &column_deltas_imagespace_rev, &column_deltas_ps, row_coord, line_offset);
+            line_offset += column_deltas_ps[line_len - 1];
         }
         let max_frame_time = *&snake[snake.len() - 1].end_time;
         TimeToCoord {
@@ -683,13 +680,13 @@ impl TimeToCoord {
     ///
     /// This method is also used in the bidirectional case, when running on
     /// even rows.
-    fn push_pair_unidir(snake: &mut Vec<TimeCoordPair>, column_deltas_imagespace: &DVector<f32>, column_deltas_ps: &DVector<Picosecond>, row_coord: f32) {
+    fn push_pair_unidir(snake: &mut Vec<TimeCoordPair>, column_deltas_imagespace: &DVector<f32>, column_deltas_ps: &DVector<Picosecond>, row_coord: f32, line_offset: Picosecond) {
         for (column_delta_im, column_delta_ps) in column_deltas_imagespace
             .into_iter()
             .zip(column_deltas_ps.into_iter())
         {
             let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
-            snake.push(TimeCoordPair::new(*column_delta_ps, cur_imcoor));
+            snake.push(dbg!(TimeCoordPair::new(column_delta_ps + line_offset, cur_imcoor)));
         }
 
     }
@@ -718,16 +715,25 @@ impl TimeToCoord {
         column_deltas_imagespace: &DVector<f32>,
         offset: Picosecond,
     ) -> TimeToCoord {
-        todo!()
-    }
-
-    fn prep_snake_2d_unidir_metadata(
-        config: &AppConfig,
-        voxel_delta_ps: &VoxelDelta<Picosecond>,
-        voxel_delta_im: &VoxelDelta<f32>,
-        offset: Picosecond
-    ) -> (Vec<TimeCoordPair>, DVector<Picosecond>, DVector<f32>) {
-        todo!()
+        // Add the cell capturing all photons arriving between frames
+        snake.push(TimeCoordPair::new(offset, ImageCoor::new(f32::NAN, f32::NAN, f32::NAN)));
+        let line_len = column_deltas_ps.len();
+        let mut line_offset: Picosecond = 0;
+        for row in 0..config.rows {
+            let row_coord = (row as f32) * voxel_delta_im.row;
+            TimeToCoord::push_pair_unidir(&mut snake, &column_deltas_imagespace, &column_deltas_ps, row_coord, line_offset);
+            line_offset += column_deltas_ps[line_len - 1];
+        }
+        let max_frame_time = *&snake[snake.len() - 1].end_time;
+        TimeToCoord {
+            data: snake,
+            last_accessed_idx: 0,
+            last_taglens_time: 0,
+            max_frame_time,
+            next_frame_starts_at: max_frame_time + voxel_delta_ps.frame,
+            voxel_delta_ps: voxel_delta_ps.clone(),
+            voxel_delta_im: voxel_delta_im.clone(),
+        }
     }
 
     fn generate_snake_3d(
@@ -966,9 +972,9 @@ mod tests {
     }
 
     #[test]
-    fn time_to_coord_snake_2d() {
+    fn time_to_coord_snake_2d_bidir() {
         let config = setup_image_scanning_config()
-            .build();
+            .with_bidir(Bidirectionality::Bidir).build();
         let snake = TimeToCoord::from_acq_params(&config, 0);
         assert_eq!(
             snake.data[1],
@@ -980,7 +986,26 @@ mod tests {
         );
         assert_eq!(
             snake.data[35],
-            TimeCoordPair::new(4345, ImageCoor::new(2.0/9.0f32, 1.0, 0.5)),
+            TimeCoordPair::new(1550, ImageCoor::new(3.0/9.0f32, 8.0/9.0f32, 0.5)),
+        );
+    }
+
+    #[test]
+    fn time_to_coord_snake_2d_unidir() {
+        let config = setup_image_scanning_config()
+            .with_bidir(Bidirectionality::Unidir).build();
+        let snake = TimeToCoord::from_acq_params(&config, 0);
+        assert_eq!(
+            snake.data[1],
+            TimeCoordPair::new(25, ImageCoor::new(0.0, 0.0, 0.5)),
+        );
+        assert_eq!(
+            snake.data[12],
+            TimeCoordPair::new(1275, ImageCoor::new(1.0/9.0f32, 0.0, 0.5)),
+        );
+        assert_eq!(
+            snake.data[35],
+            TimeCoordPair::new(3800, ImageCoor::new(3.0/9.0f32, 1.0/9.0f32, 0.5)),
         );
     }
 
