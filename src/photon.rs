@@ -4,7 +4,6 @@ pub(crate) type ArrivalTime = u64;
 pub(crate) type Coordinate = usize;
 pub(crate) type Lifetime = f32;
 
-
 pub(crate) enum YScanDirection {
     LeftToRight,
     RightToLeft,

@@ -5,7 +5,11 @@ use std::io::Read;
 
 use kiss3d::point_renderer::PointRenderer;
 
-use arrow::{array::{UInt16Array, Int32Array, Int64Array, UInt8Array}, ipc::reader::StreamReader, record_batch::RecordBatch};
+use arrow::{
+    array::{Int32Array, Int64Array, UInt16Array, UInt8Array},
+    ipc::reader::StreamReader,
+    record_batch::RecordBatch,
+};
 use kiss3d::camera::Camera;
 use kiss3d::nalgebra::Point3;
 use kiss3d::planar_camera::PlanarCamera;
@@ -14,7 +18,11 @@ use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use pyo3::prelude::*;
 
-use crate::rendering_helpers::{Inputs, DataType, TimeToCoord, Context, AppConfig, AppConfigBuilder};
+use crate::gui::ConfigGui;
+use crate::parse_user_input_into_config;
+use crate::rendering_helpers::{
+    AppConfig, AppConfigBuilder, Context, DataType, Inputs, TimeToCoord,
+};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -68,7 +76,7 @@ impl<'a> Iterator for EventStreamIter<'a> {
 ///
 /// Each field is its own array with some specific data arriving via FFI. Since
 /// there are only slices here, the main goal of this stream is to provide easy
-/// iteration over the tags for the downstream 'user', via the accompanying 
+/// iteration over the tags for the downstream 'user', via the accompanying
 /// ['EventStreamIter`].
 #[derive(Debug)]
 pub(crate) struct EventStream<'a> {
@@ -95,10 +103,26 @@ impl<'a> EventStream<'a> {
     }
 
     pub(crate) fn from_streamed_batch(batch: &'a RecordBatch) -> EventStream<'a> {
-        let type_ = batch.column(0).as_any().downcast_ref::<UInt8Array>().expect("Type field conversion failed");
-        let missed_events = batch.column(1).as_any().downcast_ref::<UInt16Array>().expect("Missed events field conversion failed");
-        let channel = batch.column(2).as_any().downcast_ref::<Int32Array>().expect("Channel field conversion failed");
-        let time = batch.column(3).as_any().downcast_ref::<Int64Array>().expect("Time field conversion failed");
+        let type_ = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<UInt8Array>()
+            .expect("Type field conversion failed");
+        let missed_events = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<UInt16Array>()
+            .expect("Missed events field conversion failed");
+        let channel = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<Int32Array>()
+            .expect("Channel field conversion failed");
+        let time = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .expect("Time field conversion failed");
         EventStream::new(type_, missed_events, channel, time)
     }
 
@@ -126,7 +150,6 @@ pub struct AppState<R: Read> {
     gil: GILGuard,
     data_stream_fh: String,
     tt_module: PyObject,
-    context: Context,
     pub data_stream: Option<StreamReader<R>>,
     appconfig: AppConfig,
     time_to_coord: TimeToCoord,
@@ -135,17 +158,22 @@ pub struct AppState<R: Read> {
 
 impl AppState<File> {
     /// Generates a new app from a renderer and a receiving end of a channel
-    pub fn new(point_cloud_renderer: PointRenderer, tt_module: PyObject, gil: GILGuard, data_stream_fh: String, context: Context) -> Self {
+    pub fn new(
+        point_cloud_renderer: PointRenderer,
+        tt_module: PyObject,
+        gil: GILGuard,
+        data_stream_fh: String,
+        appconfig: AppConfig,
+    ) -> Self {
         AppState {
             point_cloud_renderer,
             tt_module,
             gil,
             data_stream_fh,
-            context,
             data_stream: None,
-            appconfig: AppConfigBuilder::default().build(),
-            time_to_coord: TimeToCoord::from_acq_params(&AppConfigBuilder::default().build(), 0),
-            inputs: Inputs::from_config(&AppConfigBuilder::default().build()),
+            appconfig,
+            time_to_coord: TimeToCoord::from_acq_params(&appconfig, 0),
+            inputs: Inputs::from_config(&appconfig),
         }
     }
 
@@ -171,7 +199,7 @@ impl AppState<File> {
     /// cases of overflow it's discarded at the moment.
     pub fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor> {
         if event.type_ != 0 {
-            return None
+            return None;
         }
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),
@@ -207,21 +235,32 @@ impl State for AppState<File> {
             let event_stream = EventStream::from_streamed_batch(&batch);
             for event in event_stream.into_iter() {
                 if let Some(point) = self.event_to_coordinate(event) {
-                    self.point_cloud_renderer.draw_point(point, self.appconfig.point_color)
+                    self.point_cloud_renderer
+                        .draw_point(point, self.appconfig.point_color)
                 }
             }
         }
     }
 }
 
-pub fn setup_renderer(gil: GILGuard, tt_module: PyObject, data_stream_fh: String) -> (Window, AppState<File>) {
-    let window = Window::new("RPySight");
-    let context = Context::new();
-    let app = AppState::new(PointRenderer::new(), tt_module, gil, data_stream_fh, context);
+pub(crate) fn setup_renderer(
+    gil: GILGuard,
+    tt_module: PyObject,
+    data_stream_fh: String,
+    config_gui: &ConfigGui,
+) -> (Window, AppState<File>) {
+    let window = Window::new("RPySight 0.1.0");
+    let parsed_config =
+        parse_user_input_into_config(config_gui).expect("Error with parsing user input");
+    let app = AppState::new(
+        PointRenderer::new(),
+        tt_module,
+        gil,
+        data_stream_fh,
+        parsed_config,
+    );
     (window, app)
 }
 
 #[cfg(test)]
-mod tests {
-
-}
+mod tests {}

@@ -1,18 +1,17 @@
+use std::fs::File;
+
 use iced::{
-    button, scrollable, slider, text_input, Align, Button, Checkbox, Column,
-    Container, Element, Length, ProgressBar, Radio, Row, Rule, Sandbox,
-    Scrollable, Settings, Slider, Space, Text, TextInput, pick_list, PickList,
+    button, pick_list, scrollable, slider, text_input, Align, Application, Button, Checkbox,
+    Column, Command, Container, Element, Length, PickList, ProgressBar, Radio, Row, Scrollable,
+    Settings, Slider, Space, Text, TextInput,
 };
+use kiss3d::window::Window;
 
-use crate::rendering_helpers::AppConfig;
-
-
-pub fn run_appconfig_gui() -> iced::Result {
-    ConfigGui::run(Settings::default())
-}
+use crate::point_cloud_renderer::AppState;
+use crate::{setup_rpysight, AppFlags};
 
 #[derive(Default)]
-struct ConfigGui {
+pub(crate) struct ConfigGui {
     rows_input: text_input::State,
     rows_value: String,
     columns_input: text_input::State,
@@ -63,6 +62,79 @@ struct ConfigGui {
     run_button: button::State,
 }
 
+impl ConfigGui {
+    async fn start_acquisition(&self) {
+        let mut flags = setup_rpysight(self);
+        flags.get_app().start_timetagger_acq();
+        flags.get_app().acquire_stream_filehandle();
+        flags.get_window().render_loop(flags.get_app());
+    }
+
+    pub(crate) fn get_num_rows(&self) -> String {
+        self.rows_value
+    }
+
+    pub(crate) fn get_num_columns(&self) -> String {
+        self.columns_value
+    }
+
+    pub(crate) fn get_num_planes(&self) -> String {
+        self.planes_value
+    }
+
+    pub(crate) fn get_scan_period(&self) -> String {
+        self.scan_period_value
+    }
+
+    pub(crate) fn get_taglens_period(&self) -> String {
+        self.tag_period_value
+    }
+
+    pub(crate) fn get_bidirectionality(&self) -> bool {
+        self.bidirectional
+    }
+
+    pub(crate) fn get_frame_dead_time(&self) -> String {
+        self.frame_dead_time_value
+    }
+
+    pub(crate) fn get_fill_fraction(&self) -> String {
+        self.fill_fraction_value
+    }
+
+    pub(crate) fn get_pmt1_channel(&self) -> (ChannelNumber, EdgeDetected) {
+        (self.pmt1_selected, self.pmt1_edge_selected)
+    }
+
+    pub(crate) fn get_pmt2_channel(&self) -> (ChannelNumber, EdgeDetected) {
+        (self.pmt2_selected, self.pmt2_edge_selected)
+    }
+
+    pub(crate) fn get_pmt3_channel(&self) -> (ChannelNumber, EdgeDetected) {
+        (self.pmt3_selected, self.pmt3_edge_selected)
+    }
+
+    pub(crate) fn get_pmt4_channel(&self) -> (ChannelNumber, EdgeDetected) {
+        (self.pmt4_selected, self.pmt4_edge_selected)
+    }
+
+    pub(crate) fn get_laser_channel(&self) -> (ChannelNumber, EdgeDetected) {
+        (self.laser_selected, self.laser_edge_selected)
+    }
+
+    pub(crate) fn get_frame_channel(&self) -> (ChannelNumber, EdgeDetected) {
+        (self.frame_selected, self.frame_edge_selected)
+    }
+
+    pub(crate) fn get_line_channel(&self) -> (ChannelNumber, EdgeDetected) {
+        (self.line_selected, self.line_edge_selected)
+    }
+
+    pub(crate) fn get_tag_channel(&self) -> (ChannelNumber, EdgeDetected) {
+        (self.taglens_selected, self.taglens_edge_selected)
+    }
+}
+
 #[derive(Debug, Clone)]
 enum Message {
     RowsChanged(String),
@@ -89,12 +161,12 @@ enum Message {
     LineEdgeChanged(EdgeDetected),
     TagLensChanged(ChannelNumber),
     TagLensEdgeChanged(EdgeDetected),
-    // ButtonPressed,
+    ButtonPressed,
+    StartedAcquistion,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ChannelNumber {
+pub(crate) enum ChannelNumber {
     Channel1,
     Channel2,
     Channel3,
@@ -171,11 +243,13 @@ impl ChannelNumber {
 }
 
 impl Default for ChannelNumber {
-    fn default() -> Self { ChannelNumber::Empty }
+    fn default() -> Self {
+        ChannelNumber::Empty
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EdgeDetected {
+pub(crate) enum EdgeDetected {
     Rising,
     Falling,
 }
@@ -185,7 +259,9 @@ impl EdgeDetected {
 }
 
 impl Default for EdgeDetected {
-    fn default() -> Self { EdgeDetected::Rising }
+    fn default() -> Self {
+        EdgeDetected::Rising
+    }
 }
 
 impl std::fmt::Display for EdgeDetected {
@@ -201,44 +277,121 @@ impl std::fmt::Display for EdgeDetected {
     }
 }
 
-impl Sandbox for ConfigGui {
+impl Application for ConfigGui {
+    type Executor = iced::executor::Default;
     type Message = Message;
+    type Flags = AppFlags;
 
-    fn new() -> Self {
-        ConfigGui::default()
+    fn new(flags: AppFlags) -> (ConfigGui, Command<Message>) {
+        (ConfigGui::default(), Command::none())
     }
 
     fn title(&self) -> String {
         String::from("RPySight 0.1.0")
     }
 
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Command<Self::Message> {
         match message {
-            Message::RowsChanged(rows) => self.rows_value = rows,
-            Message::ColumnsChanged(columns) => self.columns_value = columns,
-            Message::PlanesChanged(planes) => self.planes_value = planes,
-            Message::ScanPeriodChanged(period) => self.scan_period_value = period,
-            Message::TagLensPeriodChanged(period) => self.tag_period_value = period,
-            Message::BidirectionalityChanged(bidir) => self.bidirectional = bidir,
-            Message::FillFractionChanged(fillfrac) => self.fill_fraction_value = fillfrac,
-            Message::FrameDeadTimeChanged(deadtime) => self.frame_dead_time_value = deadtime,
-            Message::Pmt1Changed(pmt1) => self.pmt1_selected = pmt1,
-            Message::Pmt1EdgeChanged(pmt1_edge) => self.pmt1_edge_selected = pmt1_edge,
-            Message::Pmt2Changed(pmt2) => self.pmt2_selected = pmt2,
-            Message::Pmt2EdgeChanged(pmt2_edge) => self.pmt2_edge_selected = pmt2_edge,
-            Message::Pmt3Changed(pmt3) => self.pmt3_selected = pmt3,
-            Message::Pmt3EdgeChanged(pmt3_edge) => self.pmt3_edge_selected = pmt3_edge,
-            Message::Pmt4Changed(pmt4) => self.pmt4_selected = pmt4,
-            Message::Pmt4EdgeChanged(pmt4_edge) => self.pmt4_edge_selected = pmt4_edge,
-            Message::LaserChanged(laser) => self.laser_selected = laser,
-            Message::LaserEdgeChanged(laser_edge) => self.laser_edge_selected = laser_edge,
-            Message::FrameChanged(frame) => self.frame_selected = frame,
-            Message::FrameEdgeChanged(frame_edge) => self.frame_edge_selected = frame_edge,
-            Message::LineChanged(line) => self.line_selected = line,
-            Message::LineEdgeChanged(line_edge) => self.line_edge_selected = line_edge,
-            Message::TagLensChanged(taglens) => self.taglens_selected = taglens,
-            Message::TagLensEdgeChanged(taglens_edge) => self.taglens_edge_selected = taglens_edge,
-            // Message::ButtonPressed => self.return(),
+            Message::RowsChanged(rows) => {
+                self.rows_value = rows;
+                Command::none()
+            }
+            Message::ColumnsChanged(columns) => {
+                self.columns_value = columns;
+                Command::none()
+            }
+            Message::PlanesChanged(planes) => {
+                self.planes_value = planes;
+                Command::none()
+            }
+            Message::ScanPeriodChanged(period) => {
+                self.scan_period_value = period;
+                Command::none()
+            }
+            Message::TagLensPeriodChanged(period) => {
+                self.tag_period_value = period;
+                Command::none()
+            }
+            Message::BidirectionalityChanged(bidir) => {
+                self.bidirectional = bidir;
+                Command::none()
+            }
+            Message::FillFractionChanged(fillfrac) => {
+                self.fill_fraction_value = fillfrac;
+                Command::none()
+            }
+            Message::FrameDeadTimeChanged(deadtime) => {
+                self.frame_dead_time_value = deadtime;
+                Command::none()
+            }
+            Message::Pmt1Changed(pmt1) => {
+                self.pmt1_selected = pmt1;
+                Command::none()
+            }
+            Message::Pmt1EdgeChanged(pmt1_edge) => {
+                self.pmt1_edge_selected = pmt1_edge;
+                Command::none()
+            }
+            Message::Pmt2Changed(pmt2) => {
+                self.pmt2_selected = pmt2;
+                Command::none()
+            }
+            Message::Pmt2EdgeChanged(pmt2_edge) => {
+                self.pmt2_edge_selected = pmt2_edge;
+                Command::none()
+            }
+            Message::Pmt3Changed(pmt3) => {
+                self.pmt3_selected = pmt3;
+                Command::none()
+            }
+            Message::Pmt3EdgeChanged(pmt3_edge) => {
+                self.pmt3_edge_selected = pmt3_edge;
+                Command::none()
+            }
+            Message::Pmt4Changed(pmt4) => {
+                self.pmt4_selected = pmt4;
+                Command::none()
+            }
+            Message::Pmt4EdgeChanged(pmt4_edge) => {
+                self.pmt4_edge_selected = pmt4_edge;
+                Command::none()
+            }
+            Message::LaserChanged(laser) => {
+                self.laser_selected = laser;
+                Command::none()
+            }
+            Message::LaserEdgeChanged(laser_edge) => {
+                self.laser_edge_selected = laser_edge;
+                Command::none()
+            }
+            Message::FrameChanged(frame) => {
+                self.frame_selected = frame;
+                Command::none()
+            }
+            Message::FrameEdgeChanged(frame_edge) => {
+                self.frame_edge_selected = frame_edge;
+                Command::none()
+            }
+            Message::LineChanged(line) => {
+                self.line_selected = line;
+                Command::none()
+            }
+            Message::LineEdgeChanged(line_edge) => {
+                self.line_edge_selected = line_edge;
+                Command::none()
+            }
+            Message::TagLensChanged(taglens) => {
+                self.taglens_selected = taglens;
+                Command::none()
+            }
+            Message::TagLensEdgeChanged(taglens_edge) => {
+                self.taglens_edge_selected = taglens_edge;
+                Command::none()
+            }
+            Message::ButtonPressed => {
+                Command::perform(self.start_acquisition(), Message::StartedAcquistion)
+            }
+            Message::StartedAcquistion => Command::none(),
         }
     }
 
@@ -307,112 +460,112 @@ impl Sandbox for ConfigGui {
         .size(20);
 
         let pmt1 = PickList::new(
-            &mut self.pmt1_pick_list, 
+            &mut self.pmt1_pick_list,
             &ChannelNumber::ALL[..],
             Some(self.pmt1_selected),
             Message::Pmt1Changed,
         );
 
         let pmt1_edge = PickList::new(
-            &mut self.pmt1_edge_list, 
+            &mut self.pmt1_edge_list,
             &EdgeDetected::ALL[..],
             Some(self.pmt1_edge_selected),
             Message::Pmt1EdgeChanged,
         );
 
         let pmt2 = PickList::new(
-            &mut self.pmt2_pick_list, 
+            &mut self.pmt2_pick_list,
             &ChannelNumber::ALL[..],
             Some(self.pmt2_selected),
             Message::Pmt2Changed,
         );
 
         let pmt2_edge = PickList::new(
-            &mut self.pmt2_edge_list, 
+            &mut self.pmt2_edge_list,
             &EdgeDetected::ALL[..],
             Some(self.pmt2_edge_selected),
             Message::Pmt2EdgeChanged,
         );
 
         let pmt3 = PickList::new(
-            &mut self.pmt3_pick_list, 
+            &mut self.pmt3_pick_list,
             &ChannelNumber::ALL[..],
             Some(self.pmt3_selected),
             Message::Pmt3Changed,
         );
 
         let pmt3_edge = PickList::new(
-            &mut self.pmt3_edge_list, 
+            &mut self.pmt3_edge_list,
             &EdgeDetected::ALL[..],
             Some(self.pmt4_edge_selected),
             Message::Pmt3EdgeChanged,
         );
 
         let pmt4 = PickList::new(
-            &mut self.pmt4_pick_list, 
+            &mut self.pmt4_pick_list,
             &ChannelNumber::ALL[..],
             Some(self.pmt4_selected),
             Message::Pmt4Changed,
         );
 
         let pmt4_edge = PickList::new(
-            &mut self.pmt4_edge_list, 
+            &mut self.pmt4_edge_list,
             &EdgeDetected::ALL[..],
             Some(self.pmt4_edge_selected),
             Message::Pmt4EdgeChanged,
         );
 
         let laser = PickList::new(
-            &mut self.laser_pick_list, 
+            &mut self.laser_pick_list,
             &ChannelNumber::ALL[..],
             Some(self.laser_selected),
             Message::LaserChanged,
         );
 
         let laser_edge = PickList::new(
-            &mut self.laser_edge_list, 
+            &mut self.laser_edge_list,
             &EdgeDetected::ALL[..],
             Some(self.laser_edge_selected),
             Message::LaserEdgeChanged,
         );
 
         let frame = PickList::new(
-            &mut self.frame_pick_list, 
+            &mut self.frame_pick_list,
             &ChannelNumber::ALL[..],
             Some(self.frame_selected),
             Message::FrameChanged,
         );
 
         let frame_edge = PickList::new(
-            &mut self.frame_edge_list, 
+            &mut self.frame_edge_list,
             &EdgeDetected::ALL[..],
             Some(self.frame_edge_selected),
             Message::FrameEdgeChanged,
         );
 
         let line = PickList::new(
-            &mut self.line_pick_list, 
+            &mut self.line_pick_list,
             &ChannelNumber::ALL[..],
             Some(self.line_selected),
             Message::LineChanged,
         );
 
         let line_edge = PickList::new(
-            &mut self.line_edge_list, 
+            &mut self.line_edge_list,
             &EdgeDetected::ALL[..],
             Some(self.line_edge_selected),
             Message::LineEdgeChanged,
         );
 
         let taglens_input = PickList::new(
-            &mut self.taglens_pick_list, 
+            &mut self.taglens_pick_list,
             &ChannelNumber::ALL[..],
             Some(self.taglens_selected),
             Message::TagLensChanged,
         );
 
         let taglens_edge = PickList::new(
-            &mut self.taglens_edge_list, 
+            &mut self.taglens_edge_list,
             &EdgeDetected::ALL[..],
             Some(self.taglens_edge_selected),
             Message::TagLensEdgeChanged,
@@ -437,14 +590,54 @@ impl Sandbox for ConfigGui {
             .push(fillfrac)
             .push(deadtime)
             .push(bidir)
-            .push(Row::new().push(Text::new("PMT 1")).push(pmt1).push(pmt1_edge))
-            .push(Row::new().push(Text::new("PMT 2")).push(pmt2).push(pmt2_edge))
-            .push(Row::new().push(Text::new("PMT 3")).push(pmt3).push(pmt3_edge))
-            .push(Row::new().push(Text::new("PMT 4")).push(pmt4).push(pmt4_edge))
-            .push(Row::new().push(Text::new("Laser Trigger")).push(laser).push(laser_edge))
-            .push(Row::new().push(Text::new("Frame Trigger")).push(frame).push(frame_edge))
-            .push(Row::new().push(Text::new("Line Trigger")).push(line).push(line_edge))
-            .push(Row::new().push(Text::new("TAG Lens Trigger")).push(taglens_input).push(taglens_edge));
+            .push(
+                Row::new()
+                    .push(Text::new("PMT 1"))
+                    .push(pmt1)
+                    .push(pmt1_edge),
+            )
+            .push(
+                Row::new()
+                    .push(Text::new("PMT 2"))
+                    .push(pmt2)
+                    .push(pmt2_edge),
+            )
+            .push(
+                Row::new()
+                    .push(Text::new("PMT 3"))
+                    .push(pmt3)
+                    .push(pmt3_edge),
+            )
+            .push(
+                Row::new()
+                    .push(Text::new("PMT 4"))
+                    .push(pmt4)
+                    .push(pmt4_edge),
+            )
+            .push(
+                Row::new()
+                    .push(Text::new("Laser Trigger"))
+                    .push(laser)
+                    .push(laser_edge),
+            )
+            .push(
+                Row::new()
+                    .push(Text::new("Frame Trigger"))
+                    .push(frame)
+                    .push(frame_edge),
+            )
+            .push(
+                Row::new()
+                    .push(Text::new("Line Trigger"))
+                    .push(line)
+                    .push(line_edge),
+            )
+            .push(
+                Row::new()
+                    .push(Text::new("TAG Lens Trigger"))
+                    .push(taglens_input)
+                    .push(taglens_edge),
+            );
 
         Container::new(content)
             .width(Length::Fill)

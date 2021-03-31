@@ -4,7 +4,7 @@ use kiss3d::nalgebra::{DVector, Point3};
 
 use crate::point_cloud_renderer::ImageCoor;
 
-type Picosecond = i64;
+pub(crate) type Picosecond = i64;
 
 /// Picosecond and Hz aware period
 #[derive(Clone, Copy, Debug)]
@@ -35,6 +35,15 @@ impl Deref for Period {
 pub(crate) enum Bidirectionality {
     Bidir,
     Unidir,
+}
+
+impl From<bool> for Bidirectionality {
+    fn from(bidir: bool) -> Bidirectionality {
+        match bidir {
+            true => Bidirectionality::Bidir,
+            false => Bidirectionality::Unidir,
+        }
+    }
 }
 
 /// Current state of the app and renderer.
@@ -133,7 +142,11 @@ impl Inputs {
                 used_channels += 1;
             }
         }
-        assert_eq!(set.len(), used_channels, "One of the channels was a duplicate");
+        assert_eq!(
+            set.len(),
+            used_channels,
+            "One of the channels was a duplicate"
+        );
         Inputs(data)
     }
 }
@@ -466,7 +479,7 @@ impl VoxelDelta<Picosecond> {
 }
 
 /// The mapping\pairing between a time in ps since the start of the experiment
-/// and the image-space coordinate that this time corresponds to for the 
+/// and the image-space coordinate that this time corresponds to for the
 /// current rendered volume.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TimeCoordPair {
@@ -491,7 +504,7 @@ impl TimeCoordPair {
 ///
 /// During this object's initialization step, a vector of time -> coordinate
 /// is built and populated with the predicted timings based on the current
-/// experimental configuration. This vector, referred to here as a snake, 
+/// experimental configuration. This vector, referred to here as a snake,
 /// represents a 1D version of the image. Its length is the total number of
 /// pixels that the scanning laser will point to during each frame. For 2D
 /// images this length is the total pixel count of the image, but when using a
@@ -527,7 +540,7 @@ pub(crate) struct TimeToCoord {
     /// whether a time tag belongs in the next frame.
     max_frame_time: Picosecond,
     /// Starting time of the next frame, including the dead
-    /// time between frames. An offset, if you will. 
+    /// time between frames. An offset, if you will.
     next_frame_starts_at: Picosecond,
     /// Deltas in ps of consecutive pixels, lines, etc.
     voxel_delta_ps: VoxelDelta<Picosecond>,
@@ -540,7 +553,7 @@ impl TimeToCoord {
     /// the imaging at time `offset` of the experiment.
     ///
     /// The function matches on the scanning directionality of the experiment
-    /// and calls the proper methods accordingly. 
+    /// and calls the proper methods accordingly.
     ///
     /// Once the mapping vector is initialized, subsequent frames only have to
     /// update the "end_time" field in each cell according to the current frame
@@ -550,39 +563,40 @@ impl TimeToCoord {
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
         if config.planes == 1 {
             let (snake, mut column_deltas_ps, column_deltas_imagespace) =
-                TimeToCoord::prep_snake_2d_metadata(&config, &voxel_delta_ps, &voxel_delta_im, offset);
+                TimeToCoord::prep_snake_2d_metadata(
+                    &config,
+                    &voxel_delta_ps,
+                    &voxel_delta_im,
+                    offset,
+                );
             match config.bidir {
-                Bidirectionality::Bidir => {
-                    TimeToCoord::generate_snake_2d_bidir_from_metadata(
-                        &config,
-                        &voxel_delta_ps,
-                        &voxel_delta_im,
-                        snake,
-                        &mut column_deltas_ps,
-                        &column_deltas_imagespace,
-                        offset,
-                    )
-                },
-                Bidirectionality::Unidir => {
-                    TimeToCoord::generate_snake_2d_unidir_from_metadata(
-                        &config,
-                        &voxel_delta_ps,
-                        &voxel_delta_im,
-                        snake,
-                        &mut column_deltas_ps,
-                        &column_deltas_imagespace,
-                        offset,
-                    )
-                },
-            } 
+                Bidirectionality::Bidir => TimeToCoord::generate_snake_2d_bidir_from_metadata(
+                    &config,
+                    &voxel_delta_ps,
+                    &voxel_delta_im,
+                    snake,
+                    &mut column_deltas_ps,
+                    &column_deltas_imagespace,
+                    offset,
+                ),
+                Bidirectionality::Unidir => TimeToCoord::generate_snake_2d_unidir_from_metadata(
+                    &config,
+                    &voxel_delta_ps,
+                    &voxel_delta_im,
+                    snake,
+                    &mut column_deltas_ps,
+                    &column_deltas_imagespace,
+                    offset,
+                ),
+            }
         } else {
             match config.bidir {
                 Bidirectionality::Bidir => {
                     TimeToCoord::generate_snake_3d(&config, &voxel_delta_ps, &voxel_delta_im)
-                },
+                }
                 Bidirectionality::Unidir => {
                     todo!()
-                },
+                }
             }
         }
     }
@@ -597,29 +611,31 @@ impl TimeToCoord {
         config: &AppConfig,
         voxel_delta_ps: &VoxelDelta<Picosecond>,
         voxel_delta_im: &VoxelDelta<f32>,
-        offset: Picosecond
+        offset: Picosecond,
     ) -> (Vec<TimeCoordPair>, DVector<Picosecond>, DVector<f32>) {
         // We add to the naive capacity 1 due to the cell containing all events
-        // arriving in between frames. The number of columns for the capacity 
+        // arriving in between frames. The number of columns for the capacity
         // calculation includes a fake column containing the photons arriving
         // during mirror rotation. Their coordinate will contain a NaN value,
         // which means that it will not be rendered.
         let capacity = (1 + (config.rows * (config.columns + 1))) as usize;
         let snake: Vec<TimeCoordPair> = Vec::with_capacity(capacity);
-        let column_deltas_ps =
-            DVector::<Picosecond>::from_fn(config.columns as usize, |i, _| {
-                (i as Picosecond) * voxel_delta_ps.column + voxel_delta_ps.column + offset
-            });
+        let column_deltas_ps = DVector::<Picosecond>::from_fn(config.columns as usize, |i, _| {
+            (i as Picosecond) * voxel_delta_ps.column + voxel_delta_ps.column + offset
+        });
         // Manually add the cell corresponding to events arriving during mirror
         // rotation
-        let end_of_rotation_value = *&column_deltas_ps[(config.columns - 1) as usize] + voxel_delta_ps.row;
-        let column_deltas_ps = column_deltas_ps.insert_rows(config.columns as usize, 1, end_of_rotation_value);
+        let end_of_rotation_value =
+            *&column_deltas_ps[(config.columns - 1) as usize] + voxel_delta_ps.row;
+        let column_deltas_ps =
+            column_deltas_ps.insert_rows(config.columns as usize, 1, end_of_rotation_value);
         let column_deltas_imagespace = DVector::<f32>::from_fn(config.columns as usize, |i, _| {
             (i as f32) * voxel_delta_im.column
         });
         // The events during mirror rotation will be discarded - The NaN takes
         // care of that
-        let column_deltas_imagespace = column_deltas_imagespace.insert_rows(config.columns as usize, 1, f32::NAN);
+        let column_deltas_imagespace =
+            column_deltas_imagespace.insert_rows(config.columns as usize, 1, f32::NAN);
         (snake, column_deltas_ps, column_deltas_imagespace)
     }
 
@@ -647,21 +663,41 @@ impl TimeToCoord {
         offset: Picosecond,
     ) -> TimeToCoord {
         // Add the cell capturing all photons arriving between frames
-        snake.push(TimeCoordPair::new(offset, ImageCoor::new(f32::NAN, f32::NAN, f32::NAN)));
+        snake.push(TimeCoordPair::new(
+            offset,
+            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
+        ));
         let line_len = column_deltas_ps.len();
         let mut line_offset: Picosecond = 0;
-        let mut column_deltas_imagespace_rev: Vec<f32> = (&column_deltas_imagespace.iter().rev().copied().collect::<Vec<f32>>()).clone();
+        let mut column_deltas_imagespace_rev: Vec<f32> = (&column_deltas_imagespace
+            .iter()
+            .rev()
+            .copied()
+            .collect::<Vec<f32>>())
+            .clone();
         let nan = column_deltas_imagespace_rev.remove(0);
         column_deltas_imagespace_rev.push(nan);
         let column_deltas_imagespace_rev = DVector::from_vec(column_deltas_imagespace_rev);
         for row in (0..config.rows).step_by(2) {
             // Start with the unidir row
             let mut row_coord = (row as f32) * voxel_delta_im.row;
-            TimeToCoord::push_pair_unidir(&mut snake, &column_deltas_imagespace, &column_deltas_ps, row_coord, line_offset);
+            TimeToCoord::push_pair_unidir(
+                &mut snake,
+                &column_deltas_imagespace,
+                &column_deltas_ps,
+                row_coord,
+                line_offset,
+            );
             line_offset += column_deltas_ps[line_len - 1];
             // Now the bidir row
             row_coord = ((row + 1) as f32) * voxel_delta_im.row;
-            TimeToCoord::push_pair_unidir(&mut snake, &column_deltas_imagespace_rev, &column_deltas_ps, row_coord, line_offset);
+            TimeToCoord::push_pair_unidir(
+                &mut snake,
+                &column_deltas_imagespace_rev,
+                &column_deltas_ps,
+                row_coord,
+                line_offset,
+            );
             line_offset += column_deltas_ps[line_len - 1];
         }
         let max_frame_time = *&snake[snake.len() - 1].end_time;
@@ -680,15 +716,23 @@ impl TimeToCoord {
     ///
     /// This method is also used in the bidirectional case, when running on
     /// even rows.
-    fn push_pair_unidir(snake: &mut Vec<TimeCoordPair>, column_deltas_imagespace: &DVector<f32>, column_deltas_ps: &DVector<Picosecond>, row_coord: f32, line_offset: Picosecond) {
+    fn push_pair_unidir(
+        snake: &mut Vec<TimeCoordPair>,
+        column_deltas_imagespace: &DVector<f32>,
+        column_deltas_ps: &DVector<Picosecond>,
+        row_coord: f32,
+        line_offset: Picosecond,
+    ) {
         for (column_delta_im, column_delta_ps) in column_deltas_imagespace
             .into_iter()
             .zip(column_deltas_ps.into_iter())
         {
             let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
-            snake.push(dbg!(TimeCoordPair::new(column_delta_ps + line_offset, cur_imcoor)));
+            snake.push(dbg!(TimeCoordPair::new(
+                column_delta_ps + line_offset,
+                cur_imcoor
+            )));
         }
-
     }
 
     fn generate_snake_2d_unidir_from_metadata(
@@ -701,12 +745,21 @@ impl TimeToCoord {
         offset: Picosecond,
     ) -> TimeToCoord {
         // Add the cell capturing all photons arriving between frames
-        snake.push(TimeCoordPair::new(offset, ImageCoor::new(f32::NAN, f32::NAN, f32::NAN)));
+        snake.push(TimeCoordPair::new(
+            offset,
+            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
+        ));
         let line_len = column_deltas_ps.len();
         let mut line_offset: Picosecond = 0;
         for row in 0..config.rows {
             let row_coord = (row as f32) * voxel_delta_im.row;
-            TimeToCoord::push_pair_unidir(&mut snake, &column_deltas_imagespace, &column_deltas_ps, row_coord, line_offset);
+            TimeToCoord::push_pair_unidir(
+                &mut snake,
+                &column_deltas_imagespace,
+                &column_deltas_ps,
+                row_coord,
+                line_offset,
+            );
             line_offset += column_deltas_ps[line_len - 1];
         }
         let max_frame_time = *&snake[snake.len() - 1].end_time;
@@ -746,7 +799,7 @@ impl TimeToCoord {
     /// space using linear search.
     ///
     /// The arriving time tag should have a coordinate associated with it. To
-    /// find it we traverse the boundary vector (snake) until we find the 
+    /// find it we traverse the boundary vector (snake) until we find the
     /// coordinate that has an end time longer than the specified time. If the
     /// tag has a time longer than the end of the current frame this function
     /// is also in charge of calling the 'update' method to generate a new
@@ -761,7 +814,7 @@ impl TimeToCoord {
     pub(crate) fn tag_to_coord_linear(&mut self, time: i64) -> Option<ImageCoor> {
         if time > self.max_frame_time {
             self.update_2d_data_for_next_frame();
-            return self.tag_to_coord_linear(time)
+            return self.tag_to_coord_linear(time);
         }
         let mut last_pixel_time = self.data[self.last_accessed_idx].end_time;
         let mut additional_steps_taken = 0usize;
@@ -770,10 +823,10 @@ impl TimeToCoord {
             if time <= pair.end_time {
                 self.last_accessed_idx += additional_steps_taken;
                 coord = Some(pair.coord);
-                break
+                break;
             }
             additional_steps_taken += 1;
-        };
+        }
         // Makes sure that we indeed captured some cell. This can be avoided in
         // principle but I'm still not confident enough in this implementation.
         if coord.is_some() {
@@ -795,7 +848,7 @@ impl TimeToCoord {
         for pair in self.data.iter_mut() {
             pair.end_time += self.next_frame_starts_at;
         }
-        self.max_frame_time = self.data[self.data.len() -1].end_time;
+        self.max_frame_time = self.data[self.data.len() - 1].end_time;
         self.next_frame_starts_at = self.max_frame_time + self.voxel_delta_ps.frame;
         self.last_taglens_time = 0;
     }
@@ -959,7 +1012,8 @@ mod tests {
     #[test]
     fn time_to_coord_snake_2d_bidir() {
         let config = setup_image_scanning_config()
-            .with_bidir(Bidirectionality::Bidir).build();
+            .with_bidir(Bidirectionality::Bidir)
+            .build();
         let snake = TimeToCoord::from_acq_params(&config, 0);
         assert_eq!(
             snake.data[1],
@@ -967,18 +1021,19 @@ mod tests {
         );
         assert_eq!(
             snake.data[12],
-            TimeCoordPair::new(525, ImageCoor::new(1.0/9.0f32, 1.0, 0.5)),
+            TimeCoordPair::new(525, ImageCoor::new(1.0 / 9.0f32, 1.0, 0.5)),
         );
         assert_eq!(
             snake.data[35],
-            TimeCoordPair::new(1550, ImageCoor::new(3.0/9.0f32, 8.0/9.0f32, 0.5)),
+            TimeCoordPair::new(1550, ImageCoor::new(3.0 / 9.0f32, 8.0 / 9.0f32, 0.5)),
         );
     }
 
     #[test]
     fn time_to_coord_snake_2d_unidir() {
         let config = setup_image_scanning_config()
-            .with_bidir(Bidirectionality::Unidir).build();
+            .with_bidir(Bidirectionality::Unidir)
+            .build();
         let snake = TimeToCoord::from_acq_params(&config, 0);
         assert_eq!(
             snake.data[1],
@@ -986,22 +1041,20 @@ mod tests {
         );
         assert_eq!(
             snake.data[12],
-            TimeCoordPair::new(1275, ImageCoor::new(1.0/9.0f32, 0.0, 0.5)),
+            TimeCoordPair::new(1275, ImageCoor::new(1.0 / 9.0f32, 0.0, 0.5)),
         );
         assert_eq!(
             snake.data[35],
-            TimeCoordPair::new(3800, ImageCoor::new(3.0/9.0f32, 1.0/9.0f32, 0.5)),
+            TimeCoordPair::new(3800, ImageCoor::new(3.0 / 9.0f32, 1.0 / 9.0f32, 0.5)),
         );
     }
 
     #[test]
     fn time_to_coord_snake_2d_first_item_has_offset() {
-        let config = setup_image_scanning_config()
-            .build();
+        let config = setup_image_scanning_config().build();
         let offset = 100;
         let snake = TimeToCoord::from_acq_params(&config, offset);
-        assert_eq!(
-            snake.data[0].end_time, offset);
+        assert_eq!(snake.data[0].end_time, offset);
     }
 
     #[test]

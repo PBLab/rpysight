@@ -35,9 +35,9 @@
 //! assert_eq!(i2.data(), &0u32);
 //! ```
 
-use std::ops::{Deref, Range};
 use std::cmp::min;
 use std::iter::FromIterator;
+use std::ops::{Deref, Range};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -94,7 +94,6 @@ impl<N: Ord + Clone> Deref for Interval<N> {
         &self.0
     }
 }
-
 
 /// A `find` query on the interval tree does not directly return references to the intervals in the
 /// tree but wraps the fields `interval` and `data` in an `Entry`.
@@ -365,4 +364,3 @@ mod tests {
         assert_eq!(overlap, expected);
     }
 }
-
