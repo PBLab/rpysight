@@ -35,7 +35,7 @@ pub fn load_timetagger_module(fname: PathBuf) -> PyResult<PyObject> {
     Ok(tt_starter.to_object(py))
 }
 
-pub(crate) fn setup_rpysight(config_gui: &ConfigGui) -> AppFlags {
+pub(crate) fn setup_rpysight(config_gui: &ConfigGui) -> (Window, AppState<File>) {
     // Set up the Python side
     let filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let timetagger_module: PyObject =
@@ -43,31 +43,7 @@ pub(crate) fn setup_rpysight(config_gui: &ConfigGui) -> AppFlags {
     let gil = Python::acquire_gil();
     // Set up the renderer side
     let (window, app) = setup_renderer(gil, timetagger_module, TT_DATA_STREAM.into(), config_gui);
-    AppFlags::new(window, app)
-}
-
-/// The most basic input data which is fed to the GUI and the app.
-///
-/// The term flags comes from the iced terminology for the object that the GUI
-/// is initialized with. It holds the soon-to-be-rendered Window instance as
-/// well as the AppState one which is used for context.
-pub(crate) struct AppFlags {
-    window: Window,
-    app: AppState<File>,
-}
-
-impl AppFlags {
-    pub(crate) fn new(window: Window, app: AppState<File>) -> Self {
-        AppFlags { window, app }
-    }
-
-    pub(crate) fn get_app(&mut self) -> AppState<File> {
-        self.app
-    }
-
-    pub(crate) fn get_window(&self) -> Window {
-        self.window
-    }
+    (window, app)
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -122,23 +98,24 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> 
         EdgeDetected::Falling => -1,
     };
     edge * match channel.0 {
-        Channel1 => 1,
-        Channel2 => 2,
-        Channel3 => 3,
-        Channel4 => 4,
-        Channel5 => 5,
-        Channel6 => 6,
-        Channel7 => 7,
-        Channel8 => 8,
-        Channel9 => 9,
-        Channel10 => 10,
-        Channel11 => 11,
-        Channel12 => 12,
-        Channel13 => 13,
-        Channel14 => 14,
-        Channel15 => 15,
-        Channel16 => 16,
-        Channel17 => 17,
-        Channel18 => 18,
+        ChannelNumber::Channel1 => 1,
+        ChannelNumber::Channel2 => 2,
+        ChannelNumber::Channel3 => 3,
+        ChannelNumber::Channel4 => 4,
+        ChannelNumber::Channel5 => 5,
+        ChannelNumber::Channel6 => 6,
+        ChannelNumber::Channel7 => 7,
+        ChannelNumber::Channel8 => 8,
+        ChannelNumber::Channel9 => 9,
+        ChannelNumber::Channel10 => 10,
+        ChannelNumber::Channel11 => 11,
+        ChannelNumber::Channel12 => 12,
+        ChannelNumber::Channel13 => 13,
+        ChannelNumber::Channel14 => 14,
+        ChannelNumber::Channel15 => 15,
+        ChannelNumber::Channel16 => 16,
+        ChannelNumber::Channel17 => 17,
+        ChannelNumber::Channel18 => 18,
+        ChannelNumber::Empty => 0,
     }
 }

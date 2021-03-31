@@ -145,7 +145,7 @@ impl<'a> IntoIterator for EventStream<'a> {
 
 /// Holds the custom renderer that will be used for rendering the
 /// point cloud and the needed data streams for it
-pub struct AppState<R: Read> {
+pub(crate) struct AppState<R: Read> {
     point_cloud_renderer: PointRenderer,
     gil: GILGuard,
     data_stream_fh: String,
@@ -171,7 +171,7 @@ impl AppState<File> {
             gil,
             data_stream_fh,
             data_stream: None,
-            appconfig,
+            appconfig: appconfig.clone(),
             time_to_coord: TimeToCoord::from_acq_params(&appconfig, 0),
             inputs: Inputs::from_config(&appconfig),
         }

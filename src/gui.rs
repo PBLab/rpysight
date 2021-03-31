@@ -8,10 +8,10 @@ use iced::{
 use kiss3d::window::Window;
 
 use crate::point_cloud_renderer::AppState;
-use crate::{setup_rpysight, AppFlags};
+use crate::setup_rpysight;
 
 #[derive(Default)]
-pub(crate) struct ConfigGui {
+pub struct ConfigGui {
     rows_input: text_input::State,
     rows_value: String,
     columns_input: text_input::State,
@@ -63,43 +63,43 @@ pub(crate) struct ConfigGui {
 }
 
 impl ConfigGui {
-    async fn start_acquisition(&self) {
-        let mut flags = setup_rpysight(self);
-        flags.get_app().start_timetagger_acq();
-        flags.get_app().acquire_stream_filehandle();
-        flags.get_window().render_loop(flags.get_app());
+    fn start_acquisition(&mut self) {
+        let (window, mut app) = setup_rpysight(self);
+        app.start_timetagger_acq();
+        app.acquire_stream_filehandle();
+        window.render_loop(app);
     }
 
-    pub(crate) fn get_num_rows(&self) -> String {
-        self.rows_value
+    pub(crate) fn get_num_rows(&self) -> &str {
+        &self.rows_value
     }
 
-    pub(crate) fn get_num_columns(&self) -> String {
-        self.columns_value
+    pub(crate) fn get_num_columns(&self) -> &str {
+        &self.columns_value
     }
 
-    pub(crate) fn get_num_planes(&self) -> String {
-        self.planes_value
+    pub(crate) fn get_num_planes(&self) -> &str {
+        &self.planes_value
     }
 
-    pub(crate) fn get_scan_period(&self) -> String {
-        self.scan_period_value
+    pub(crate) fn get_scan_period(&self) -> &str {
+        &self.scan_period_value
     }
 
-    pub(crate) fn get_taglens_period(&self) -> String {
-        self.tag_period_value
+    pub(crate) fn get_taglens_period(&self) -> &str {
+        &self.tag_period_value
     }
 
     pub(crate) fn get_bidirectionality(&self) -> bool {
         self.bidirectional
     }
 
-    pub(crate) fn get_frame_dead_time(&self) -> String {
-        self.frame_dead_time_value
+    pub(crate) fn get_frame_dead_time(&self) -> &str {
+        &self.frame_dead_time_value
     }
 
-    pub(crate) fn get_fill_fraction(&self) -> String {
-        self.fill_fraction_value
+    pub(crate) fn get_fill_fraction(&self) -> &str {
+        &self.fill_fraction_value
     }
 
     pub(crate) fn get_pmt1_channel(&self) -> (ChannelNumber, EdgeDetected) {
@@ -136,7 +136,7 @@ impl ConfigGui {
 }
 
 #[derive(Debug, Clone)]
-enum Message {
+pub enum Message {
     RowsChanged(String),
     ColumnsChanged(String),
     PlanesChanged(String),
@@ -162,11 +162,11 @@ enum Message {
     TagLensChanged(ChannelNumber),
     TagLensEdgeChanged(EdgeDetected),
     ButtonPressed,
-    StartedAcquistion,
+    StartedAcquistion(()),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChannelNumber {
+pub enum ChannelNumber {
     Channel1,
     Channel2,
     Channel3,
@@ -249,7 +249,7 @@ impl Default for ChannelNumber {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EdgeDetected {
+pub enum EdgeDetected {
     Rising,
     Falling,
 }
@@ -280,9 +280,9 @@ impl std::fmt::Display for EdgeDetected {
 impl Application for ConfigGui {
     type Executor = iced::executor::Default;
     type Message = Message;
-    type Flags = AppFlags;
+    type Flags = ();
 
-    fn new(flags: AppFlags) -> (ConfigGui, Command<Message>) {
+    fn new(_flags: ()) -> (ConfigGui, Command<Message>) {
         (ConfigGui::default(), Command::none())
     }
 
@@ -389,9 +389,9 @@ impl Application for ConfigGui {
                 Command::none()
             }
             Message::ButtonPressed => {
-                Command::perform(self.start_acquisition(), Message::StartedAcquistion)
+                self.start_acquisition(); Command::none()
             }
-            Message::StartedAcquistion => Command::none(),
+            Message::StartedAcquistion(()) => Command::none(),
         }
     }
 
@@ -578,6 +578,8 @@ impl Application for ConfigGui {
         )
         .size(20);
 
+        let run_app = Button::new(&mut self.run_button, Text::new("Start Acquistion")).on_press(Message::ButtonPressed).padding(10);
+
         let content = Column::new()
             .spacing(20)
             .padding(20)
@@ -637,7 +639,8 @@ impl Application for ConfigGui {
                     .push(Text::new("TAG Lens Trigger"))
                     .push(taglens_input)
                     .push(taglens_edge),
-            );
+            )
+            .push(run_app);
 
         Container::new(content)
             .width(Length::Fill)
