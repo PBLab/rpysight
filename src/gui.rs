@@ -1,14 +1,8 @@
-use std::fs::File;
-
-use iced::{
-    button, pick_list, scrollable, slider, text_input, Align, Application, Button, Checkbox,
-    Column, Command, Container, Element, Length, PickList, ProgressBar, Radio, Row, Scrollable,
-    Settings, Slider, Space, Text, TextInput,
-};
-use kiss3d::window::Window;
-
-use crate::point_cloud_renderer::AppState;
 use crate::setup_rpysight;
+use iced::{
+    button, pick_list, text_input, Application, Button, Checkbox, Column, Command, Container,
+    Element, Length, PickList, Row, Text, TextInput,
+};
 
 #[derive(Default)]
 pub struct ConfigGui {
@@ -389,7 +383,8 @@ impl Application for ConfigGui {
                 Command::none()
             }
             Message::ButtonPressed => {
-                self.start_acquisition(); Command::none()
+                self.start_acquisition();
+                Command::none()
             }
             Message::StartedAcquistion(()) => Command::none(),
         }
@@ -578,7 +573,9 @@ impl Application for ConfigGui {
         )
         .size(20);
 
-        let run_app = Button::new(&mut self.run_button, Text::new("Start Acquistion")).on_press(Message::ButtonPressed).padding(10);
+        let run_app = Button::new(&mut self.run_button, Text::new("Start Acquistion"))
+            .on_press(Message::ButtonPressed)
+            .padding(10);
 
         let content = Column::new()
             .spacing(20)

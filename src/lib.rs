@@ -7,12 +7,13 @@ mod rendering_helpers;
 use std::fs::{read_to_string, File};
 use std::path::PathBuf;
 
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 use kiss3d::window::Window;
 use pyo3::prelude::*;
 use thiserror::Error;
 
-use crate::gui::{ConfigGui, ChannelNumber, EdgeDetected};
+use crate::gui::{ChannelNumber, ConfigGui, EdgeDetected};
 use crate::point_cloud_renderer::{setup_renderer, AppState};
 use crate::rendering_helpers::{AppConfig, AppConfigBuilder, Period, Picosecond};
 
@@ -60,13 +61,13 @@ pub(crate) enum UserInputError {
 }
 
 impl From<std::num::ParseIntError> for UserInputError {
-    fn from(e: std::num::ParseIntError) -> UserInputError {
+    fn from(_e: std::num::ParseIntError) -> UserInputError {
         UserInputError::Unknown
     }
 }
 
 impl From<std::num::ParseFloatError> for UserInputError {
-    fn from(e: std::num::ParseFloatError) -> UserInputError {
+    fn from(_e: std::num::ParseFloatError) -> UserInputError {
         UserInputError::Unknown
     }
 }
@@ -83,18 +84,40 @@ pub(crate) fn parse_user_input_into_config(
         .with_columns(user_input.get_num_columns().parse::<u32>()?)
         .with_planes(user_input.get_num_planes().parse::<u32>()?)
         .with_bidir(user_input.get_bidirectionality().into())
-        .with_tag_period(Period::from_freq(user_input.get_taglens_period().parse::<f64>()?))
-        .with_scan_period(Period::from_freq(user_input.get_scan_period().parse::<f64>()?))
+        .with_tag_period(Period::from_freq(
+            user_input.get_taglens_period().parse::<f64>()?,
+        ))
+        .with_scan_period(Period::from_freq(
+            user_input.get_scan_period().parse::<f64>()?,
+        ))
         .with_fill_fraction(user_input.get_fill_fraction().parse::<f32>()?)
-        .with_frame_dead_time(user_input.get_frame_dead_time().parse::<Picosecond>()? * 1_000_000_000)
-        .with_pmt1_ch(convert_user_channel_input_to_num(user_input.get_pmt1_channel()))
-        .with_pmt2_ch(convert_user_channel_input_to_num(user_input.get_pmt2_channel()))
-        .with_pmt3_ch(convert_user_channel_input_to_num(user_input.get_pmt3_channel()))
-        .with_pmt4_ch(convert_user_channel_input_to_num(user_input.get_pmt4_channel()))
-        .with_laser_ch(convert_user_channel_input_to_num(user_input.get_laser_channel()))
-        .with_frame_ch(convert_user_channel_input_to_num(user_input.get_frame_channel()))
-        .with_line_ch(convert_user_channel_input_to_num(user_input.get_line_channel()))
-        .with_taglens_ch(convert_user_channel_input_to_num(user_input.get_tag_channel()))
+        .with_frame_dead_time(
+            user_input.get_frame_dead_time().parse::<Picosecond>()? * 1_000_000_000,
+        )
+        .with_pmt1_ch(convert_user_channel_input_to_num(
+            user_input.get_pmt1_channel(),
+        ))
+        .with_pmt2_ch(convert_user_channel_input_to_num(
+            user_input.get_pmt2_channel(),
+        ))
+        .with_pmt3_ch(convert_user_channel_input_to_num(
+            user_input.get_pmt3_channel(),
+        ))
+        .with_pmt4_ch(convert_user_channel_input_to_num(
+            user_input.get_pmt4_channel(),
+        ))
+        .with_laser_ch(convert_user_channel_input_to_num(
+            user_input.get_laser_channel(),
+        ))
+        .with_frame_ch(convert_user_channel_input_to_num(
+            user_input.get_frame_channel(),
+        ))
+        .with_line_ch(convert_user_channel_input_to_num(
+            user_input.get_line_channel(),
+        ))
+        .with_taglens_ch(convert_user_channel_input_to_num(
+            user_input.get_tag_channel(),
+        ))
         .build())
 }
 

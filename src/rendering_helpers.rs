@@ -752,9 +752,9 @@ impl TimeToCoord {
     }
 
     fn generate_snake_3d(
-        config: &AppConfig,
-        voxel_delta_ps: &VoxelDelta<Picosecond>,
-        voxel_delta_im: &VoxelDelta<f32>,
+        _config: &AppConfig,
+        _voxel_delta_ps: &VoxelDelta<Picosecond>,
+        _voxel_delta_im: &VoxelDelta<f32>,
     ) -> TimeToCoord {
         todo!()
     }
@@ -808,7 +808,11 @@ impl TimeToCoord {
         if coord.is_some() {
             coord
         } else {
-            error!("Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}", &self.data[self.last_accessed_idx..], additional_steps_taken);
+            error!(
+                "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
+                &self.data[self.last_accessed_idx..],
+                additional_steps_taken
+            );
             panic!("Coordinate remained unpopulated for some reason. Investigate!")
         }
     }
@@ -833,12 +837,12 @@ impl TimeToCoord {
     }
 
     /// Handles a new line event
-    pub(crate) fn new_line(&self, time: i64) -> Option<ImageCoor> {
+    pub(crate) fn new_line(&self, _time: i64) -> Option<ImageCoor> {
         None
     }
 
     /// Handles a new TAG lens start-of-cycle event
-    pub(crate) fn new_taglens_period(&self, time: i64) -> Option<ImageCoor> {
+    pub(crate) fn new_taglens_period(&self, _time: i64) -> Option<ImageCoor> {
         None
     }
 }
