@@ -203,7 +203,7 @@ impl AppState<File> {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),
             DataType::Line => self.time_to_coord.new_line(event.time),
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
-            _ => panic!("Unsupported event!"),
+            _ => { error!("Unsupported event: {:?}", event); panic!("Unsupported event!") },
         }
     }
 }

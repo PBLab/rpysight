@@ -704,10 +704,10 @@ impl TimeToCoord {
             .zip(column_deltas_ps.into_iter())
         {
             let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
-            snake.push(dbg!(TimeCoordPair::new(
+            snake.push(TimeCoordPair::new(
                 column_delta_ps + line_offset,
                 cur_imcoor
-            )));
+            ));
         }
     }
 
