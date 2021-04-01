@@ -1,7 +1,6 @@
 //! Real time parsing and rendering of data coming from a TimeTagger
 
 pub mod gui;
-mod interval_tree;
 pub mod point_cloud_renderer;
 mod rendering_helpers;
 
