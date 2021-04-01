@@ -46,37 +46,6 @@ impl From<bool> for Bidirectionality {
     }
 }
 
-/// Current state of the app and renderer.
-pub struct Context {
-    last_line: Picosecond,
-    last_line_image_coor: f32,
-    last_frame: Picosecond,
-    typical_frame_period: i64,
-}
-
-impl Context {
-    pub(crate) fn new() -> Self {
-        Self {
-            last_line: 0,
-            last_line_image_coor: 0.0,
-            last_frame: 0,
-            typical_frame_period: 0,
-        }
-    }
-
-    pub(crate) fn set_last_line(&mut self, last_line: Picosecond) -> Option<ImageCoor> {
-        self.last_line = last_line;
-        self.last_line_image_coor =
-            ((self.last_frame - last_line) / self.typical_frame_period) as f32;
-        None
-    }
-
-    pub(crate) fn set_last_frame(&mut self, last_frame: Picosecond) -> Option<ImageCoor> {
-        self.last_frame = last_frame;
-        None
-    }
-}
-
 /// Enumerates all possible data streams that can be handled by RPySight, like
 /// PMT data, line sync events and so on.
 #[derive(Clone, Debug, PartialEq)]

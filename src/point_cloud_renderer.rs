@@ -21,7 +21,7 @@ use pyo3::prelude::*;
 use crate::gui::ConfigGui;
 use crate::parse_user_input_into_config;
 use crate::rendering_helpers::{
-    AppConfig, AppConfigBuilder, Context, DataType, Inputs, TimeToCoord,
+    AppConfig, DataType, Inputs, TimeToCoord,
 };
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].

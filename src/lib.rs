@@ -2,7 +2,6 @@
 
 pub mod gui;
 mod interval_tree;
-mod photon;
 pub mod point_cloud_renderer;
 mod rendering_helpers;
 
@@ -35,6 +34,7 @@ pub fn load_timetagger_module(fname: PathBuf) -> PyResult<PyObject> {
     Ok(tt_starter.to_object(py))
 }
 
+/// A few necessary setups steps before starting the acquisition.
 pub(crate) fn setup_rpysight(config_gui: &ConfigGui) -> (Window, AppState<File>) {
     // Set up the Python side
     let filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
@@ -46,6 +46,7 @@ pub(crate) fn setup_rpysight(config_gui: &ConfigGui) -> (Window, AppState<File>)
     (window, app)
 }
 
+/// A custom error returned when the user supplies incorrect values.
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum UserInputError {
     #[error("Wrong input given for rows field (got `{0}`)")]
@@ -68,6 +69,10 @@ impl From<std::num::ParseFloatError> for UserInputError {
     }
 }
 
+/// Parse the supplied user parameters, returning errors if illegal.
+///
+/// Each field is parsed using either simple string to number parsing or more
+/// elaborate special functions for some designated special types.
 pub(crate) fn parse_user_input_into_config(
     user_input: &ConfigGui,
 ) -> Result<AppConfig, UserInputError> {
@@ -91,7 +96,13 @@ pub(crate) fn parse_user_input_into_config(
         .build())
 }
 
-
+/// Converts a chosen user channel to its TT representation in the time tag
+/// stream.
+///
+/// Each TT event has an associated channel that has a number (1-18) and can
+/// be either positive, if events are detected in the rising edge, or negative
+/// if they're detected on the falling edge. This function converts the user's
+/// choice into the internal representation detailed above.
 fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> i32 {
     let edge: i32 = match channel.1 {
         EdgeDetected::Rising => 1,
