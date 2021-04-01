@@ -230,6 +230,7 @@ impl State for AppState<File> {
     /// overflow. This iteration process filters these non-time tags from the
     /// more relevant tags.
     fn step(&mut self, _window: &mut Window) {
+        info!("Step starting");
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
             let event_stream = EventStream::from_streamed_batch(&batch);

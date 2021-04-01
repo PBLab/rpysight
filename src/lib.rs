@@ -8,6 +8,7 @@ mod rendering_helpers;
 use std::fs::{read_to_string, File};
 use std::path::PathBuf;
 
+#[macro_use] extern crate log;
 use kiss3d::window::Window;
 use pyo3::prelude::*;
 use thiserror::Error;
@@ -30,6 +31,7 @@ pub fn load_timetagger_module(fname: PathBuf) -> PyResult<PyObject> {
     let python_code = read_to_string(fname)?;
     let run_tt = PyModule::from_code(py, &python_code, "run_tt.py", "run_tt")?;
     let tt_starter = run_tt.getattr("run_tagger")?;
+    info!("Python module loaded successfully");
     // Generate an owned object to be returned by value
     Ok(tt_starter.to_object(py))
 }
@@ -43,6 +45,7 @@ pub(crate) fn setup_rpysight(config_gui: &ConfigGui) -> (Window, AppState<File>)
     let gil = Python::acquire_gil();
     // Set up the renderer side
     let (window, app) = setup_renderer(gil, timetagger_module, TT_DATA_STREAM.into(), config_gui);
+    info!("Renderer setup completed");
     (window, app)
 }
 
@@ -102,7 +105,8 @@ pub(crate) fn parse_user_input_into_config(
 /// Each TT event has an associated channel that has a number (1-18) and can
 /// be either positive, if events are detected in the rising edge, or negative
 /// if they're detected on the falling edge. This function converts the user's
-/// choice into the internal representation detailed above.
+/// choice into the internal representation detailed above. An empty channel is
+/// given the value 0.
 fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> i32 {
     let edge: i32 = match channel.1 {
         EdgeDetected::Rising => 1,

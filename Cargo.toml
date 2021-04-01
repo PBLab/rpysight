@@ -8,11 +8,13 @@ edition = "2018"
 
 [dependencies]
 kiss3d = "0.30"
-rand = "0.8.3"
 pyo3 = { version = "0.13", features=['extension-module'] }
 arrow = "3.0.0"
 thiserror = "1.0"
 iced = "0.2"
+log = "0.4"
+simplelog = "0.10"
+
 
 [lib]
 name = "librpysight"

@@ -1,5 +1,6 @@
 use std::ops::{Deref, Index};
 
+extern crate log;
 use kiss3d::nalgebra::{DVector, Point3};
 
 use crate::point_cloud_renderer::ImageCoor;
@@ -81,6 +82,8 @@ impl Inputs {
         }
         let mut set = std::collections::HashSet::<usize>::new();
         let mut used_channels = 0;
+        // Loop over a pair of input and the corresponding data type, but only
+        // register the inputs which are actually used, i.e. different than 0.
         for (ch, dt) in vec![
             config.pmt1_ch.abs() as usize,
             config.pmt2_ch.abs() as usize,
@@ -116,7 +119,9 @@ impl Inputs {
             used_channels,
             "One of the channels was a duplicate"
         );
-        Inputs(data)
+        let inps = Inputs(data);
+        info!("The inputs struct was constructed successfully: {:?}", inps);
+        inps
     }
 }
 
@@ -605,6 +610,7 @@ impl TimeToCoord {
         // care of that
         let column_deltas_imagespace =
             column_deltas_imagespace.insert_rows(config.columns as usize, 1, f32::NAN);
+        info!("2d snake metadata prepped");
         (snake, column_deltas_ps, column_deltas_imagespace)
     }
 
@@ -670,6 +676,7 @@ impl TimeToCoord {
             line_offset += column_deltas_ps[line_len - 1];
         }
         let max_frame_time = *&snake[snake.len() - 1].end_time;
+        info!("2D bidir Snake built");
         TimeToCoord {
             data: snake,
             last_accessed_idx: 0,
@@ -732,6 +739,7 @@ impl TimeToCoord {
             line_offset += column_deltas_ps[line_len - 1];
         }
         let max_frame_time = *&snake[snake.len() - 1].end_time;
+        info!("2D unidir snake finished");
         TimeToCoord {
             data: snake,
             last_accessed_idx: 0,
@@ -785,7 +793,6 @@ impl TimeToCoord {
             self.update_2d_data_for_next_frame();
             return self.tag_to_coord_linear(time);
         }
-        let mut last_pixel_time = self.data[self.last_accessed_idx].end_time;
         let mut additional_steps_taken = 0usize;
         let mut coord = None;
         for pair in &self.data[self.last_accessed_idx..] {
@@ -801,6 +808,7 @@ impl TimeToCoord {
         if coord.is_some() {
             coord
         } else {
+            error!("Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}", &self.data[self.last_accessed_idx..], additional_steps_taken);
             panic!("Coordinate remained unpopulated for some reason. Investigate!")
         }
     }
@@ -814,12 +822,14 @@ impl TimeToCoord {
     /// simply trust in the data being not faulty.
     fn update_2d_data_for_next_frame(&mut self) {
         self.last_accessed_idx = 0;
+        info!("Populating next frame's data");
         for pair in self.data.iter_mut() {
             pair.end_time += self.next_frame_starts_at;
         }
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
         self.next_frame_starts_at = self.max_frame_time + self.voxel_delta_ps.frame;
         self.last_taglens_time = 0;
+        info!("Done populating next frame");
     }
 
     /// Handles a new line event
