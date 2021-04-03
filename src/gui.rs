@@ -1,11 +1,12 @@
 use crate::setup_rpysight;
+use crate::rendering_helpers::{AppConfig, AppConfigBuilder};
 use iced::{
     button, pick_list, text_input, Application, Button, Checkbox, Column, Command, Container,
-    Element, Length, PickList, Row, Text, TextInput,
+    Element, Length, PickList, Row, Text, TextInput, Clipboard
 };
 
 #[derive(Default)]
-pub struct ConfigGui {
+pub struct MainAppGui {
     rows_input: text_input::State,
     rows_value: String,
     columns_input: text_input::State,
@@ -56,12 +57,16 @@ pub struct ConfigGui {
     run_button: button::State,
 }
 
-impl ConfigGui {
+impl MainAppGui {
     fn start_acquisition(&mut self) {
         let (window, mut app) = setup_rpysight(self);
         app.start_timetagger_acq();
         app.acquire_stream_filehandle();
         window.render_loop(app);
+    }
+
+    pub fn from_config(cfg: AppConfig) -> Self {
+        todo!()
     }
 
     pub(crate) fn get_num_rows(&self) -> &str {
@@ -271,20 +276,20 @@ impl std::fmt::Display for EdgeDetected {
     }
 }
 
-impl Application for ConfigGui {
+impl Application for MainAppGui {
     type Executor = iced::executor::Default;
     type Message = Message;
-    type Flags = ();
+    type Flags = AppConfig;
 
-    fn new(_flags: ()) -> (ConfigGui, Command<Message>) {
-        (ConfigGui::default(), Command::none())
+    fn new(prev_config: AppConfig) -> (MainAppGui, Command<Message>) {
+        (MainAppGui::from_config(prev_config), Command::none())
     }
 
     fn title(&self) -> String {
         String::from("RPySight 0.1.0")
     }
 
-    fn update(&mut self, message: Message) -> Command<Self::Message> {
+    fn update(&mut self, message: Message, clip: &mut Clipboard) -> Command<Self::Message> {
         match message {
             Message::RowsChanged(rows) => {
                 self.rows_value = rows;

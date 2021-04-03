@@ -1,14 +1,15 @@
 use std::ops::{Deref, Index};
 
 extern crate log;
-use kiss3d::nalgebra::{DVector, Point3};
+use nalgebra::{DVector, Point3};
+use serde::{Serialize, Deserialize};
 
 use crate::point_cloud_renderer::ImageCoor;
 
 pub(crate) type Picosecond = i64;
 
 /// Picosecond and Hz aware period
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Period {
     pub period: Picosecond,
 }
@@ -32,7 +33,7 @@ impl Deref for Period {
 }
 
 /// Determines whether the scan was bidirectional or unidirectional
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub(crate) enum Bidirectionality {
     Bidir,
     Unidir,
@@ -49,7 +50,7 @@ impl From<bool> for Bidirectionality {
 
 /// Enumerates all possible data streams that can be handled by RPySight, like
 /// PMT data, line sync events and so on.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) enum DataType {
     Pmt1,
     Pmt2,
@@ -134,8 +135,8 @@ impl Index<i32> for Inputs {
 }
 
 /// Configs
-#[derive(Debug, Clone)]
-pub(crate) struct AppConfig {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppConfig {
     pub point_color: Point3<f32>,
     rows: u32,
     columns: u32,
