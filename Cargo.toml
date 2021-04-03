@@ -8,13 +8,17 @@ edition = "2018"
 
 [dependencies]
 kiss3d = "0.30"
-pyo3 = { version = "0.13", features=['extension-module'] }
+nalgebra = { version = "0.25", features = ["serde-serialize"] }
+pyo3 = { version = "0.13", features = ["extension-module"] }
 arrow = "3.0.0"
 thiserror = "1.0"
-iced = "0.2"
+anyhow = "1.0"
+iced = "0.3"
 log = "0.4"
 simplelog = "0.10"
-
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.5"
+directories = "3.0"
 
 [lib]
 name = "librpysight"
@@ -25,6 +29,6 @@ name = "rpyrender"
 path = "src/bin.rs"
 
 [package.metadata.maturin]
-requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "numba>=0.51", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=3.0.0",]
+requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=3.0.0",]
 classifier = ["Programming Language :: Python", "Programming Language :: Rust"]
 maintainer = "Hagai Har-Gil"
