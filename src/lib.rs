@@ -2,23 +2,52 @@
 
 pub mod gui;
 pub mod point_cloud_renderer;
-mod rendering_helpers;
+pub mod rendering_helpers;
 
 use std::fs::{read_to_string, File};
 use std::path::PathBuf;
 
-#[macro_use]
-extern crate log;
+#[macro_use] extern crate log;
 use kiss3d::window::Window;
 use pyo3::prelude::*;
 use thiserror::Error;
+use anyhow::Result;
+use iced::Settings;
+use directories::ProjectDirs;
+use toml;
 
-use crate::gui::{ChannelNumber, ConfigGui, EdgeDetected};
+use crate::gui::{ChannelNumber, MainAppGui, EdgeDetected};
 use crate::point_cloud_renderer::{setup_renderer, AppState};
 use crate::rendering_helpers::{AppConfig, AppConfigBuilder, Period, Picosecond};
 
 const TT_DATA_STREAM: &'static str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &'static str = "rpysight/call_timetagger.py";
+const DEFAULT_CONFIG_FNAME: &'static str = "default.toml";
+
+/// Load an existing configuration file or generate a new one with default
+/// values and load that instead.
+///
+/// Configuration files are stored in their proper locations using the
+/// directories cargo package.
+pub fn reload_cfg_or_use_default() -> AppConfig {
+    let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab",  "RPySight") {
+        proj_dirs.config_dir().join(DEFAULT_CONFIG_FNAME)
+    } else { unreachable!() };
+ 
+    if config_path.exists() {
+        todo!()
+    } else {
+        todo!()
+    }
+    // read_to_string(config_path).and_then(|res| Ok(toml::from_str(res))).unwrap_or_else(todo!())
+    todo!()
+
+}
+
+pub fn load_app_settings(cfg: AppConfig) -> iced::Settings<AppConfig> {
+    todo!()
+}
+
 
 /// Loads the Python file with the TimeTagger start up script.
 ///
@@ -37,7 +66,7 @@ pub fn load_timetagger_module(fname: PathBuf) -> PyResult<PyObject> {
 }
 
 /// A few necessary setups steps before starting the acquisition.
-pub(crate) fn setup_rpysight(config_gui: &ConfigGui) -> (Window, AppState<File>) {
+pub(crate) fn setup_rpysight(config_gui: &MainAppGui) -> (Window, AppState<File>) {
     // Set up the Python side
     let filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let timetagger_module: PyObject =
@@ -77,7 +106,7 @@ impl From<std::num::ParseFloatError> for UserInputError {
 /// Each field is parsed using either simple string to number parsing or more
 /// elaborate special functions for some designated special types.
 pub(crate) fn parse_user_input_into_config(
-    user_input: &ConfigGui,
+    user_input: &MainAppGui,
 ) -> Result<AppConfig, UserInputError> {
     Ok(AppConfigBuilder::default()
         .with_rows(user_input.get_num_rows().parse::<u32>()?)

@@ -3,22 +3,21 @@ extern crate kiss3d;
 use std::fs::File;
 use std::io::Read;
 
-use kiss3d::point_renderer::PointRenderer;
-
 use arrow::{
     array::{Int32Array, Int64Array, UInt16Array, UInt8Array},
     ipc::reader::StreamReader,
     record_batch::RecordBatch,
 };
+use nalgebra::Point3;
 use kiss3d::camera::Camera;
-use kiss3d::nalgebra::Point3;
+use kiss3d::point_renderer::PointRenderer;
 use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::post_processing::PostProcessingEffect;
 use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use pyo3::prelude::*;
 
-use crate::gui::ConfigGui;
+use crate::gui::MainAppGui;
 use crate::parse_user_input_into_config;
 use crate::rendering_helpers::{AppConfig, DataType, Inputs, TimeToCoord};
 
@@ -246,7 +245,7 @@ pub(crate) fn setup_renderer(
     gil: GILGuard,
     tt_module: PyObject,
     data_stream_fh: String,
-    config_gui: &ConfigGui,
+    config_gui: &MainAppGui,
 ) -> (Window, AppState<File>) {
     let window = Window::new("RPySight 0.1.0");
     let parsed_config =

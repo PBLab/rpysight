@@ -9,7 +9,9 @@ extern crate simplelog;
 use iced::{Application, Result, Settings};
 use simplelog::*;
 
-use librpysight::gui::ConfigGui;
+use librpysight::gui::MainAppGui;
+use librpysight::rendering_helpers::AppConfig;
+use librpysight::{reload_cfg_or_use_default, load_app_settings};
 
 fn main() -> Result {
     let _ = WriteLogger::init(
@@ -18,6 +20,8 @@ fn main() -> Result {
         File::create("target/rpysight.log").unwrap(),
     )
     .unwrap();
+    let cfg = reload_cfg_or_use_default();
+    let settings = load_app_settings(cfg);
     info!("Logger initialized successfully, starting RPySight");
-    ConfigGui::run(Settings::default())
+    MainAppGui::run(settings)
 }
