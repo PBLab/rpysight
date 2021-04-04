@@ -4,8 +4,8 @@ pub mod gui;
 pub mod point_cloud_renderer;
 pub mod rendering_helpers;
 
-use std::fs::{read_to_string, File};
-use std::path::PathBuf;
+use std::fs::{write, read_to_string, File};
+use std::path::{PathBuf, Path};
 
 #[macro_use] extern crate log;
 use kiss3d::window::Window;
@@ -35,19 +35,30 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
     } else { unreachable!() };
  
     if config_path.exists() {
-        todo!()
+        read_to_string(config_path).and_then(|res| Ok(toml::from_str(&res))).unwrap().unwrap()
     } else {
-        todo!()
+        create_dir_and_populate_with_default(config_path).unwrap_or(AppConfigBuilder::default().build())
     }
-    // read_to_string(config_path).and_then(|res| Ok(toml::from_str(res))).unwrap_or_else(todo!())
-    todo!()
-
 }
 
 pub fn load_app_settings(cfg: AppConfig) -> iced::Settings<AppConfig> {
     todo!()
 }
 
+/// Writes a default configuration file to disk and returns it.
+///
+/// This functions is called in the case that RPySight is run for the first
+/// time in a workstation and the configuration folder and files don't yet
+///  exist. It writes a new default file to disk and returns it. If failed
+///  during this process it will log these errors to disk and returns an Err
+///  variant, which will be handled upstream.
+fn create_dir_and_populate_with_default(path: PathBuf) -> Result<AppConfig> {
+    let default_cfg = AppConfigBuilder::default().build();
+    let seralized_cfg = toml::to_string(&default_cfg).map_err(|e| { warn!("Error serializing configuration to TOML: {:?}", e);
+ e})?;
+    let _ = write(&path, seralized_cfg).map_err(|e| { warn!("Error writing serialized configuration to disk: {:?}", e); e } )?;
+    Ok(default_cfg)
+}
 
 /// Loads the Python file with the TimeTagger start up script.
 ///
@@ -87,6 +98,8 @@ pub(crate) enum UserInputError {
     InvalidColumns(String),
     #[error("Unknown user input error")]
     Unknown,
+    #[error("TOML parsing error")]
+    TomlParsingError,
 }
 
 impl From<std::num::ParseIntError> for UserInputError {
@@ -107,7 +120,7 @@ impl From<std::num::ParseFloatError> for UserInputError {
 /// elaborate special functions for some designated special types.
 pub(crate) fn parse_user_input_into_config(
     user_input: &MainAppGui,
-) -> Result<AppConfig, UserInputError> {
+) -> anyhow::Result<AppConfig, UserInputError> {
     Ok(AppConfigBuilder::default()
         .with_rows(user_input.get_num_rows().parse::<u32>()?)
         .with_columns(user_input.get_num_columns().parse::<u32>()?)
