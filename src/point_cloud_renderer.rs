@@ -198,13 +198,14 @@ impl AppState<File> {
         if event.type_ != 0 {
             return None;
         }
+        info!("Event: {:?}", event);
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),
             DataType::Line => self.time_to_coord.new_line(event.time),
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
             _ => {
                 error!("Unsupported event: {:?}", event);
-                panic!("Unsupported event!")
+                None
             }
         }
     }

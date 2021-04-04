@@ -54,7 +54,7 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
 /// they should be done inside this function.
 pub fn load_app_settings(cfg: AppConfig) -> Settings<AppConfig> {
     let mut settings = Settings::with_flags(cfg);
-    settings.window.size = (1000, 500);
+    settings.window.size = (800, 1100);
     settings
 }
 

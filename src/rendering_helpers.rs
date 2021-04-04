@@ -86,8 +86,8 @@ impl Inputs {
     /// Generates a new Inputs instance. Panics if the input channels aren't
     /// unique or if a channel was accidently assigned to a non-existent input.
     pub(crate) fn from_config(config: &AppConfig) -> Inputs {
-        let mut data: Vec<DataType> = Vec::with_capacity(MAX_TIMETAGGER_INPUTS);
-        for _ in 0..MAX_TIMETAGGER_INPUTS {
+        let mut data: Vec<DataType> = Vec::with_capacity(MAX_TIMETAGGER_INPUTS + 1);
+        for _ in 0..(MAX_TIMETAGGER_INPUTS + 1) {
             data.push(DataType::Invalid);
         }
         let mut set = std::collections::HashSet::<usize>::new();
@@ -963,30 +963,6 @@ mod tests {
             .with_bidir(Bidirectionality::Unidir)
             .build();
         assert_eq!(VoxelDelta::calc_time_between_rows(&config), 99_291_327);
-    }
-
-    #[test]
-    fn time_to_coord_max_possible_time_single_pixel() {
-        let config = setup_default_config()
-            .with_rows(1)
-            .with_columns(1)
-            .with_planes(1)
-            .build();
-        assert_eq!(
-            TimeToCoord::calculate_max_possible_time(&config),
-            63_082_169
-        );
-    }
-
-    /// A standard frame's time is the inverse of the typical frame rate minus
-    /// the time it takes the Y galvo to return back home
-    #[test]
-    fn time_to_coord_max_possible_time_default() {
-        let config = setup_default_config().build();
-        assert_eq!(
-            TimeToCoord::calculate_max_possible_time(&config),
-            16_149_035_264
-        );
     }
 
     #[test]
