@@ -41,8 +41,14 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
     }
 }
 
-pub fn load_app_settings(cfg: AppConfig) -> iced::Settings<AppConfig> {
-    todo!()
+/// Populates a Settings instance with the configuration of RPySight.
+///
+/// If any additional changes to the default settings should be made, then
+/// they should be done inside this function.
+pub fn load_app_settings(cfg: AppConfig) -> Settings<AppConfig> {
+    let mut settings = Settings::with_flags(cfg);
+    settings.window.size = (1000, 500);
+    settings
 }
 
 /// Writes a default configuration file to disk and returns it.
@@ -195,6 +201,43 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> 
         ChannelNumber::Channel16 => 16,
         ChannelNumber::Channel17 => 17,
         ChannelNumber::Channel18 => 18,
-        ChannelNumber::Empty => 0,
+        ChannelNumber::Disconnected => 0,
     }
+}
+
+/// Converts a TT representation of a channel into its corresponding
+/// ChannelNumber and EdgeDetected pairs.
+///
+/// The TimeTagger uses the sign of the number to signal the edge, and the
+/// value obviously corresponds to the channel number. 
+fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
+    let ch_no_edge = ch.abs();
+    let chnum = match ch_no_edge {
+        0 => ChannelNumber::Disconnected,
+        1 => ChannelNumber::Channel1,
+        2 => ChannelNumber::Channel2,
+        3 => ChannelNumber::Channel3,
+        4 => ChannelNumber::Channel4,
+        5 => ChannelNumber::Channel5,
+        6 => ChannelNumber::Channel6,
+        7 => ChannelNumber::Channel7,
+        8 => ChannelNumber::Channel8,
+        9 => ChannelNumber::Channel9,
+        10 => ChannelNumber::Channel10,
+        11 => ChannelNumber::Channel11,
+        12 => ChannelNumber::Channel12,
+        13 => ChannelNumber::Channel13,
+        14 => ChannelNumber::Channel14,
+        15 => ChannelNumber::Channel15,
+        16 => ChannelNumber::Channel16,
+        17 => ChannelNumber::Channel17,
+        18 => ChannelNumber::Channel18,
+        _ => panic!("Invalid channel detected!"),
+    };
+    let edge = match ch.signum() {
+        0 | 1 => EdgeDetected::Rising,
+        -1 => EdgeDetected::Falling,
+        _ => unreachable!(),
+    };
+    (chnum, edge)
 }

@@ -48,6 +48,15 @@ impl From<bool> for Bidirectionality {
     }
 }
 
+impl From<Bidirectionality> for bool {
+    fn from(bidir: Bidirectionality) -> bool {
+        match bidir {
+            Bidirectionality::Bidir => true,
+            Bidirectionality::Unidir => false,
+        }
+    }
+}
+
 /// Enumerates all possible data streams that can be handled by RPySight, like
 /// PMT data, line sync events and so on.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -137,23 +146,23 @@ impl Index<i32> for Inputs {
 /// Configs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub point_color: Point3<f32>,
-    rows: u32,
-    columns: u32,
-    planes: u32,
-    scan_period: Period,
-    tag_period: Period,
-    bidir: Bidirectionality,
-    fill_fraction: f32, // (0..100)
-    frame_dead_time: Picosecond,
-    pmt1_ch: i32,
-    pmt2_ch: i32,
-    pmt3_ch: i32,
-    pmt4_ch: i32,
-    laser_ch: i32,
-    frame_ch: i32,
-    line_ch: i32,
-    taglens_ch: i32,
+    pub(crate) point_color: Point3<f32>,
+    pub(crate) rows: u32,
+    pub(crate) columns: u32,
+    pub(crate) planes: u32,
+    pub(crate) scan_period: Period,
+    pub(crate) tag_period: Period,
+    pub(crate) bidir: Bidirectionality,
+    pub(crate) fill_fraction: f32, // (0..100)
+    pub(crate) frame_dead_time: Picosecond,
+    pub(crate) pmt1_ch: i32,
+    pub(crate) pmt2_ch: i32,
+    pub(crate) pmt3_ch: i32,
+    pub(crate) pmt4_ch: i32,
+    pub(crate) laser_ch: i32,
+    pub(crate) frame_ch: i32,
+    pub(crate) line_ch: i32,
+    pub(crate) taglens_ch: i32,
 }
 
 impl AppConfig {

@@ -1,4 +1,4 @@
-use crate::setup_rpysight;
+use crate::{setup_rpysight, channel_value_to_pair};
 use crate::rendering_helpers::{AppConfig, AppConfigBuilder};
 use iced::{
     button, pick_list, text_input, Application, Button, Checkbox, Column, Command, Container,
@@ -184,7 +184,7 @@ pub enum ChannelNumber {
     Channel16,
     Channel17,
     Channel18,
-    Empty,
+    Disconnected,
 }
 
 impl std::fmt::Display for ChannelNumber {
@@ -193,7 +193,7 @@ impl std::fmt::Display for ChannelNumber {
             f,
             "{}",
             match self {
-                ChannelNumber::Empty => "Empty",
+                ChannelNumber::Disconnected => "Disconnected",
                 ChannelNumber::Channel1 => "Channel 1",
                 ChannelNumber::Channel2 => "Channel 2",
                 ChannelNumber::Channel3 => "Channel 3",
@@ -219,7 +219,7 @@ impl std::fmt::Display for ChannelNumber {
 
 impl ChannelNumber {
     const ALL: [ChannelNumber; 19] = [
-        ChannelNumber::Empty,
+        ChannelNumber::Disconnected,
         ChannelNumber::Channel1,
         ChannelNumber::Channel2,
         ChannelNumber::Channel3,
@@ -243,7 +243,7 @@ impl ChannelNumber {
 
 impl Default for ChannelNumber {
     fn default() -> Self {
-        ChannelNumber::Empty
+        ChannelNumber::Disconnected
     }
 }
 
@@ -281,15 +281,54 @@ impl Application for MainAppGui {
     type Message = Message;
     type Flags = AppConfig;
 
+    /// Create a new MainAppGui with values taken from the given config.
+    ///
+    /// The app is created in a default state, which helps with the
+    /// initialization of the buttons and such, and then the individual fields
+    /// are updated from the input config instance.
     fn new(prev_config: AppConfig) -> (MainAppGui, Command<Message>) {
-        (MainAppGui::from_config(prev_config), Command::none())
+        let mut app = MainAppGui::default();
+        app.rows_value = prev_config.rows.to_string();
+        app.columns_value = prev_config.columns.to_string();
+        app.planes_value = prev_config.planes.to_string();
+        app.scan_period_value = prev_config.scan_period.to_string();
+        app.tag_period_value = prev_config.tag_period.to_string();
+        app.bidirectional = prev_config.bidir.into();
+        app.fill_fraction_value = prev_config.fill_fraction.to_string();
+        app.frame_dead_time_value = prev_config.frame_dead_time.to_string();
+        let pmt1 = channel_value_to_pair(prev_config.pmt1_ch);
+        app.pmt1_selected = pmt1.0;
+        app.pmt1_edge_selected = pmt1.1;
+        let pmt2 = channel_value_to_pair(prev_config.pmt2_ch);
+        app.pmt2_selected = pmt2.0;
+        app.pmt2_edge_selected = pmt2.1;
+        let pmt3 = channel_value_to_pair(prev_config.pmt3_ch);
+        app.pmt3_selected = pmt3.0;
+        app.pmt3_edge_selected = pmt3.1;
+        let pmt4 = channel_value_to_pair(prev_config.pmt4_ch);
+        app.pmt4_selected = pmt4.0;
+        app.pmt4_edge_selected = pmt4.1;
+        let laser = channel_value_to_pair(prev_config.laser_ch);
+        app.laser_selected = laser.0;
+        app.laser_edge_selected = laser.1;
+        let frame = channel_value_to_pair(prev_config.frame_ch);
+        app.frame_selected = frame.0;
+        app.frame_edge_selected = frame.1;
+        let line = channel_value_to_pair(prev_config.line_ch);
+        app.line_selected = line.0;
+        app.line_edge_selected = line.1;
+        let taglens = channel_value_to_pair(prev_config.taglens_ch);
+        app.taglens_selected = taglens.0;
+        app.taglens_edge_selected = taglens.1;
+
+        (app, Command::none())
     }
 
     fn title(&self) -> String {
         String::from("RPySight 0.1.0")
     }
 
-    fn update(&mut self, message: Message, clip: &mut Clipboard) -> Command<Self::Message> {
+    fn update(&mut self, message: Message, _clip: &mut Clipboard) -> Command<Self::Message> {
         match message {
             Message::RowsChanged(rows) => {
                 self.rows_value = rows;
