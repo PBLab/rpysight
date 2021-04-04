@@ -2,7 +2,7 @@ use std::ops::{Deref, Index};
 
 extern crate log;
 use nalgebra::{DVector, Point3};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::point_cloud_renderer::ImageCoor;
 
@@ -716,7 +716,7 @@ impl TimeToCoord {
             let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
             snake.push(TimeCoordPair::new(
                 column_delta_ps + line_offset,
-                cur_imcoor
+                cur_imcoor,
             ));
         }
     }
@@ -767,19 +767,6 @@ impl TimeToCoord {
         _voxel_delta_im: &VoxelDelta<f32>,
     ) -> TimeToCoord {
         todo!()
-    }
-
-    /// The ending time, in ps, of the current volume.
-    ///
-    /// This function takes into account the volume size and tries to find the
-    /// maximal time in ps that this frame will be active. Note that the number
-    /// of planes doesn't affect this calculation because the Z scanning isn't
-    /// synced to the frame buffer.
-    fn calculate_max_possible_time(config: &AppConfig) -> Picosecond {
-        match config.bidir {
-            Bidirectionality::Bidir => Picosecond::from(config.rows) * (*config.scan_period / 2),
-            Bidirectionality::Unidir => Picosecond::from(config.rows) * *config.scan_period,
-        }
     }
 
     /// Handle a time tag by finding its corresponding coordinate in image

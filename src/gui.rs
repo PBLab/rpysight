@@ -1,8 +1,8 @@
-use crate::{setup_rpysight, channel_value_to_pair};
-use crate::rendering_helpers::{AppConfig, AppConfigBuilder};
+use crate::rendering_helpers::AppConfig;
+use crate::{channel_value_to_pair, setup_rpysight};
 use iced::{
-    button, pick_list, text_input, Application, Button, Checkbox, Column, Command, Container,
-    Element, Length, PickList, Row, Text, TextInput, Clipboard
+    button, pick_list, text_input, Application, Button, Checkbox, Clipboard, Column, Command,
+    Container, Element, Length, PickList, Row, Text, TextInput,
 };
 
 #[derive(Default)]
@@ -63,10 +63,6 @@ impl MainAppGui {
         app.start_timetagger_acq();
         app.acquire_stream_filehandle();
         window.render_loop(app);
-    }
-
-    pub fn from_config(cfg: AppConfig) -> Self {
-        todo!()
     }
 
     pub(crate) fn get_num_rows(&self) -> &str {

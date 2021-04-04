@@ -8,13 +8,13 @@ use arrow::{
     ipc::reader::StreamReader,
     record_batch::RecordBatch,
 };
-use nalgebra::Point3;
 use kiss3d::camera::Camera;
-use kiss3d::point_renderer::PointRenderer;
 use kiss3d::planar_camera::PlanarCamera;
+use kiss3d::point_renderer::PointRenderer;
 use kiss3d::post_processing::PostProcessingEffect;
 use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
+use nalgebra::Point3;
 use pyo3::prelude::*;
 
 use crate::gui::MainAppGui;
@@ -202,7 +202,10 @@ impl AppState<File> {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),
             DataType::Line => self.time_to_coord.new_line(event.time),
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
-            _ => { error!("Unsupported event: {:?}", event); panic!("Unsupported event!") },
+            _ => {
+                error!("Unsupported event: {:?}", event);
+                panic!("Unsupported event!")
+            }
         }
     }
 }

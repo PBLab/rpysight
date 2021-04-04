@@ -4,19 +4,20 @@ pub mod gui;
 pub mod point_cloud_renderer;
 pub mod rendering_helpers;
 
-use std::fs::{write, read_to_string, File};
-use std::path::{PathBuf, Path};
+use std::fs::{read_to_string, write, File};
+use std::path::PathBuf;
 
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
+use anyhow::Result;
+use directories::ProjectDirs;
+use iced::Settings;
 use kiss3d::window::Window;
 use pyo3::prelude::*;
 use thiserror::Error;
-use anyhow::Result;
-use iced::Settings;
-use directories::ProjectDirs;
 use toml;
 
-use crate::gui::{ChannelNumber, MainAppGui, EdgeDetected};
+use crate::gui::{ChannelNumber, EdgeDetected, MainAppGui};
 use crate::point_cloud_renderer::{setup_renderer, AppState};
 use crate::rendering_helpers::{AppConfig, AppConfigBuilder, Period, Picosecond};
 
@@ -30,14 +31,20 @@ const DEFAULT_CONFIG_FNAME: &'static str = "default.toml";
 /// Configuration files are stored in their proper locations using the
 /// directories cargo package.
 pub fn reload_cfg_or_use_default() -> AppConfig {
-    let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab",  "RPySight") {
+    let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab", "RPySight") {
         proj_dirs.config_dir().join(DEFAULT_CONFIG_FNAME)
-    } else { unreachable!() };
- 
-    if config_path.exists() {
-        read_to_string(config_path).and_then(|res| Ok(toml::from_str(&res))).unwrap().unwrap()
     } else {
-        create_dir_and_populate_with_default(config_path).unwrap_or(AppConfigBuilder::default().build())
+        unreachable!()
+    };
+
+    if config_path.exists() {
+        read_to_string(config_path)
+            .and_then(|res| Ok(toml::from_str(&res)))
+            .unwrap()
+            .unwrap()
+    } else {
+        create_dir_and_populate_with_default(config_path)
+            .unwrap_or(AppConfigBuilder::default().build())
     }
 }
 
@@ -60,9 +67,14 @@ pub fn load_app_settings(cfg: AppConfig) -> Settings<AppConfig> {
 ///  variant, which will be handled upstream.
 fn create_dir_and_populate_with_default(path: PathBuf) -> Result<AppConfig> {
     let default_cfg = AppConfigBuilder::default().build();
-    let seralized_cfg = toml::to_string(&default_cfg).map_err(|e| { warn!("Error serializing configuration to TOML: {:?}", e);
- e})?;
-    let _ = write(&path, seralized_cfg).map_err(|e| { warn!("Error writing serialized configuration to disk: {:?}", e); e } )?;
+    let seralized_cfg = toml::to_string(&default_cfg).map_err(|e| {
+        warn!("Error serializing configuration to TOML: {:?}", e);
+        e
+    })?;
+    let _ = write(&path, seralized_cfg).map_err(|e| {
+        warn!("Error writing serialized configuration to disk: {:?}", e);
+        e
+    })?;
     Ok(default_cfg)
 }
 
@@ -209,7 +221,7 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> 
 /// ChannelNumber and EdgeDetected pairs.
 ///
 /// The TimeTagger uses the sign of the number to signal the edge, and the
-/// value obviously corresponds to the channel number. 
+/// value obviously corresponds to the channel number.
 fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
     let ch_no_edge = ch.abs();
     let chnum = match ch_no_edge {

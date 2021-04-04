@@ -6,12 +6,11 @@ use std::fs::File;
 extern crate log;
 extern crate simplelog;
 
-use iced::{Application, Result, Settings};
+use iced::{Application, Result};
 use simplelog::*;
 
 use librpysight::gui::MainAppGui;
-use librpysight::rendering_helpers::AppConfig;
-use librpysight::{reload_cfg_or_use_default, load_app_settings};
+use librpysight::{load_app_settings, reload_cfg_or_use_default};
 
 fn main() -> Result {
     let _ = WriteLogger::init(
