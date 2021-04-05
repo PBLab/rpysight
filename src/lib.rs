@@ -4,7 +4,7 @@ pub mod gui;
 pub mod point_cloud_renderer;
 pub mod rendering_helpers;
 
-use std::fs::{read_to_string, write, File};
+use std::fs::{File, create_dir_all, read_to_string, write};
 use std::path::PathBuf;
 
 #[macro_use]
@@ -38,6 +38,7 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
             .unwrap()
             .unwrap()
     } else {
+        info!("Creating new configuration file in {:?}", config_path);
         create_dir_and_populate_with_default(config_path)
             .unwrap_or(AppConfigBuilder::default().build())
     }
@@ -53,6 +54,7 @@ pub(crate) fn get_config_path() -> PathBuf {
         // Unreachable since config_dir() doesn't fail or returns None
         unreachable!()
     };
+    info!("Configuration path: {:?}", config_path);
     config_path
 }
 
@@ -80,6 +82,9 @@ fn create_dir_and_populate_with_default(path: PathBuf) -> Result<AppConfig> {
         warn!("Error serializing configuration to TOML: {:?}", e);
         e
     })?;
+    if let Some(prefix) = path.parent() {
+        let _ = create_dir_all(prefix)?;
+    }
     let _ = write(&path, seralized_cfg).map_err(|e| {
         warn!("Error writing serialized configuration to disk: {:?}", e);
         e

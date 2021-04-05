@@ -24,7 +24,7 @@ impl Period {
     }
 
     pub(crate) fn to_hz(&self) -> f32 {
-        (self.period as f64 / 1_000_000_000_000f64) as f32
+        (self.period as f64 / 1_000_000_000_000.0f64) as f32
     }
 }
 
@@ -150,13 +150,9 @@ impl Index<i32> for Inputs {
 /// Configs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub(crate) point_color: Point3<f32>,
     pub(crate) rows: u32,
     pub(crate) columns: u32,
     pub(crate) planes: u32,
-    pub(crate) scan_period: Period,
-    pub(crate) tag_period: Period,
-    pub(crate) bidir: Bidirectionality,
     pub(crate) fill_fraction: f32, // (0..100)
     pub(crate) frame_dead_time: Picosecond,
     pub(crate) pmt1_ch: i32,
@@ -167,49 +163,13 @@ pub struct AppConfig {
     pub(crate) frame_ch: i32,
     pub(crate) line_ch: i32,
     pub(crate) taglens_ch: i32,
+    pub(crate) bidir: Bidirectionality,
+    pub(crate) point_color: Point3<f32>,
+    pub(crate) scan_period: Period,
+    pub(crate) tag_period: Period,
 }
 
 impl AppConfig {
-    pub(crate) fn new(
-        point_color: Point3<f32>,
-        rows: u32,
-        columns: u32,
-        planes: u32,
-        scan_period: Period,
-        tag_period: Period,
-        bidir: Bidirectionality,
-        fill_fraction: f32,
-        frame_dead_time: Picosecond,
-        pmt1_ch: i32,
-        pmt2_ch: i32,
-        pmt3_ch: i32,
-        pmt4_ch: i32,
-        laser_ch: i32,
-        frame_ch: i32,
-        line_ch: i32,
-        taglens_ch: i32,
-    ) -> Self {
-        AppConfig {
-            point_color,
-            rows,
-            columns,
-            planes,
-            scan_period,
-            tag_period,
-            bidir,
-            fill_fraction,
-            frame_dead_time,
-            pmt1_ch,
-            pmt2_ch,
-            pmt3_ch,
-            pmt4_ch,
-            laser_ch,
-            frame_ch,
-            line_ch,
-            taglens_ch,
-        }
-    }
-
     /// Parse the supplied user parameters, returning errors if illegal.
     ///
     /// Each field is parsed using either simple string to number parsing or more

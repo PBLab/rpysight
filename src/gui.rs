@@ -501,24 +501,24 @@ impl Application for MainAppGui {
 
         let scan_period = TextInput::new(
             &mut self.scan_period_input,
-            "Scan Period [Hz]",
+            "Scan Frequency [Hz]",
             &self.scan_period_value,
             Message::ScanPeriodChanged,
         )
         .padding(10)
         .size(20);
-        let scan_period_label = Text::new("Scan Period");
+        let scan_period_label = Text::new("Scan Frequency");
         let scan_period_row = Row::new().push(scan_period_label).push(scan_period);
 
         let taglens_period = TextInput::new(
             &mut self.tag_period_input,
-            "TAG Lens Period [Hz]",
+            "TAG Lens Frequency [Hz]",
             &self.tag_period_value,
             Message::TagLensPeriodChanged,
         )
         .padding(10)
         .size(20);
-        let taglens_period_label = Text::new("TAG Lens Period");
+        let taglens_period_label = Text::new("TAG Lens Frequency");
         let taglens_period_row = Row::new().push(taglens_period_label).push(taglens_period);
 
         let fillfrac = TextInput::new(
