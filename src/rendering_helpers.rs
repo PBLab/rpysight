@@ -4,7 +4,7 @@ extern crate log;
 use nalgebra::{DVector, Point3};
 use serde::{Deserialize, Serialize};
 
-use crate::point_cloud_renderer::ImageCoor;
+use crate::{UserInputError, point_cloud_renderer::ImageCoor, gui::{MainAppGui, ChannelNumber, EdgeDetected}};
 
 pub(crate) type Picosecond = i64;
 
@@ -21,6 +21,10 @@ impl Period {
         Period {
             period: ((1.0 / hz) * 1e12).round() as Picosecond,
         }
+    }
+
+    pub(crate) fn to_hz(&self) -> f32 {
+        (self.period as f64 / 1_000_000_000_000f64) as f32
     }
 }
 
@@ -204,6 +208,89 @@ impl AppConfig {
             line_ch,
             taglens_ch,
         }
+    }
+
+    /// Parse the supplied user parameters, returning errors if illegal.
+    ///
+    /// Each field is parsed using either simple string to number parsing or more
+    /// elaborate special functions for some designated special types.
+    pub(crate) fn from_user_input(user_input: &MainAppGui) -> anyhow::Result<AppConfig, UserInputError> {
+        Ok(AppConfigBuilder::default()
+            .with_rows(user_input.get_num_rows().parse::<u32>()?)
+            .with_columns(user_input.get_num_columns().parse::<u32>()?)
+            .with_planes(user_input.get_num_planes().parse::<u32>()?)
+            .with_bidir(user_input.get_bidirectionality().into())
+            .with_tag_period(Period::from_freq(
+                user_input.get_taglens_period().parse::<f64>()?,
+            ))
+            .with_scan_period(Period::from_freq(
+                user_input.get_scan_period().parse::<f64>()?,
+            ))
+            .with_fill_fraction(user_input.get_fill_fraction().parse::<f32>()?)
+            .with_frame_dead_time(
+                user_input.get_frame_dead_time().parse::<Picosecond>()? * 1_000_000_000,
+            )
+            .with_pmt1_ch(convert_user_channel_input_to_num(
+                user_input.get_pmt1_channel(),
+            ))
+            .with_pmt2_ch(convert_user_channel_input_to_num(
+                user_input.get_pmt2_channel(),
+            ))
+            .with_pmt3_ch(convert_user_channel_input_to_num(
+                user_input.get_pmt3_channel(),
+            ))
+            .with_pmt4_ch(convert_user_channel_input_to_num(
+                user_input.get_pmt4_channel(),
+            ))
+            .with_laser_ch(convert_user_channel_input_to_num(
+                user_input.get_laser_channel(),
+            ))
+            .with_frame_ch(convert_user_channel_input_to_num(
+                user_input.get_frame_channel(),
+            ))
+            .with_line_ch(convert_user_channel_input_to_num(
+                user_input.get_line_channel(),
+            ))
+            .with_taglens_ch(convert_user_channel_input_to_num(
+                user_input.get_tag_channel(),
+            ))
+            .build())
+    }
+}
+
+/// Converts a chosen user channel to its TT representation in the time tag
+/// stream.
+///
+/// Each TT event has an associated channel that has a number (1-18) and can
+/// be either positive, if events are detected in the rising edge, or negative
+/// if they're detected on the falling edge. This function converts the user's
+/// choice into the internal representation detailed above. An empty channel is
+/// given the value 0.
+fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> i32 {
+    let edge: i32 = match channel.1 {
+        EdgeDetected::Rising => 1,
+        EdgeDetected::Falling => -1,
+    };
+    edge * match channel.0 {
+        ChannelNumber::Channel1 => 1,
+        ChannelNumber::Channel2 => 2,
+        ChannelNumber::Channel3 => 3,
+        ChannelNumber::Channel4 => 4,
+        ChannelNumber::Channel5 => 5,
+        ChannelNumber::Channel6 => 6,
+        ChannelNumber::Channel7 => 7,
+        ChannelNumber::Channel8 => 8,
+        ChannelNumber::Channel9 => 9,
+        ChannelNumber::Channel10 => 10,
+        ChannelNumber::Channel11 => 11,
+        ChannelNumber::Channel12 => 12,
+        ChannelNumber::Channel13 => 13,
+        ChannelNumber::Channel14 => 14,
+        ChannelNumber::Channel15 => 15,
+        ChannelNumber::Channel16 => 16,
+        ChannelNumber::Channel17 => 17,
+        ChannelNumber::Channel18 => 18,
+        ChannelNumber::Disconnected => 0,
     }
 }
 
@@ -904,6 +991,12 @@ mod tests {
     fn test_tag_period_normal_freq() {
         let freq = 189_800; // Hz
         assert_eq!(Period::from_freq(freq).period, 5_268_704);
+    }
+
+    #[test]
+    fn test_period_to_hz() {
+        let period = 1_000_000_000_000i64;
+        assert_eq!(Period{ period: period }.to_hz(), 1.0f32);
     }
 
     #[test]

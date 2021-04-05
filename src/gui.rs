@@ -1,4 +1,6 @@
-use crate::rendering_helpers::AppConfig;
+use std::fs::write;
+
+use crate::{get_config_path, rendering_helpers::{AppConfig, Picosecond}};
 use crate::{channel_value_to_pair, setup_rpysight};
 use iced::{
     button, pick_list, text_input, Application, Button, Checkbox, Clipboard, Column, Command,
@@ -58,11 +60,33 @@ pub struct MainAppGui {
 }
 
 impl MainAppGui {
+    /// Initializes things on the Python side and starts the acquisition.
     fn start_acquisition(&mut self) {
+        let _ = self.save_cfg();
         let (window, mut app) = setup_rpysight(self);
         app.start_timetagger_acq();
         app.acquire_stream_filehandle();
         window.render_loop(app);
+    }
+
+    /// Saves the current configuration to disk.
+    ///
+    /// This function is called when the user starts the acquisition, which
+    /// means that it can assume that the config exists, since it's usually
+    /// created during start up.
+    ///
+    /// The function overwrites the current settings with the new ones, as we
+    /// don't currently offer any profiles\configuration management system.
+    fn save_cfg(&self) -> anyhow::Result<()> {
+        let config_path = get_config_path();
+        if config_path.exists() {
+            let app_config = &AppConfig::from_user_input(&self).map_err(|e| { warn!("Conversion of GUI parameters to the configuration struct failed: {}", e); e })?;
+            let serialized_cfg = toml::to_string(app_config).map_err(|e| { warn!("Couldn't serialize user input struct before writing to disk: {}", e); e })?;
+            write(&config_path, serialized_cfg).map_err(|e| { warn!("Couldn't serialize user input to disk: {}", e); e })?;
+        } else {
+            warn!("Configuration path doesn't exist before starting the app");
+        };
+        Ok(())
     }
 
     pub(crate) fn get_num_rows(&self) -> &str {
@@ -272,6 +296,14 @@ impl std::fmt::Display for EdgeDetected {
     }
 }
 
+/// Converts the given picoseconds value to a miliseconds one.
+///
+/// Used in the GUI, when converting the interal representation of the frame
+/// dead time from ps to ms, which is displayed to the user.
+fn ps_to_ms(time: Picosecond) -> f32 {
+    (time as f64 / 1_000_000_000.0f64) as f32
+}
+
 impl Application for MainAppGui {
     type Executor = iced::executor::Default;
     type Message = Message;
@@ -287,11 +319,11 @@ impl Application for MainAppGui {
         app.rows_value = prev_config.rows.to_string();
         app.columns_value = prev_config.columns.to_string();
         app.planes_value = prev_config.planes.to_string();
-        app.scan_period_value = prev_config.scan_period.to_string();
-        app.tag_period_value = prev_config.tag_period.to_string();
+        app.scan_period_value = prev_config.scan_period.to_hz().to_string();
+        app.tag_period_value = prev_config.tag_period.to_hz().to_string();
         app.bidirectional = prev_config.bidir.into();
         app.fill_fraction_value = prev_config.fill_fraction.to_string();
-        app.frame_dead_time_value = prev_config.frame_dead_time.to_string();
+        app.frame_dead_time_value = ps_to_ms(prev_config.frame_dead_time).to_string();
         let pmt1 = channel_value_to_pair(prev_config.pmt1_ch);
         app.pmt1_selected = pmt1.0;
         app.pmt1_edge_selected = pmt1.1;

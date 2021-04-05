@@ -18,7 +18,6 @@ use nalgebra::Point3;
 use pyo3::prelude::*;
 
 use crate::gui::MainAppGui;
-use crate::parse_user_input_into_config;
 use crate::rendering_helpers::{AppConfig, DataType, Inputs, TimeToCoord};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
@@ -249,11 +248,11 @@ pub(crate) fn setup_renderer(
     gil: GILGuard,
     tt_module: PyObject,
     data_stream_fh: String,
-    config_gui: &MainAppGui,
+    main_app_gui: &MainAppGui,
 ) -> (Window, AppState<File>) {
     let window = Window::new("RPySight 0.1.0");
     let parsed_config =
-        parse_user_input_into_config(config_gui).expect("Error with parsing user input");
+        AppConfig::from_user_input(main_app_gui).expect("Error with parsing user input");
     let app = AppState::new(
         PointRenderer::new(),
         tt_module,

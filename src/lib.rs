@@ -19,7 +19,7 @@ use toml;
 
 use crate::gui::{ChannelNumber, EdgeDetected, MainAppGui};
 use crate::point_cloud_renderer::{setup_renderer, AppState};
-use crate::rendering_helpers::{AppConfig, AppConfigBuilder, Period, Picosecond};
+use crate::rendering_helpers::{AppConfig, AppConfigBuilder};
 
 const TT_DATA_STREAM: &'static str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &'static str = "rpysight/call_timetagger.py";
@@ -31,12 +31,7 @@ const DEFAULT_CONFIG_FNAME: &'static str = "default.toml";
 /// Configuration files are stored in their proper locations using the
 /// directories cargo package.
 pub fn reload_cfg_or_use_default() -> AppConfig {
-    let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab", "RPySight") {
-        proj_dirs.config_dir().join(DEFAULT_CONFIG_FNAME)
-    } else {
-        unreachable!()
-    };
-
+    let config_path = get_config_path();
     if config_path.exists() {
         read_to_string(config_path)
             .and_then(|res| Ok(toml::from_str(&res)))
@@ -47,6 +42,20 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
             .unwrap_or(AppConfigBuilder::default().build())
     }
 }
+
+/// Generates a PathBuf with the location of the default configuration path.
+///
+/// This function doesn't assert that it exists, it simply returns it.
+pub(crate) fn get_config_path() -> PathBuf {
+    let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab", "RPySight") {
+        proj_dirs.config_dir().join(DEFAULT_CONFIG_FNAME)
+    } else {
+        // Unreachable since config_dir() doesn't fail or returns None
+        unreachable!()
+    };
+    config_path
+}
+
 
 /// Populates a Settings instance with the configuration of RPySight.
 ///
@@ -129,91 +138,6 @@ impl From<std::num::ParseIntError> for UserInputError {
 impl From<std::num::ParseFloatError> for UserInputError {
     fn from(_e: std::num::ParseFloatError) -> UserInputError {
         UserInputError::Unknown
-    }
-}
-
-/// Parse the supplied user parameters, returning errors if illegal.
-///
-/// Each field is parsed using either simple string to number parsing or more
-/// elaborate special functions for some designated special types.
-pub(crate) fn parse_user_input_into_config(
-    user_input: &MainAppGui,
-) -> anyhow::Result<AppConfig, UserInputError> {
-    Ok(AppConfigBuilder::default()
-        .with_rows(user_input.get_num_rows().parse::<u32>()?)
-        .with_columns(user_input.get_num_columns().parse::<u32>()?)
-        .with_planes(user_input.get_num_planes().parse::<u32>()?)
-        .with_bidir(user_input.get_bidirectionality().into())
-        .with_tag_period(Period::from_freq(
-            user_input.get_taglens_period().parse::<f64>()?,
-        ))
-        .with_scan_period(Period::from_freq(
-            user_input.get_scan_period().parse::<f64>()?,
-        ))
-        .with_fill_fraction(user_input.get_fill_fraction().parse::<f32>()?)
-        .with_frame_dead_time(
-            user_input.get_frame_dead_time().parse::<Picosecond>()? * 1_000_000_000,
-        )
-        .with_pmt1_ch(convert_user_channel_input_to_num(
-            user_input.get_pmt1_channel(),
-        ))
-        .with_pmt2_ch(convert_user_channel_input_to_num(
-            user_input.get_pmt2_channel(),
-        ))
-        .with_pmt3_ch(convert_user_channel_input_to_num(
-            user_input.get_pmt3_channel(),
-        ))
-        .with_pmt4_ch(convert_user_channel_input_to_num(
-            user_input.get_pmt4_channel(),
-        ))
-        .with_laser_ch(convert_user_channel_input_to_num(
-            user_input.get_laser_channel(),
-        ))
-        .with_frame_ch(convert_user_channel_input_to_num(
-            user_input.get_frame_channel(),
-        ))
-        .with_line_ch(convert_user_channel_input_to_num(
-            user_input.get_line_channel(),
-        ))
-        .with_taglens_ch(convert_user_channel_input_to_num(
-            user_input.get_tag_channel(),
-        ))
-        .build())
-}
-
-/// Converts a chosen user channel to its TT representation in the time tag
-/// stream.
-///
-/// Each TT event has an associated channel that has a number (1-18) and can
-/// be either positive, if events are detected in the rising edge, or negative
-/// if they're detected on the falling edge. This function converts the user's
-/// choice into the internal representation detailed above. An empty channel is
-/// given the value 0.
-fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> i32 {
-    let edge: i32 = match channel.1 {
-        EdgeDetected::Rising => 1,
-        EdgeDetected::Falling => -1,
-    };
-    edge * match channel.0 {
-        ChannelNumber::Channel1 => 1,
-        ChannelNumber::Channel2 => 2,
-        ChannelNumber::Channel3 => 3,
-        ChannelNumber::Channel4 => 4,
-        ChannelNumber::Channel5 => 5,
-        ChannelNumber::Channel6 => 6,
-        ChannelNumber::Channel7 => 7,
-        ChannelNumber::Channel8 => 8,
-        ChannelNumber::Channel9 => 9,
-        ChannelNumber::Channel10 => 10,
-        ChannelNumber::Channel11 => 11,
-        ChannelNumber::Channel12 => 12,
-        ChannelNumber::Channel13 => 13,
-        ChannelNumber::Channel14 => 14,
-        ChannelNumber::Channel15 => 15,
-        ChannelNumber::Channel16 => 16,
-        ChannelNumber::Channel17 => 17,
-        ChannelNumber::Channel18 => 18,
-        ChannelNumber::Disconnected => 0,
     }
 }
 
