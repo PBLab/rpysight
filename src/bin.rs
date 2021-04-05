@@ -1,4 +1,4 @@
-// Remember to  $Env:PYTHONHOME = "C:\Users\PBLab\.conda\envs\timetagger\"
+// Remember to $Env:PYTHONHOME = "C:\Users\PBLab\.conda\envs\timetagger\"
 // because powershell is too dumb to remember.
 
 // TODO: Labels should be added to the left of the entries in the GUI
@@ -18,7 +18,7 @@ use librpysight::{load_app_settings, reload_cfg_or_use_default};
 fn main() -> Result {
     let _ = WriteLogger::init(
         LevelFilter::Info,
-        Config::default(),
+        ConfigBuilder::default().set_time_to_local(true).build(),
         File::create("target/rpysight.log").unwrap(),
     )
     .unwrap();

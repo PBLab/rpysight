@@ -1,4 +1,4 @@
-use std::ops::{Deref, Index};
+use std::{num::ParseFloatError, ops::{Deref, Index}};
 
 extern crate log;
 use nalgebra::{DVector, Point3};
@@ -24,7 +24,7 @@ impl Period {
     }
 
     pub(crate) fn to_hz(&self) -> f32 {
-        (self.period as f64 / 1_000_000_000_000.0f64) as f32
+        (1.0f64 / (self.period as f64 / 1_000_000_000_000.0f64)) as f32
     }
 }
 
@@ -169,6 +169,12 @@ pub struct AppConfig {
     pub(crate) tag_period: Period,
 }
 
+/// Converts a miliseconds number (a string) into its equivalent in ps.
+fn string_ms_to_ps(ms_as_string: &str) -> anyhow::Result<Picosecond, ParseFloatError> {
+    let ms = ms_as_string.parse::<f64>()?;
+    Ok((ms * 1_000_000_000f64) as Picosecond)
+}
+
 impl AppConfig {
     /// Parse the supplied user parameters, returning errors if illegal.
     ///
@@ -176,19 +182,19 @@ impl AppConfig {
     /// elaborate special functions for some designated special types.
     pub(crate) fn from_user_input(user_input: &MainAppGui) -> anyhow::Result<AppConfig, UserInputError> {
         Ok(AppConfigBuilder::default()
-            .with_rows(user_input.get_num_rows().parse::<u32>()?)
-            .with_columns(user_input.get_num_columns().parse::<u32>()?)
-            .with_planes(user_input.get_num_planes().parse::<u32>()?)
+            .with_rows(user_input.get_num_rows().parse::<u32>().map_err(UserInputError::InvalidRows)?)
+            .with_columns(user_input.get_num_columns().parse::<u32>().map_err(UserInputError::InvalidColumns)?)
+            .with_planes(user_input.get_num_planes().parse::<u32>().map_err(UserInputError::InvalidPlanes)?)
             .with_bidir(user_input.get_bidirectionality().into())
             .with_tag_period(Period::from_freq(
-                user_input.get_taglens_period().parse::<f64>()?,
+                user_input.get_taglens_period().parse::<f64>().map_err(UserInputError::InvalidTagLensPeriod)?,
             ))
             .with_scan_period(Period::from_freq(
-                user_input.get_scan_period().parse::<f64>()?,
+                user_input.get_scan_period().parse::<f64>().map_err(UserInputError::InvalidScanPeriod)?,
             ))
             .with_fill_fraction(user_input.get_fill_fraction().parse::<f32>()?)
             .with_frame_dead_time(
-                user_input.get_frame_dead_time().parse::<Picosecond>()? * 1_000_000_000,
+                string_ms_to_ps(user_input.get_frame_dead_time()).map_err(UserInputError::InvalidFrameDeadTime)?,
             )
             .with_pmt1_ch(convert_user_channel_input_to_num(
                 user_input.get_pmt1_channel(),
@@ -960,6 +966,12 @@ mod tests {
     }
 
     #[test]
+    fn test_period_to_hz_smaller() {
+        let period = 1_000_000_000i64;
+        assert_eq!(Period{ period: period }.to_hz(), 0.001f32);
+    }
+
+    #[test]
     fn voxel_delta_columns_standard() {
         let config = setup_default_config().build();
         assert_eq!(VoxelDelta::calc_time_between_columns(&config), 175_693);
@@ -1121,5 +1133,17 @@ mod tests {
             .with_taglens_ch(0)
             .build();
         let _ = Inputs::from_config(&config);
+    }
+
+    #[test]
+    fn string_ms_to_ps_simple() {
+        let deadtime = "1.0";
+        assert_eq!(1_000_000_000, string_ms_to_ps(deadtime).unwrap());
+    }
+
+    #[test]
+    fn string_ms_to_ps_complex() {
+        let deadtime = "2.009";
+        assert_eq!(2_009_000_000, string_ms_to_ps(deadtime).unwrap());
     }
 }

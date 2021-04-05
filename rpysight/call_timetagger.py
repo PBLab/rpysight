@@ -19,6 +19,7 @@ import logging
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 
 import TimeTagger
 
@@ -27,10 +28,6 @@ CHAN_START = 1
 CHAN_STOP = 2
 TT_DATA_STREAM = "__tt_data_stream.dat"
 
-FORMAT = '%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(message)s'
-logging.basicConfig(filename='target/rpysight_timetagger.log', format=FORMAT)
-logger = logging.getLogger().setLevel(logging.INFO)
-
 
 class CustomTT(TimeTagger.CustomMeasurement):
     """
@@ -38,13 +35,16 @@ class CustomTT(TimeTagger.CustomMeasurement):
         The class shows how to access the raw time-tag stream.
     """
 
-    def __init__(self, tagger, channels: list):
+    def __init__(self, tagger, channels: list, logger=None):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
         for channel in channels:
             self.register_channel(channel)
 
         self.init_stream_and_schema()
 
+        if logger:
+            logger.info("Setup complete")
+            self.logger = logger
         # At the end of a CustomMeasurement construction,
         # we must indicate that we have finished.
         self.finalize_init()
@@ -133,7 +133,6 @@ class CustomTT(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        logger.info(incoming_tags)
         batch = self.convert_tags_to_recordbatch(incoming_tags)
         self.stream.write(batch)
 
@@ -144,8 +143,12 @@ def run_tagger():
     tagger.reset()
     # enable the test signal
     tagger.setTestSignal([CHAN_START, CHAN_STOP], True)
-    tag = CustomTT(tagger, [CHAN_START, CHAN_STOP])
-    logger.info("Setup complete")
+    FORMAT = '%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(message)s'
+    logging.basicConfig(filename='target/rpysight_timetagger.log', format=FORMAT)
+    logger = logging.getLogger().setLevel(logging.INFO)
+    tag = CustomTT(tagger, [CHAN_START, CHAN_STOP], logger)
+
+
     tag.startFor(int(5e12))
     tag.waitUntilFinished()
 

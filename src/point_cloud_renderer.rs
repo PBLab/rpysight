@@ -51,20 +51,25 @@ impl Event {
 pub(crate) struct EventStreamIter<'a> {
     stream: EventStream<'a>,
     idx: usize,
+    len: usize,
 }
 
 impl<'a> Iterator for EventStreamIter<'a> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Event> {
-        let cur_row = Event::new(
-            self.stream.type_.value(self.idx),
-            self.stream.missed_events.value(self.idx),
-            self.stream.channel.value(self.idx),
-            self.stream.time.value(self.idx),
-        );
-        self.idx += 1;
-        Some(cur_row)
+        if self.idx < self.len {
+            let cur_row = Event::new(
+                self.stream.type_.value(self.idx),
+                self.stream.missed_events.value(self.idx),
+                self.stream.channel.value(self.idx),
+                self.stream.time.value(self.idx),
+            );
+            self.idx += 1;
+            Some(cur_row)
+        } else {
+            None
+        }
     }
 }
 
@@ -124,9 +129,14 @@ impl<'a> EventStream<'a> {
 
     pub(crate) fn iter(self) -> EventStreamIter<'a> {
         EventStreamIter {
+            len: self.num_rows(),
             stream: self,
             idx: 0usize,
         }
+    }
+
+    pub(crate) fn num_rows(&self) -> usize {
+        self.type_.len()
     }
 }
 
@@ -168,7 +178,7 @@ impl AppState<File> {
             data_stream_fh,
             data_stream: None,
             appconfig: appconfig.clone(),
-            time_to_coord: TimeToCoord::from_acq_params(&appconfig, 0),
+            time_to_coord: TimeToCoord::from_acq_params(&appconfig, 1_750_000_000_000),
             inputs: Inputs::from_config(&appconfig),
         }
     }
@@ -178,8 +188,8 @@ impl AppState<File> {
     }
 
     pub fn acquire_stream_filehandle(&mut self) {
-        let stream = File::open(&self.data_stream_fh).unwrap();
-        let stream = StreamReader::try_new(stream).expect("Stream file missing");
+        let stream = File::open(&self.data_stream_fh).expect("Can't open stream file, exiting.");
+        let stream = StreamReader::try_new(stream).expect("Stream file missing, cannot recover.");
         self.data_stream = Some(stream);
     }
 
@@ -197,9 +207,9 @@ impl AppState<File> {
         if event.type_ != 0 {
             return None;
         }
-        info!("Event: {:?}", event);
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),
+            DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time),
             DataType::Line => self.time_to_coord.new_line(event.time),
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
             _ => {
@@ -230,9 +240,9 @@ impl State for AppState<File> {
     /// overflow. This iteration process filters these non-time tags from the
     /// more relevant tags.
     fn step(&mut self, _window: &mut Window) {
-        info!("Step starting");
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
+            info!("Received {} many rows", batch.num_rows());
             let event_stream = EventStream::from_streamed_batch(&batch);
             for event in event_stream.into_iter() {
                 if let Some(point) = self.event_to_coordinate(event) {

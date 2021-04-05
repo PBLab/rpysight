@@ -4,7 +4,7 @@ pub mod gui;
 pub mod point_cloud_renderer;
 pub mod rendering_helpers;
 
-use std::fs::{File, create_dir_all, read_to_string, write};
+use std::{fs::{File, create_dir_all, read_to_string, write}, num::{ParseFloatError, ParseIntError}};
 use std::path::PathBuf;
 
 #[macro_use]
@@ -125,13 +125,19 @@ pub(crate) fn setup_rpysight(config_gui: &MainAppGui) -> (Window, AppState<File>
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum UserInputError {
     #[error("Wrong input given for rows field (got `{0}`)")]
-    InvalidRows(String),
+    InvalidRows(ParseIntError),
     #[error("Wrong input given for columns field (got `{0}`)")]
-    InvalidColumns(String),
+    InvalidColumns(ParseIntError),
+    #[error("Wrong input given for planes field (got `{0}`)")]
+    InvalidPlanes(ParseIntError),
+    #[error("Wrong TAG Lens period value (got `{0}`)")]
+    InvalidTagLensPeriod(ParseFloatError),
+    #[error("Wrong scan period value (got `{0}`)")]
+    InvalidScanPeriod(ParseFloatError),
+    #[error("Wrong frame dead time value (got `{0}`)")]
+    InvalidFrameDeadTime(ParseFloatError),
     #[error("Unknown user input error")]
     Unknown,
-    #[error("TOML parsing error")]
-    TomlParsingError,
 }
 
 impl From<std::num::ParseIntError> for UserInputError {
