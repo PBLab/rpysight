@@ -1,10 +1,7 @@
 // Remember to  $Env:PYTHONHOME = "C:\Users\PBLab\.conda\envs\timetagger\"
 // because powershell is too dumb to remember.
 
-// TODO: In the GUI the Period values are given in ps even though they should
-// be given in Hz.
 // TODO: Labels should be added to the left of the entries in the GUI
-// TODO: When we press start acq the CFG isn't saved.
 // TODO: I saw some peculiar photons that needed logging
 use std::fs::File;
 
