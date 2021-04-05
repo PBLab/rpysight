@@ -35,16 +35,15 @@ class CustomTT(TimeTagger.CustomMeasurement):
         The class shows how to access the raw time-tag stream.
     """
 
-    def __init__(self, tagger, channels: list, logger=None):
+    def __init__(self, tagger, channels: list, fname=None):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
         for channel in channels:
             self.register_channel(channel)
 
         self.init_stream_and_schema()
 
-        if logger:
-            logger.info("Setup complete")
-            self.logger = logger
+        if fname:
+            self.filehandle = open(fname, 'wb')
         # At the end of a CustomMeasurement construction,
         # we must indicate that we have finished.
         self.finalize_init()
@@ -135,6 +134,7 @@ class CustomTT(TimeTagger.CustomMeasurement):
         """
         batch = self.convert_tags_to_recordbatch(incoming_tags)
         self.stream.write(batch)
+        np.save(self.filehandle, incoming_tags)
 
 
 def run_tagger():
@@ -143,13 +143,9 @@ def run_tagger():
     tagger.reset()
     # enable the test signal
     tagger.setTestSignal([CHAN_START, CHAN_STOP], True)
-    FORMAT = '%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(message)s'
-    logging.basicConfig(filename='target/rpysight_timetagger.log', format=FORMAT)
-    logger = logging.getLogger().setLevel(logging.INFO)
-    tag = CustomTT(tagger, [CHAN_START, CHAN_STOP], logger)
-
-
-    tag.startFor(int(5e12))
+    filename = 'target/test.npy'
+    tag = CustomTT(tagger, [CHAN_START, CHAN_STOP], filename)
+    tag.startFor(int(15e12))
     tag.waitUntilFinished()
 
 

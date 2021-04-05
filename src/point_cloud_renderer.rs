@@ -16,6 +16,7 @@ use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use nalgebra::Point3;
 use pyo3::prelude::*;
+use rand::prelude::*;
 
 use crate::gui::MainAppGui;
 use crate::rendering_helpers::{AppConfig, DataType, Inputs, TimeToCoord};
@@ -187,6 +188,19 @@ impl AppState<File> {
         self.tt_module.call0(self.gil.python()).unwrap();
     }
 
+    pub fn mock_get_data_from_channel(&self, length: usize) -> Vec<ImageCoor> {
+        let mut rng = rand::thread_rng();
+        let mut data = Vec::with_capacity(10_000);
+        for i in 0..length {
+            let x: f32 = rng.gen::<f32>(); 
+            let y: f32 = rng.gen::<f32>();
+            let z: f32 = rng.gen::<f32>();
+            let point = ImageCoor::new(x, y, z);
+            data.push(point);
+        }
+        data
+    }
+
     pub fn acquire_stream_filehandle(&mut self) {
         let stream = File::open(&self.data_stream_fh).expect("Can't open stream file, exiting.");
         let stream = StreamReader::try_new(stream).expect("Stream file missing, cannot recover.");
@@ -242,14 +256,18 @@ impl State for AppState<File> {
     fn step(&mut self, _window: &mut Window) {
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
-            info!("Received {} many rows", batch.num_rows());
-            let event_stream = EventStream::from_streamed_batch(&batch);
-            for event in event_stream.into_iter() {
-                if let Some(point) = self.event_to_coordinate(event) {
-                    self.point_cloud_renderer
-                        .draw_point(point, self.appconfig.point_color)
-                }
+            info!("Received {} rows", batch.num_rows());
+            let v = self.mock_get_data_from_channel(batch.num_rows());
+            for p in v {
+                self.point_cloud_renderer.draw_point(p, self.appconfig.point_color)
             }
+            // let event_stream = EventStream::from_streamed_batch(&batch);
+            // for event in event_stream.into_iter() {
+            //     if let Some(point) = self.event_to_coordinate(event) {
+            //         self.point_cloud_renderer
+            //             .draw_point(point, self.appconfig.point_color)
+            //     }
+            // }
         }
     }
 }

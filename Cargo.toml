@@ -19,6 +19,7 @@ simplelog = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.5"
 directories = "3.0"
+rand = "0.8"
 
 [lib]
 name = "librpysight"
