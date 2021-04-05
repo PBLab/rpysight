@@ -7,7 +7,7 @@ without any PYTHONPATH manipulation - someone has already added the
 By and large, the 'process' method is automatically called when each batch of
 events arrive. The entire data is in the 'incoming_tags' variable, the
 self.data array is a buffer that's holding the intermediate results of their
-histogramming effort. 
+histogramming effort.
 
 Here they called the numbafied function 'fast_process' during each iteration. I
 replaced that function with my own mock function defined in lib.rs just to make
@@ -15,6 +15,7 @@ it work once, and it did, which is great.
 """
 from time import sleep
 import pathlib
+import logging
 
 import numpy as np
 import pyarrow as pa
@@ -25,6 +26,10 @@ import TimeTagger
 CHAN_START = 1
 CHAN_STOP = 2
 TT_DATA_STREAM = "__tt_data_stream.dat"
+
+FORMAT = '%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(message)s'
+logging.basicConfig(filename='target/rpysight_timetagger.log', format=FORMAT)
+logger = logging.getLogger().setLevel(logging.INFO)
 
 
 class CustomTT(TimeTagger.CustomMeasurement):
@@ -128,6 +133,7 @@ class CustomTT(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
+        logger.info(incoming_tags)
         batch = self.convert_tags_to_recordbatch(incoming_tags)
         self.stream.write(batch)
 
@@ -139,7 +145,7 @@ def run_tagger():
     # enable the test signal
     tagger.setTestSignal([CHAN_START, CHAN_STOP], True)
     tag = CustomTT(tagger, [CHAN_START, CHAN_STOP])
-    print("setup complete")
+    logger.info("Setup complete")
     tag.startFor(int(5e12))
     tag.waitUntilFinished()
 

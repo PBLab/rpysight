@@ -5,6 +5,7 @@
 // be given in Hz.
 // TODO: Labels should be added to the left of the entries in the GUI
 // TODO: When we press start acq the CFG isn't saved.
+// TODO: I saw some peculiar photons that needed logging
 use std::fs::File;
 
 #[macro_use]
