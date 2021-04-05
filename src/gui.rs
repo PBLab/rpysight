@@ -62,7 +62,7 @@ pub struct MainAppGui {
 impl MainAppGui {
     /// Initializes things on the Python side and starts the acquisition.
     fn start_acquisition(&mut self) {
-        let _ = self.save_cfg();
+        let _ = self.save_cfg().ok();  // Errors are logged and quite irrelevant
         let (window, mut app) = setup_rpysight(self);
         app.start_timetagger_acq();
         app.acquire_stream_filehandle();
@@ -77,6 +77,9 @@ impl MainAppGui {
     ///
     /// The function overwrites the current settings with the new ones, as we
     /// don't currently offer any profiles\configuration management system.
+    ///
+    /// Errors during this function are called and then basically discarded,
+    /// since it's not "mission critical".
     fn save_cfg(&self) -> anyhow::Result<()> {
         let config_path = get_config_path();
         if config_path.exists() {
@@ -471,6 +474,8 @@ impl Application for MainAppGui {
         )
         .padding(10)
         .size(20);
+        let rows_label = Text::new("Rows");
+        let rows_row = Row::new().push(rows_label).push(rows);
 
         let columns = TextInput::new(
             &mut self.columns_input,
@@ -480,6 +485,8 @@ impl Application for MainAppGui {
         )
         .padding(10)
         .size(20);
+        let columns_label = Text::new("Columns");
+        let columns_row = Row::new().push(columns_label).push(columns);
 
         let planes = TextInput::new(
             &mut self.planes_input,
@@ -489,6 +496,8 @@ impl Application for MainAppGui {
         )
         .padding(10)
         .size(20);
+        let planes_label = Text::new("Planes");
+        let planes_row = Row::new().push(planes_label).push(planes);
 
         let scan_period = TextInput::new(
             &mut self.scan_period_input,
@@ -498,6 +507,8 @@ impl Application for MainAppGui {
         )
         .padding(10)
         .size(20);
+        let scan_period_label = Text::new("Scan Period");
+        let scan_period_row = Row::new().push(scan_period_label).push(scan_period);
 
         let taglens_period = TextInput::new(
             &mut self.tag_period_input,
@@ -507,6 +518,8 @@ impl Application for MainAppGui {
         )
         .padding(10)
         .size(20);
+        let taglens_period_label = Text::new("TAG Lens Period");
+        let taglens_period_row = Row::new().push(taglens_period_label).push(taglens_period);
 
         let fillfrac = TextInput::new(
             &mut self.fill_fraction_input,
@@ -516,6 +529,8 @@ impl Application for MainAppGui {
         )
         .padding(10)
         .size(20);
+        let fillfrac_label = Text::new("Fill Fraction");
+        let fillfrac_row = Row::new().push(fillfrac_label).push(fillfrac);
 
         let deadtime = TextInput::new(
             &mut self.frame_dead_time_input,
@@ -525,6 +540,8 @@ impl Application for MainAppGui {
         )
         .padding(10)
         .size(20);
+        let deadtime_label = Text::new("Deadtime Between Frames");
+        let deadtime_row = Row::new().push(deadtime_label).push(deadtime);
 
         let pmt1 = PickList::new(
             &mut self.pmt1_pick_list,
@@ -653,13 +670,13 @@ impl Application for MainAppGui {
             .spacing(20)
             .padding(20)
             .max_width(600)
-            .push(rows)
-            .push(columns)
-            .push(planes)
-            .push(scan_period)
-            .push(taglens_period)
-            .push(fillfrac)
-            .push(deadtime)
+            .push(rows_row)
+            .push(columns_row)
+            .push(planes_row)
+            .push(scan_period_row)
+            .push(taglens_period_row)
+            .push(fillfrac_row)
+            .push(deadtime_row)
             .push(bidir)
             .push(
                 Row::new()
