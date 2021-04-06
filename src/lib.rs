@@ -35,8 +35,8 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
     if config_path.exists() {
         read_to_string(config_path)
             .and_then(|res| Ok(toml::from_str(&res)))
-            .unwrap()
-            .unwrap()
+            .expect("Read to string failed")
+            .expect("TOML parsing failed")
     } else {
         info!("Creating new configuration file in {:?}", config_path);
         create_dir_and_populate_with_default(config_path)

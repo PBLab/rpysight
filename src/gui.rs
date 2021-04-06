@@ -7,7 +7,7 @@ use crate::{
 };
 use iced::{
     button, pick_list, text_input, Application, Button, Checkbox, Clipboard, Column, Command,
-    Container, Element, Length, PickList, Row, Text, TextInput,
+    Container, Element, Length, PickList, Row, Text, TextInput, Image,
 };
 
 #[derive(Default)]
@@ -703,6 +703,7 @@ impl Application for MainAppGui {
             .spacing(20)
             .padding(20)
             .max_width(600)
+            .push(Image::new("resources/logo.png"))
             .push(filename_row)
             .push(rows_row)
             .push(columns_row)
