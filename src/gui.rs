@@ -1,7 +1,10 @@
 use std::fs::write;
 
-use crate::{get_config_path, rendering_helpers::{AppConfig, Picosecond}};
 use crate::{channel_value_to_pair, setup_rpysight};
+use crate::{
+    get_config_path,
+    rendering_helpers::{AppConfig, Picosecond},
+};
 use iced::{
     button, pick_list, text_input, Application, Button, Checkbox, Clipboard, Column, Command,
     Container, Element, Length, PickList, Row, Text, TextInput,
@@ -59,39 +62,49 @@ pub struct MainAppGui {
     run_button: button::State,
 }
 
+/// Initializes things on the Python side and starts the acquisition.
+///
+/// This method is called once the user clicks the "Run Application" button.
+async fn start_acquisition(cfg: AppConfig) {
+    let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
+    let (window, mut app) = setup_rpysight(&cfg);
+    app.start_timetagger_acq();
+    app.acquire_stream_filehandle();
+    window.render_loop(app);
+}
+
+/// Saves the current configuration to disk.
+///
+/// This function is called when the user starts the acquisition, which
+/// means that it can assume that the config exists, since it's usually
+/// created during start up.
+///
+/// The function overwrites the current settings with the new ones, as we
+/// don't currently offer any profiles\configuration management system.
+///
+/// Errors during this function are called and then basically discarded,
+/// since it's not "mission critical".
+fn save_cfg(app_config: &AppConfig) -> anyhow::Result<()> {
+    let config_path = get_config_path();
+    if config_path.exists() {
+        let serialized_cfg = toml::to_string(app_config).map_err(|e| {
+            warn!(
+                "Couldn't serialize user input struct before writing to disk: {}",
+                e
+            );
+            e
+        })?;
+        write(&config_path, serialized_cfg).map_err(|e| {
+            warn!("Couldn't serialize user input to disk: {}", e);
+            e
+        })?;
+    } else {
+        warn!("Configuration path doesn't exist before running the app");
+    };
+    Ok(())
+}
+
 impl MainAppGui {
-    /// Initializes things on the Python side and starts the acquisition.
-    fn start_acquisition(&mut self) {
-        let _ = self.save_cfg().ok();  // Errors are logged and quite irrelevant
-        let (window, mut app) = setup_rpysight(self);
-        app.start_timetagger_acq();
-        app.acquire_stream_filehandle();
-        window.render_loop(app);
-    }
-
-    /// Saves the current configuration to disk.
-    ///
-    /// This function is called when the user starts the acquisition, which
-    /// means that it can assume that the config exists, since it's usually
-    /// created during start up.
-    ///
-    /// The function overwrites the current settings with the new ones, as we
-    /// don't currently offer any profiles\configuration management system.
-    ///
-    /// Errors during this function are called and then basically discarded,
-    /// since it's not "mission critical".
-    fn save_cfg(&self) -> anyhow::Result<()> {
-        let config_path = get_config_path();
-        if config_path.exists() {
-            let app_config = &AppConfig::from_user_input(&self).map_err(|e| { warn!("Conversion of GUI parameters to the configuration struct failed: {}", e); e })?;
-            let serialized_cfg = toml::to_string(app_config).map_err(|e| { warn!("Couldn't serialize user input struct before writing to disk: {}", e); e })?;
-            write(&config_path, serialized_cfg).map_err(|e| { warn!("Couldn't serialize user input to disk: {}", e); e })?;
-        } else {
-            warn!("Configuration path doesn't exist before starting the app");
-        };
-        Ok(())
-    }
-
     pub(crate) fn get_num_rows(&self) -> &str {
         &self.rows_value
     }
@@ -457,10 +470,7 @@ impl Application for MainAppGui {
                 self.taglens_edge_selected = taglens_edge;
                 Command::none()
             }
-            Message::ButtonPressed => {
-                self.start_acquisition();
-                Command::none()
-            }
+            Message::ButtonPressed => Command::perform(start_acquisition(AppConfig::from_user_input(self).expect("")), Message::StartedAcquistion),
             Message::StartedAcquistion(()) => Command::none(),
         }
     }

@@ -109,14 +109,14 @@ pub fn load_timetagger_module(fname: PathBuf) -> PyResult<PyObject> {
 }
 
 /// A few necessary setups steps before starting the acquisition.
-pub(crate) fn setup_rpysight(config_gui: &MainAppGui) -> (Window, AppState<File>) {
+pub(crate) fn setup_rpysight(app_config: &AppConfig) -> (Window, AppState<File>) {
     // Set up the Python side
     let filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let timetagger_module: PyObject =
         load_timetagger_module(filename).expect("Python file and process could not be hooked into");
     let gil = Python::acquire_gil();
     // Set up the renderer side
-    let (window, app) = setup_renderer(gil, timetagger_module, TT_DATA_STREAM.into(), config_gui);
+    let (window, app) = setup_renderer(gil, timetagger_module, TT_DATA_STREAM.into(), app_config);
     info!("Renderer setup completed");
     (window, app)
 }

@@ -276,17 +276,15 @@ pub(crate) fn setup_renderer(
     gil: GILGuard,
     tt_module: PyObject,
     data_stream_fh: String,
-    main_app_gui: &MainAppGui,
+    app_config: &AppConfig,
 ) -> (Window, AppState<File>) {
     let window = Window::new("RPySight 0.1.0");
-    let parsed_config =
-        AppConfig::from_user_input(main_app_gui).expect("Error with parsing user input");
     let app = AppState::new(
         PointRenderer::new(),
         tt_module,
         gil,
         data_stream_fh,
-        parsed_config,
+        app_config.clone(),
     );
     (window, app)
 }
