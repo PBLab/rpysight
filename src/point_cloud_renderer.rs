@@ -17,6 +17,7 @@ use kiss3d::window::{State, Window};
 use nalgebra::Point3;
 use pyo3::prelude::*;
 use rand::prelude::*;
+use anyhow::{Result, Context};
 
 use crate::gui::MainAppGui;
 use crate::rendering_helpers::{AppConfig, DataType, Inputs, TimeToCoord};
@@ -184,10 +185,11 @@ impl AppState<File> {
         }
     }
 
-    pub fn start_timetagger_acq(&self) {
+    pub fn start_timetagger_acq(&self) -> Result<()> {
         self.tt_module
             .call1(self.gil.python(), (self.appconfig.clone(),))
-            .expect("Starting the TimeTagger failed, aborting!");
+            .context("Starting the TimeTagger failed, aborting!")?;
+        Ok(())
     }
 
     pub fn mock_get_data_from_channel(&self, length: usize) -> Vec<ImageCoor> {
@@ -203,10 +205,11 @@ impl AppState<File> {
         data
     }
 
-    pub fn acquire_stream_filehandle(&mut self) {
-        let stream = File::open(&self.data_stream_fh).expect("Can't open stream file, exiting.");
-        let stream = StreamReader::try_new(stream).expect("Stream file missing, cannot recover.");
+    pub fn acquire_stream_filehandle(&mut self) -> Result<()> {
+        let stream = File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
+        let stream = StreamReader::try_new(stream).context("Stream file missing, cannot recover.")?;
         self.data_stream = Some(stream);
+        Ok(())
     }
 
     /// Convert a raw event tag to a coordinate which will be displayed on the

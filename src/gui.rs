@@ -70,8 +70,8 @@ pub struct MainAppGui {
 async fn start_acquisition(cfg: AppConfig) {
     let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
     let (window, mut app) = setup_rpysight(&cfg);
-    app.start_timetagger_acq();
-    app.acquire_stream_filehandle();
+    app.start_timetagger_acq().expect("Failed to start TimeTagger, aborting");
+    app.acquire_stream_filehandle().expect("Failed to acquire stream handle");
     window.render_loop(app);
 }
 

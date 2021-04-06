@@ -1197,4 +1197,28 @@ mod tests {
         let deadtime = "2.009";
         assert_eq!(2_009_000_000, string_ms_to_ps(deadtime).unwrap());
     }
+
+    #[test]
+    fn channel_inp_to_num_disconneted_positive() {
+        let result = convert_user_channel_input_to_num((ChannelNumber::Disconnected, EdgeDetected::Rising));
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn channel_inp_to_num_disconneted_negative() {
+        let result = convert_user_channel_input_to_num((ChannelNumber::Disconnected, EdgeDetected::Falling));
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn channel_inp_to_num_standard_falling() {
+        let result = convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Falling));
+        assert_eq!(result, -3);
+    }
+
+    #[test]
+    fn channel_inp_to_num_standard_rising() {
+        let result = convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Rising));
+        assert_eq!(result, 3);
+    }
 }
