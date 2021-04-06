@@ -29,7 +29,7 @@ CHAN_STOP = 2
 TT_DATA_STREAM = "__tt_data_stream.dat"
 
 
-class CustomTT(TimeTagger.CustomMeasurement):
+class RealTimeRendering(TimeTagger.CustomMeasurement):
     """
     Example for a single start - multiple stop measurement.
         The class shows how to access the raw time-tag stream.
@@ -37,8 +37,9 @@ class CustomTT(TimeTagger.CustomMeasurement):
 
     def __init__(self, tagger, channels: list, fname=None):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
-        for channel in channels:
-            self.register_channel(channel)
+        if channels:
+            for channel in channels:
+                self.register_channel(channel)
 
         self.init_stream_and_schema()
 
@@ -106,11 +107,6 @@ class CustomTT(TimeTagger.CustomMeasurement):
         )
         return batch
 
-    def convert_tags_to_batch_inefficient(self, incoming_tags):
-        batch = pa.array(incoming_tags, type=self.struct)
-        batch = pa.record_batch([batch], schema=self.schema)
-        return batch
-
     def process(self, incoming_tags, begin_time, end_time):
         """
         Main processing method for the incoming raw time-tags.
@@ -137,17 +133,28 @@ class CustomTT(TimeTagger.CustomMeasurement):
         np.save(self.filehandle, incoming_tags)
 
 
-def run_tagger():
-    # c = CustomStartMultipleStop.from_existing_tagger()
+def run_tagger(channels: list):
+    """Run a TimeTagger acquisition with the GUI's parameters.
+
+    This function starts an acquisition using parameters from the RPySight GUI.
+    It should be called from that GUI.
+    """
     tagger = TimeTagger.createTimeTagger()
     tagger.reset()
     # enable the test signal
-    tagger.setTestSignal([CHAN_START, CHAN_STOP], True)
+    tagger.setTestSignal(channels, True)
     filename = 'target/test.npy'
-    tag = CustomTT(tagger, [CHAN_START, CHAN_STOP], filename)
-    tag.startFor(int(15e12))
-    tag.waitUntilFinished()
+    tag = RealTimeRendering(tagger, channels, filename)
+    _ = TimeTagger.FileWriter(tag, filename, [CHAN_START, CHAN_STOP])
+    # tag.start()
+
+
+def test_tagger(file="tests/data/1.ttbin"):
+    """A testing method to replay old acquisitions."""
+    tagger = TimeTagger.createTimeTaggerVirtual()
+    _ = RealTimeRendering(tagger, None, None)
+    tagger.replay(file)
 
 
 if __name__ == "__main__":
-    run_tagger()
+    run_tagger([CHAN_START, CHAN_STOP])
