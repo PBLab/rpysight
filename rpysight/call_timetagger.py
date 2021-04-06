@@ -13,13 +13,10 @@ Here they called the numbafied function 'fast_process' during each iteration. I
 replaced that function with my own mock function defined in lib.rs just to make
 it work once, and it did, which is great.
 """
-from time import sleep
 import pathlib
-import logging
 
 import numpy as np
 import pyarrow as pa
-import pyarrow.compute as pc
 
 import TimeTagger
 
@@ -30,9 +27,14 @@ TT_DATA_STREAM = "__tt_data_stream.dat"
 
 
 class RealTimeRendering(TimeTagger.CustomMeasurement):
-    """
-    Example for a single start - multiple stop measurement.
-        The class shows how to access the raw time-tag stream.
+    """Process the photon stream live and render it in 2D/3D.
+
+    This class streams the live tag data arriving from the TimeTagger to an
+    external Rust app named RPySight that parses the individual events and
+    renders them in 2D or 3D.
+
+    This class is always instatiated by that Rust process and should not be
+    used independently of it.
     """
 
     def __init__(self, tagger, channels: list, fname=None):
@@ -129,6 +131,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         """
         batch = self.convert_tags_to_recordbatch(incoming_tags)
         self.stream.write(batch)
+        # Saving the data to an npy file for future-proofing purposes
         np.save(self.filehandle, incoming_tags)
 
 

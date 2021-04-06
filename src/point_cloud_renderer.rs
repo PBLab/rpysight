@@ -179,7 +179,7 @@ impl AppState<File> {
             data_stream_fh,
             data_stream: None,
             appconfig: appconfig.clone(),
-            time_to_coord: TimeToCoord::from_acq_params(&appconfig, 1_750_000_000_000),
+            time_to_coord: TimeToCoord::from_acq_params(&appconfig, 1_650_000_000_000),
             inputs: Inputs::from_config(&appconfig),
         }
     }
@@ -221,7 +221,7 @@ impl AppState<File> {
     /// cases of overflow it's discarded at the moment.
     pub fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor> {
         if event.type_ != 0 {
-            return None;
+            return None
         }
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),

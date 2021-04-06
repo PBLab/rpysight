@@ -1,4 +1,4 @@
-//! Real time parsing and rendering of data coming from a TimeTagger
+//! Real time parsing and rendering of data coming from a TimeTagger.
 
 pub mod gui;
 pub mod point_cloud_renderer;
@@ -17,7 +17,7 @@ use pyo3::prelude::*;
 use thiserror::Error;
 use toml;
 
-use crate::gui::{ChannelNumber, EdgeDetected, MainAppGui};
+use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{setup_renderer, AppState};
 use crate::rendering_helpers::{AppConfig, AppConfigBuilder};
 

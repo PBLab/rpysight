@@ -1,8 +1,5 @@
 // Remember to $Env:PYTHONHOME = "C:\Users\PBLab\.conda\envs\timetagger\"
 // because powershell is too dumb to remember.
-
-// TODO: Labels should be added to the left of the entries in the GUI
-// TODO: I saw some peculiar photons that needed logging
 use std::fs::File;
 
 #[macro_use]
@@ -19,9 +16,10 @@ fn main() -> Result {
     let _ = WriteLogger::init(
         LevelFilter::Info,
         ConfigBuilder::default().set_time_to_local(true).build(),
-        File::create("target/rpysight.log").unwrap(),
+        File::create("target/rpysight.log")
+            .map_err(|e| iced::Error::WindowCreationFailed(Box::new(e)))?,
     )
-    .unwrap();
+    .map_err(|e| iced::Error::WindowCreationFailed(Box::new(e)))?;
     info!("Logger initialized successfully, starting RPySight");
     let cfg = reload_cfg_or_use_default();
     let settings = load_app_settings(cfg);
