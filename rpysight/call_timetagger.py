@@ -44,7 +44,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         self.init_stream_and_schema()
 
         if fname:
-            self.filehandle = open(fname, 'wb')
+            self.filehandle = open(fname, "wb")
         # At the end of a CustomMeasurement construction,
         # we must indicate that we have finished.
         self.finalize_init()
@@ -102,8 +102,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
             null_count=0,
         )
         batch = pa.record_batch(
-            [type_, missed_events, channel, time],
-            schema=self.schema
+            [type_, missed_events, channel, time], schema=self.schema
         )
         return batch
 
@@ -133,19 +132,37 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         np.save(self.filehandle, incoming_tags)
 
 
-def run_tagger(channels: list):
+def infer_channel_list_from_cfg(config):
+    """Generates a list of channels to register with the TimeTagger based
+    on the inputs in the configuration object"""
+    relevant_channels = [
+        config.pmt1_ch,
+        config.pmt2_ch,
+        config.pmt3_ch,
+        config.pmt4_ch,
+        config.laser_ch,
+        config.frame_ch,
+        config.lines_ch,
+        config.taglens_ch,
+    ]
+    channels = [ch for ch in relevant_channels if ch != 0]
+    return channels
+
+
+def run_tagger(config):
     """Run a TimeTagger acquisition with the GUI's parameters.
 
     This function starts an acquisition using parameters from the RPySight GUI.
-    It should be called from that GUI.
+    It should be called from that GUI since the parameter it receives arrives
+    directly from Rust.
     """
     tagger = TimeTagger.createTimeTagger()
     tagger.reset()
     # enable the test signal
+    channels = infer_channel_list_from_cfg(config)
     tagger.setTestSignal(channels, True)
-    filename = 'target/test.npy'
-    tag = RealTimeRendering(tagger, channels, filename)
-    _ = TimeTagger.FileWriter(tag, filename, [CHAN_START, CHAN_STOP])
+    tag = RealTimeRendering(tagger, channels, config.filename)
+    _ = TimeTagger.FileWriter(tag, config.filename, [CHAN_START, CHAN_STOP])
     # tag.start()
 
 

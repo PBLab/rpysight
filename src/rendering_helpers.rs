@@ -6,7 +6,6 @@ use std::{
 extern crate log;
 use nalgebra::{DVector, Point3};
 use pyo3::prelude::*;
-use pyo3::types::PyUnicode;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -168,6 +167,7 @@ impl Index<i32> for Inputs {
 #[pyclass]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
+    pub(crate) filename: String,
     pub(crate) rows: u32,
     pub(crate) columns: u32,
     pub(crate) planes: u32,
@@ -202,6 +202,7 @@ impl AppConfig {
         user_input: &MainAppGui,
     ) -> anyhow::Result<AppConfig, UserInputError> {
         Ok(AppConfigBuilder::default()
+            .with_filename(user_input.get_filename().to_string())
             .with_rows(
                 user_input
                     .get_num_rows()
@@ -304,6 +305,7 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> 
 
 #[derive(Clone)]
 pub(crate) struct AppConfigBuilder {
+    filename: String,
     point_color: Point3<f32>,
     rows: u32,
     columns: u32,
@@ -328,6 +330,7 @@ impl AppConfigBuilder {
     /// testing.
     pub(crate) fn default() -> AppConfigBuilder {
         AppConfigBuilder {
+            filename: "target/test.npy".to_string(),
             point_color: Point3::new(1.0f32, 1.0, 1.0),
             rows: 256,
             columns: 256,
@@ -350,6 +353,7 @@ impl AppConfigBuilder {
 
     pub(crate) fn build(&self) -> AppConfig {
         AppConfig {
+            filename: self.filename.clone(),
             point_color: self.point_color,
             rows: self.rows,
             columns: self.columns,
@@ -368,6 +372,11 @@ impl AppConfigBuilder {
             line_ch: self.line_ch,
             taglens_ch: self.taglens_ch,
         }
+    }
+
+    pub(crate) fn with_filename(&mut self, filename: String) -> &mut Self {
+        self.filename = filename;
+        self
     }
 
     pub(crate) fn with_point_color(&mut self, point_color: Point3<f32>) -> &mut Self {

@@ -12,6 +12,8 @@ use iced::{
 
 #[derive(Default)]
 pub struct MainAppGui {
+    filename_input: text_input::State,
+    filename_value: String,
     rows_input: text_input::State,
     rows_value: String,
     columns_input: text_input::State,
@@ -105,6 +107,10 @@ fn save_cfg(app_config: &AppConfig) -> anyhow::Result<()> {
 }
 
 impl MainAppGui {
+    pub(crate) fn get_filename(&self) -> &str {
+        &self.filename_value
+    }
+
     pub(crate) fn get_num_rows(&self) -> &str {
         &self.rows_value
     }
@@ -172,6 +178,7 @@ impl MainAppGui {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    FilenameChanged(String),
     RowsChanged(String),
     ColumnsChanged(String),
     PlanesChanged(String),
@@ -332,6 +339,7 @@ impl Application for MainAppGui {
     /// are updated from the input config instance.
     fn new(prev_config: AppConfig) -> (MainAppGui, Command<Message>) {
         let mut app = MainAppGui::default();
+        app.filename_value = prev_config.filename;
         app.rows_value = prev_config.rows.to_string();
         app.columns_value = prev_config.columns.to_string();
         app.planes_value = prev_config.planes.to_string();
@@ -374,6 +382,10 @@ impl Application for MainAppGui {
 
     fn update(&mut self, message: Message, _clip: &mut Clipboard) -> Command<Self::Message> {
         match message {
+            Message::FilenameChanged(filename) => {
+                self.filename_value = filename;
+                Command::none()
+            }
             Message::RowsChanged(rows) => {
                 self.rows_value = rows;
                 Command::none()
@@ -476,6 +488,17 @@ impl Application for MainAppGui {
     }
 
     fn view(&mut self) -> Element<Message> {
+        let filename = TextInput::new(
+            &mut self.filename_input,
+            "Save to",
+            &self.filename_value,
+            Message::FilenameChanged,
+        )
+        .padding(10)
+        .size(20);
+        let filename_label = Text::new("Filename").vertical_alignment(iced::VerticalAlignment::Bottom);
+        let filename_row = Row::new().push(filename_label).push(filename);
+
         let rows = TextInput::new(
             &mut self.rows_input,
             "Rows [px]",
@@ -680,6 +703,7 @@ impl Application for MainAppGui {
             .spacing(20)
             .padding(20)
             .max_width(600)
+            .push(filename_row)
             .push(rows_row)
             .push(columns_row)
             .push(planes_row)
