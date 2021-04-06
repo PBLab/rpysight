@@ -17,7 +17,7 @@ use crate::{
 pub(crate) type Picosecond = i64;
 
 /// Picosecond and Hz aware period
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Period {
     pub period: Picosecond,
 }
@@ -45,7 +45,7 @@ impl Deref for Period {
 }
 
 /// Determines whether the scan was bidirectional or unidirectional
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub(crate) enum Bidirectionality {
     Bidir,
     Unidir,
@@ -165,7 +165,7 @@ impl Index<i32> for Inputs {
 /// file, and it can also be sent from Rust to Python so that the TimeTagger
 /// will be aware of the different channels in use.
 #[pyclass]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppConfig {
     pub(crate) filename: String,
     pub(crate) rows: u32,
@@ -198,7 +198,7 @@ impl AppConfig {
     ///
     /// Each field is parsed using either simple string to number parsing or more
     /// elaborate special functions for some designated special types.
-    pub(crate) fn from_user_input(
+    pub fn from_user_input(
         user_input: &MainAppGui,
     ) -> anyhow::Result<AppConfig, UserInputError> {
         Ok(AppConfigBuilder::default()
@@ -304,7 +304,7 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> 
 }
 
 #[derive(Clone)]
-pub(crate) struct AppConfigBuilder {
+pub struct AppConfigBuilder {
     filename: String,
     point_color: Point3<f32>,
     rows: u32,
@@ -328,7 +328,7 @@ pub(crate) struct AppConfigBuilder {
 impl AppConfigBuilder {
     /// Generate an instance with default values. Useful mainly for quick
     /// testing.
-    pub(crate) fn default() -> AppConfigBuilder {
+    pub fn default() -> AppConfigBuilder {
         AppConfigBuilder {
             filename: "target/test.npy".to_string(),
             point_color: Point3::new(1.0f32, 1.0, 1.0),
@@ -351,7 +351,7 @@ impl AppConfigBuilder {
         }
     }
 
-    pub(crate) fn build(&self) -> AppConfig {
+    pub fn build(&self) -> AppConfig {
         AppConfig {
             filename: self.filename.clone(),
             point_color: self.point_color,

@@ -123,7 +123,7 @@ pub(crate) fn setup_rpysight(app_config: &AppConfig) -> (Window, AppState<File>)
 
 /// A custom error returned when the user supplies incorrect values.
 #[derive(Debug, Error, PartialEq)]
-pub(crate) enum UserInputError {
+pub enum UserInputError {
     #[error("Wrong input given for rows field (got `{0}`)")]
     InvalidRows(ParseIntError),
     #[error("Wrong input given for columns field (got `{0}`)")]
