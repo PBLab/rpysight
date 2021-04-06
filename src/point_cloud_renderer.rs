@@ -185,14 +185,16 @@ impl AppState<File> {
     }
 
     pub fn start_timetagger_acq(&self) {
-        self.tt_module.call0(self.gil.python()).unwrap();
+        self.tt_module
+            .call1(self.gil.python(), (self.appconfig.clone(),))
+            .expect("Starting the TimeTagger failed, aborting!");
     }
 
     pub fn mock_get_data_from_channel(&self, length: usize) -> Vec<ImageCoor> {
         let mut rng = rand::thread_rng();
         let mut data = Vec::with_capacity(10_000);
         for i in 0..length {
-            let x: f32 = rng.gen::<f32>(); 
+            let x: f32 = rng.gen::<f32>();
             let y: f32 = rng.gen::<f32>();
             let z: f32 = rng.gen::<f32>();
             let point = ImageCoor::new(x, y, z);
@@ -259,7 +261,8 @@ impl State for AppState<File> {
             info!("Received {} rows", batch.num_rows());
             let v = self.mock_get_data_from_channel(batch.num_rows());
             for p in v {
-                self.point_cloud_renderer.draw_point(p, self.appconfig.point_color)
+                self.point_cloud_renderer
+                    .draw_point(p, self.appconfig.point_color)
             }
             // let event_stream = EventStream::from_streamed_batch(&batch);
             // for event in event_stream.into_iter() {
