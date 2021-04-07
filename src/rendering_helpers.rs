@@ -196,9 +196,7 @@ impl AppConfig {
     ///
     /// Each field is parsed using either simple string to number parsing or more
     /// elaborate special functions for some designated special types.
-    pub fn from_user_input(
-        user_input: &MainAppGui,
-    ) -> anyhow::Result<AppConfig, UserInputError> {
+    pub fn from_user_input(user_input: &MainAppGui) -> anyhow::Result<AppConfig, UserInputError> {
         Ok(AppConfigBuilder::default()
             .with_filename(user_input.get_filename().to_string())
             .with_rows(
@@ -1198,25 +1196,29 @@ mod tests {
 
     #[test]
     fn channel_inp_to_num_disconneted_positive() {
-        let result = convert_user_channel_input_to_num((ChannelNumber::Disconnected, EdgeDetected::Rising));
+        let result =
+            convert_user_channel_input_to_num((ChannelNumber::Disconnected, EdgeDetected::Rising));
         assert_eq!(result, 0);
     }
 
     #[test]
     fn channel_inp_to_num_disconneted_negative() {
-        let result = convert_user_channel_input_to_num((ChannelNumber::Disconnected, EdgeDetected::Falling));
+        let result =
+            convert_user_channel_input_to_num((ChannelNumber::Disconnected, EdgeDetected::Falling));
         assert_eq!(result, 0);
     }
 
     #[test]
     fn channel_inp_to_num_standard_falling() {
-        let result = convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Falling));
+        let result =
+            convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Falling));
         assert_eq!(result, -3);
     }
 
     #[test]
     fn channel_inp_to_num_standard_rising() {
-        let result = convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Rising));
+        let result =
+            convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Rising));
         assert_eq!(result, 3);
     }
 }

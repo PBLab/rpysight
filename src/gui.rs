@@ -7,7 +7,7 @@ use crate::{
 };
 use iced::{
     button, pick_list, text_input, Application, Button, Checkbox, Clipboard, Column, Command,
-    Container, Element, Length, PickList, Row, Text, TextInput, Image,
+    Container, Element, Image, Length, PickList, Row, Text, TextInput,
 };
 
 #[derive(Default)]
@@ -72,9 +72,12 @@ async fn start_acquisition(cfg: AppConfig) {
     info!("befire setup rpysight");
     let (window, mut app) = setup_renderer(&cfg);
     info!("before timetagger acq started");
-    std::thread::spawn(move || start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting"));
+    std::thread::spawn(move || {
+        start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
+    });
     info!("after tt acq started");
-    app.acquire_stream_filehandle().expect("Failed to acquire stream handle");
+    app.acquire_stream_filehandle()
+        .expect("Failed to acquire stream handle");
     info!("after acquired fh");
     window.render_loop(app);
     info!("finished rendering");
@@ -487,7 +490,10 @@ impl Application for MainAppGui {
                 self.taglens_edge_selected = taglens_edge;
                 Command::none()
             }
-            Message::ButtonPressed => Command::perform(start_acquisition(AppConfig::from_user_input(self).expect("")), Message::StartedAcquistion),
+            Message::ButtonPressed => Command::perform(
+                start_acquisition(AppConfig::from_user_input(self).expect("")),
+                Message::StartedAcquistion,
+            ),
             Message::StartedAcquistion(()) => Command::none(),
         }
     }
@@ -501,7 +507,8 @@ impl Application for MainAppGui {
         )
         .padding(10)
         .size(20);
-        let filename_label = Text::new("Filename").vertical_alignment(iced::VerticalAlignment::Bottom);
+        let filename_label =
+            Text::new("Filename").vertical_alignment(iced::VerticalAlignment::Bottom);
         let filename_row = Row::new().push(filename_label).push(filename);
 
         let rows = TextInput::new(

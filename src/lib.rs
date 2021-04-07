@@ -4,19 +4,22 @@ pub mod gui;
 pub mod point_cloud_renderer;
 pub mod rendering_helpers;
 
-use std::{fs::{File, create_dir_all, read_to_string, write}, num::{ParseFloatError, ParseIntError}};
 use std::path::PathBuf;
+use std::{
+    fs::{create_dir_all, read_to_string, write, File},
+    num::{ParseFloatError, ParseIntError},
+};
 
 #[macro_use]
 extern crate log;
 use anyhow::Result;
 use directories::ProjectDirs;
 use iced::Settings;
+use kiss3d::point_renderer::PointRenderer;
 use kiss3d::window::Window;
 use pyo3::prelude::*;
 use thiserror::Error;
 use toml;
-use kiss3d::point_renderer::PointRenderer;
 
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::AppState;
@@ -25,7 +28,7 @@ use crate::rendering_helpers::{AppConfig, AppConfigBuilder};
 const TT_DATA_STREAM: &'static str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &'static str = "rpysight/call_timetagger.py";
 const DEFAULT_CONFIG_FNAME: &'static str = "default.toml";
-const TT_RUN_FUNCTION_NAME: &'static str ="run_tagger"; 
+const TT_RUN_FUNCTION_NAME: &'static str = "run_tagger";
 
 /// Load an existing configuration file or generate a new one with default
 /// values and load that instead.
@@ -50,16 +53,10 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
 ///
 /// Does the needed setup to generate the window and app objects that are used
 /// for rendering.
-pub(crate) fn setup_renderer(
-    app_config: &AppConfig,
-) -> (Window, AppState<File>) {
+pub(crate) fn setup_renderer(app_config: &AppConfig) -> (Window, AppState<File>) {
     let window = Window::new("RPySight 0.1.0");
     let data_stream_fh = TT_DATA_STREAM.into();
-    let app = AppState::new(
-        PointRenderer::new(),
-        data_stream_fh,
-        app_config.clone(),
-    );
+    let app = AppState::new(PointRenderer::new(), data_stream_fh, app_config.clone());
     (window, app)
 }
 
@@ -76,7 +73,6 @@ pub(crate) fn get_config_path() -> PathBuf {
     info!("Configuration path: {:?}", config_path);
     config_path
 }
-
 
 /// Populates a Settings instance with the configuration of RPySight.
 ///
@@ -125,12 +121,15 @@ pub fn load_timetagger_run_function(module_filename: PathBuf) -> PyResult<PyObje
     // Generate an owned object to be returned by value
     Ok(tt_starter.to_object(py))
 }
-    
+
 pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<()> {
     let module_filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let tt_module = load_timetagger_run_function(module_filename)?;
     tt_module
-        .call1(Python::acquire_gil().python(), (toml::to_string(app_config).expect("Unable to convert configuration to string"), ))
+        .call1(
+            Python::acquire_gil().python(),
+            (toml::to_string(app_config).expect("Unable to convert configuration to string"),),
+        )
         .expect("Starting the TimeTagger failed, aborting!");
     Ok(())
 }

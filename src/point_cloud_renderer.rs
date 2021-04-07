@@ -3,6 +3,7 @@ extern crate kiss3d;
 use std::fs::File;
 use std::io::Read;
 
+use anyhow::{Context, Result};
 use arrow::{
     array::{Int32Array, Int64Array, UInt16Array, UInt8Array},
     ipc::reader::StreamReader,
@@ -17,7 +18,6 @@ use kiss3d::window::{State, Window};
 use nalgebra::Point3;
 use pyo3::prelude::*;
 use rand::prelude::*;
-use anyhow::{Result, Context};
 
 use crate::rendering_helpers::{AppConfig, DataType, Inputs, TimeToCoord};
 
@@ -192,8 +192,10 @@ impl AppState<File> {
     }
 
     pub fn acquire_stream_filehandle(&mut self) -> Result<()> {
-        let stream = File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
-        let stream = StreamReader::try_new(stream).context("Stream file missing, cannot recover.")?;
+        let stream =
+            File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
+        let stream =
+            StreamReader::try_new(stream).context("Stream file missing, cannot recover.")?;
         self.data_stream = Some(stream);
         Ok(())
     }
@@ -210,7 +212,7 @@ impl AppState<File> {
     /// cases of overflow it's discarded at the moment.
     pub fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor> {
         if event.type_ != 0 {
-            return None
+            return None;
         }
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),

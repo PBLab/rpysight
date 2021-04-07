@@ -1,5 +1,9 @@
 use iced::Application;
-use librpysight::{self, gui::MainAppGui, rendering_helpers::{AppConfig, AppConfigBuilder}};
+use librpysight::{
+    self,
+    gui::MainAppGui,
+    rendering_helpers::{AppConfig, AppConfigBuilder},
+};
 use toml;
 
 #[test]
