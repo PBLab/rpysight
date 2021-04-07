@@ -187,7 +187,7 @@ impl AppState<File> {
 
     pub fn start_timetagger_acq(&self) -> Result<()> {
         self.tt_module
-            .call1(self.gil.python(), (toml::to_string(&self.appconfig.clone()).unwrap(), ))
+            .call1(self.gil.python(), (toml::to_string(&self.appconfig.clone())?, ))
             .context("Starting the TimeTagger failed, aborting!")?;
         Ok(())
     }

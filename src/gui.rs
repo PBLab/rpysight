@@ -708,7 +708,7 @@ impl Application for MainAppGui {
             .spacing(20)
             .padding(20)
             .max_width(600)
-            // .push(Image::new("resources/logo.png"))
+            .push(Image::new("resources/logo.png"))
             .push(filename_row)
             .push(rows_row)
             .push(columns_row)

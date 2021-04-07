@@ -65,7 +65,7 @@ pub(crate) fn get_config_path() -> PathBuf {
 /// they should be done inside this function.
 pub fn load_app_settings(cfg: AppConfig) -> Settings<AppConfig> {
     let mut settings = Settings::with_flags(cfg);
-    settings.window.size = (800, 1100);
+    settings.window.size = (800, 1200);
     settings
 }
 
