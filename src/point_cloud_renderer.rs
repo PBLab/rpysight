@@ -9,7 +9,7 @@ use arrow::{
     ipc::reader::StreamReader,
     record_batch::RecordBatch,
 };
-use kiss3d::camera::Camera;
+use kiss3d::{camera::Camera};
 use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::point_renderer::PointRenderer;
 use kiss3d::post_processing::PostProcessingEffect;
@@ -20,6 +20,7 @@ use pyo3::prelude::*;
 use rand::prelude::*;
 
 use crate::rendering_helpers::{AppConfig, DataType, Inputs, TimeToCoord};
+use crate::GLOBAL_OFFSET;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -44,6 +45,15 @@ impl Event {
             missed_event,
             channel,
             time,
+        }
+    }
+
+    pub(crate) fn from_stream_idx(stream: &EventStream, idx: usize) -> Self {
+        Event {
+            type_: stream.type_.value(idx),
+            missed_event: stream.missed_events.value(idx),
+            channel: stream.channel.value(idx),
+            time: stream.time.value(idx),
         }
     }
 }
@@ -173,7 +183,7 @@ impl AppState<File> {
             data_stream_fh,
             data_stream: None,
             appconfig: appconfig.clone(),
-            time_to_coord: TimeToCoord::from_acq_params(&appconfig, 1_650_000_000_000),
+            time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
             inputs: Inputs::from_config(&appconfig),
         }
     }
@@ -214,11 +224,13 @@ impl AppState<File> {
         if event.type_ != 0 {
             return None;
         }
+        info!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),
-            DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time),
+            DataType::Pmt2 => self.time_to_coord.dump(event.time),
             DataType::Line => self.time_to_coord.new_line(event.time),
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
+            DataType::Laser => self.time_to_coord.new_laser_event(event.time),
             _ => {
                 error!("Unsupported event: {:?}", event);
                 None
@@ -249,18 +261,26 @@ impl State for AppState<File> {
     fn step(&mut self, _window: &mut Window) {
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
-            info!("Received {} rows", batch.num_rows());
+            // info!("Received {} rows", batch.num_rows());
             // let v = self.mock_get_data_from_channel(batch.num_rows());
             // for p in v {
             //     self.point_cloud_renderer
             //         .draw_point(p, self.appconfig.point_color)
             // }
+            let mut idx = 0;
             let event_stream = EventStream::from_streamed_batch(&batch);
+            if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time <= self.time_to_coord.earliest_frame_time {
+                info!("The last event in the batch arrived before the first in the frame");
+                return;
+            }
             for event in event_stream.into_iter() {
+                if idx > 10 { break }
                 if let Some(point) = self.event_to_coordinate(event) {
+                    info!("This point is about to be rendered: {:?}", point);
                     self.point_cloud_renderer
                         .draw_point(point, self.appconfig.point_color)
                 }
+                idx += 1;
             }
         }
     }

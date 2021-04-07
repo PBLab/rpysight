@@ -69,18 +69,13 @@ pub struct MainAppGui {
 /// This method is called once the user clicks the "Run Application" button.
 async fn start_acquisition(cfg: AppConfig) {
     let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
-    info!("befire setup rpysight");
     let (window, mut app) = setup_renderer(&cfg);
-    info!("before timetagger acq started");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
-    info!("after tt acq started");
     app.acquire_stream_filehandle()
         .expect("Failed to acquire stream handle");
-    info!("after acquired fh");
     window.render_loop(app);
-    info!("finished rendering");
 }
 
 /// Saves the current configuration to disk.

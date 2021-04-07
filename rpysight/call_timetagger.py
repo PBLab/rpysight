@@ -14,6 +14,7 @@ replaced that function with my own mock function defined in lib.rs just to make
 it work once, and it did, which is great.
 """
 import pathlib
+from time import sleep
 
 import numpy as np
 import pyarrow as pa
@@ -133,7 +134,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         batch = self.convert_tags_to_recordbatch(incoming_tags)
         self.stream.write(batch)
         # Saving the data to an npy file for future-proofing purposes
-        np.save(self.filehandle, incoming_tags)
+        # np.save(self.filehandle, incoming_tags)
 
 
 def infer_channel_list_from_cfg(config):
@@ -166,12 +167,11 @@ def run_tagger(cfg: str):
         A TOML string to be parsed into a dictionary
     """
     config = toml.loads(cfg)
-    # config = read_current_config()
     tagger = TimeTagger.createTimeTagger()
     tagger.reset()
     # enable the test signal
     # channels = infer_channel_list_from_cfg(config)
-    channels = [1, 2]
+    channels = [1]
     tagger.setTestSignal(channels, True)
     tag = RealTimeRendering(tagger, channels, config['filename'])
     _ = TimeTagger.FileWriter(tagger, config['filename'], [CHAN_START, CHAN_STOP])
@@ -179,11 +179,14 @@ def run_tagger(cfg: str):
     tag.waitUntilFinished()
 
 
-def test_tagger(file="tests/data/1.ttbin"):
+def test_tagger(cfg: str):
     """A testing method to replay old acquisitions."""
+    config = toml.loads(cfg)
     tagger = TimeTagger.createTimeTaggerVirtual()
-    _ = RealTimeRendering(tagger, None, None)
-    tagger.replay(file)
+    rt = RealTimeRendering(tagger, None, None)
+    tagger.replay(config['filename'])
+    sleep(1)
+    
 
 
 if __name__ == "__main__":

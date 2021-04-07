@@ -630,6 +630,8 @@ pub(crate) struct TimeToCoord {
     voxel_delta_ps: VoxelDelta<Picosecond>,
     /// Deltas in image space of consecutive pixels, lines, etc.
     voxel_delta_im: VoxelDelta<f32>,
+    /// The earliest time of the first voxel
+    pub(crate) earliest_frame_time: Picosecond,
 }
 
 impl TimeToCoord {
@@ -795,6 +797,7 @@ impl TimeToCoord {
             next_frame_starts_at: max_frame_time + voxel_delta_ps.frame,
             voxel_delta_ps: voxel_delta_ps.clone(),
             voxel_delta_im: voxel_delta_im.clone(),
+            earliest_frame_time: offset,
         }
     }
 
@@ -858,6 +861,7 @@ impl TimeToCoord {
             next_frame_starts_at: max_frame_time + voxel_delta_ps.frame,
             voxel_delta_ps: voxel_delta_ps.clone(),
             voxel_delta_im: voxel_delta_im.clone(),
+            earliest_frame_time: offset,
         }
     }
 
@@ -887,6 +891,7 @@ impl TimeToCoord {
     /// as binary search, hashmap or an interval tree.
     pub(crate) fn tag_to_coord_linear(&mut self, time: i64) -> Option<ImageCoor> {
         if time > self.max_frame_time {
+            info!("Photon arrived after end of Frame! Our time: {}, Max time: {}", time, self.max_frame_time);
             self.update_2d_data_for_next_frame();
             return self.tag_to_coord_linear(time);
         }
@@ -894,6 +899,7 @@ impl TimeToCoord {
         let mut coord = None;
         for pair in &self.data[self.last_accessed_idx..] {
             if time <= pair.end_time {
+                info!("Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}", pair, time, additional_steps_taken);
                 self.last_accessed_idx += additional_steps_taken;
                 coord = Some(pair.coord);
                 break;
@@ -930,6 +936,7 @@ impl TimeToCoord {
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
         self.next_frame_starts_at = self.max_frame_time + self.voxel_delta_ps.frame;
         self.last_taglens_time = 0;
+        self.earliest_frame_time = self.data[0].end_time - self.voxel_delta_ps.column;
         info!("Done populating next frame");
     }
 
@@ -940,6 +947,14 @@ impl TimeToCoord {
 
     /// Handles a new TAG lens start-of-cycle event
     pub(crate) fn new_taglens_period(&self, _time: i64) -> Option<ImageCoor> {
+        None
+    }
+
+    pub(crate) fn new_laser_event(&self, _time: i64) -> Option<ImageCoor> {
+        None
+    }
+
+    pub(crate) fn dump(&self, _time: i64) -> Option<ImageCoor> {
         None
     }
 }
@@ -1015,7 +1030,7 @@ mod tests {
     #[test]
     fn test_period_to_hz_smaller() {
         let period = 1_000_000_000i64;
-        assert_eq!(Period { period: period }.to_hz(), 0.001f32);
+        assert_eq!(Period { period: period }.to_hz(), 1000.0f32);
     }
 
     #[test]
