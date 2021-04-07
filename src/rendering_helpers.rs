@@ -164,7 +164,6 @@ impl Index<i32> for Inputs {
 /// It can be serialized so that it can be saved on disk as a configuration
 /// file, and it can also be sent from Rust to Python so that the TimeTagger
 /// will be aware of the different channels in use.
-#[pyclass]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppConfig {
     pub(crate) filename: String,

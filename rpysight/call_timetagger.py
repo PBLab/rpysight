@@ -17,6 +17,7 @@ import pathlib
 
 import numpy as np
 import pyarrow as pa
+import toml
 
 import TimeTagger
 
@@ -139,34 +140,43 @@ def infer_channel_list_from_cfg(config):
     """Generates a list of channels to register with the TimeTagger based
     on the inputs in the configuration object"""
     relevant_channels = [
-        config.pmt1_ch,
-        config.pmt2_ch,
-        config.pmt3_ch,
-        config.pmt4_ch,
-        config.laser_ch,
-        config.frame_ch,
-        config.lines_ch,
-        config.taglens_ch,
+        config['pmt1_ch'],
+        config['pmt2_ch'],
+        config['pmt3_ch'],
+        config['pmt4_ch'],
+        config['laser_ch'],
+        config['frame_ch'],
+        config['line_ch'],
+        config['taglens_ch'],
     ]
     channels = [ch for ch in relevant_channels if ch != 0]
     return channels
 
 
-def run_tagger(config):
+def run_tagger(cfg: str):
     """Run a TimeTagger acquisition with the GUI's parameters.
 
     This function starts an acquisition using parameters from the RPySight GUI.
     It should be called from that GUI since the parameter it receives arrives
     directly from Rust.
+
+    Parameters
+    ----------
+    cfg : str
+        A TOML string to be parsed into a dictionary
     """
+    config = toml.loads(cfg)
+    # config = read_current_config()
     tagger = TimeTagger.createTimeTagger()
     tagger.reset()
     # enable the test signal
-    channels = infer_channel_list_from_cfg(config)
+    # channels = infer_channel_list_from_cfg(config)
+    channels = [1, 2]
     tagger.setTestSignal(channels, True)
-    tag = RealTimeRendering(tagger, channels, config.filename)
-    _ = TimeTagger.FileWriter(tag, config.filename, [CHAN_START, CHAN_STOP])
-    # tag.start()
+    tag = RealTimeRendering(tagger, channels, config['filename'])
+    _ = TimeTagger.FileWriter(tagger, config['filename'], [CHAN_START, CHAN_STOP])
+    tag.startFor(int(10e12))
+    tag.waitUntilFinished()
 
 
 def test_tagger(file="tests/data/1.ttbin"):

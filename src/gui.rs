@@ -69,10 +69,15 @@ pub struct MainAppGui {
 /// This method is called once the user clicks the "Run Application" button.
 async fn start_acquisition(cfg: AppConfig) {
     let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
+    info!("befire setup rpysight");
     let (window, mut app) = setup_rpysight(&cfg);
+    info!("before timetagger acq started");
     app.start_timetagger_acq().expect("Failed to start TimeTagger, aborting");
+    info!("after tt acq started");
     app.acquire_stream_filehandle().expect("Failed to acquire stream handle");
+    info!("after acquired fh");
     window.render_loop(app);
+    info!("finished rendering");
 }
 
 /// Saves the current configuration to disk.
@@ -703,7 +708,7 @@ impl Application for MainAppGui {
             .spacing(20)
             .padding(20)
             .max_width(600)
-            .push(Image::new("resources/logo.png"))
+            // .push(Image::new("resources/logo.png"))
             .push(filename_row)
             .push(rows_row)
             .push(columns_row)
