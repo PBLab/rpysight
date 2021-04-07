@@ -9,7 +9,7 @@ use arrow::{
     ipc::reader::StreamReader,
     record_batch::RecordBatch,
 };
-use kiss3d::{camera::Camera};
+use kiss3d::camera::Camera;
 use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::point_renderer::PointRenderer;
 use kiss3d::post_processing::PostProcessingEffect;
@@ -269,12 +269,16 @@ impl State for AppState<File> {
             // }
             let mut idx = 0;
             let event_stream = EventStream::from_streamed_batch(&batch);
-            if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time <= self.time_to_coord.earliest_frame_time {
+            if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time
+                <= self.time_to_coord.earliest_frame_time
+            {
                 info!("The last event in the batch arrived before the first in the frame");
                 return;
             }
             for event in event_stream.into_iter() {
-                if idx > 10 { break }
+                if idx > 10 {
+                    break;
+                }
                 if let Some(point) = self.event_to_coordinate(event) {
                     info!("This point is about to be rendered: {:?}", point);
                     self.point_cloud_renderer

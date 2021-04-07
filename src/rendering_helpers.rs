@@ -891,7 +891,10 @@ impl TimeToCoord {
     /// as binary search, hashmap or an interval tree.
     pub(crate) fn tag_to_coord_linear(&mut self, time: i64) -> Option<ImageCoor> {
         if time > self.max_frame_time {
-            info!("Photon arrived after end of Frame! Our time: {}, Max time: {}", time, self.max_frame_time);
+            info!(
+                "Photon arrived after end of Frame! Our time: {}, Max time: {}",
+                time, self.max_frame_time
+            );
             self.update_2d_data_for_next_frame();
             return self.tag_to_coord_linear(time);
         }
@@ -899,7 +902,10 @@ impl TimeToCoord {
         let mut coord = None;
         for pair in &self.data[self.last_accessed_idx..] {
             if time <= pair.end_time {
-                info!("Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}", pair, time, additional_steps_taken);
+                info!(
+                    "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}",
+                    pair, time, additional_steps_taken
+                );
                 self.last_accessed_idx += additional_steps_taken;
                 coord = Some(pair.coord);
                 break;
