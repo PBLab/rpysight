@@ -243,7 +243,7 @@ impl State for AppState<File> {
 
     /// Main logic per step - required by the State trait. The function reads
     /// data awaiting from the TimeTagger and then pushes it into the renderer.
-    /// Each recorded tag (=Event) can be a Time tag or a tag signaling
+    /// Each recorded tag (=Event) can be a time tag or a tag signaling
     /// overflow. This iteration process filters these non-time tags from the
     /// more relevant tags.
     fn step(&mut self, _window: &mut Window) {
