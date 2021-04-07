@@ -162,7 +162,7 @@ impl<'a> IntoIterator for EventStream<'a> {
 
 /// Holds the custom renderer that will be used for rendering the
 /// point cloud and the needed data streams for it
-pub(crate) struct AppState<R: Read> {
+pub struct AppState<R: Read> {
     point_cloud_renderer: PointRenderer,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
