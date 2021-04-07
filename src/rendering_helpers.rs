@@ -5,7 +5,6 @@ use std::{
 
 extern crate log;
 use nalgebra::{DVector, Point3};
-use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{

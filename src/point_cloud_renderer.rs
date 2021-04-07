@@ -19,7 +19,6 @@ use pyo3::prelude::*;
 use rand::prelude::*;
 use anyhow::{Result, Context};
 
-use crate::gui::MainAppGui;
 use crate::rendering_helpers::{AppConfig, DataType, Inputs, TimeToCoord};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
@@ -155,9 +154,7 @@ impl<'a> IntoIterator for EventStream<'a> {
 /// point cloud and the needed data streams for it
 pub(crate) struct AppState<R: Read> {
     point_cloud_renderer: PointRenderer,
-    gil: GILGuard,
     data_stream_fh: String,
-    tt_module: PyObject,
     pub data_stream: Option<StreamReader<R>>,
     appconfig: AppConfig,
     time_to_coord: TimeToCoord,
@@ -168,15 +165,11 @@ impl AppState<File> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(
         point_cloud_renderer: PointRenderer,
-        tt_module: PyObject,
-        gil: GILGuard,
         data_stream_fh: String,
         appconfig: AppConfig,
     ) -> Self {
         AppState {
             point_cloud_renderer,
-            tt_module,
-            gil,
             data_stream_fh,
             data_stream: None,
             appconfig: appconfig.clone(),
@@ -185,17 +178,10 @@ impl AppState<File> {
         }
     }
 
-    pub fn start_timetagger_acq(&self) -> Result<()> {
-        self.tt_module
-            .call1(self.gil.python(), (toml::to_string(&self.appconfig.clone())?, ))
-            .context("Starting the TimeTagger failed, aborting!")?;
-        Ok(())
-    }
-
     pub fn mock_get_data_from_channel(&self, length: usize) -> Vec<ImageCoor> {
         let mut rng = rand::thread_rng();
         let mut data = Vec::with_capacity(10_000);
-        for i in 0..length {
+        for _ in 0..length {
             let x: f32 = rng.gen::<f32>();
             let y: f32 = rng.gen::<f32>();
             let z: f32 = rng.gen::<f32>();
@@ -262,38 +248,18 @@ impl State for AppState<File> {
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
             info!("Received {} rows", batch.num_rows());
-            let v = self.mock_get_data_from_channel(batch.num_rows());
-            for p in v {
-                self.point_cloud_renderer
-                    .draw_point(p, self.appconfig.point_color)
-            }
-            // let event_stream = EventStream::from_streamed_batch(&batch);
-            // for event in event_stream.into_iter() {
-            //     if let Some(point) = self.event_to_coordinate(event) {
-            //         self.point_cloud_renderer
-            //             .draw_point(point, self.appconfig.point_color)
-            //     }
+            // let v = self.mock_get_data_from_channel(batch.num_rows());
+            // for p in v {
+            //     self.point_cloud_renderer
+            //         .draw_point(p, self.appconfig.point_color)
             // }
+            let event_stream = EventStream::from_streamed_batch(&batch);
+            for event in event_stream.into_iter() {
+                if let Some(point) = self.event_to_coordinate(event) {
+                    self.point_cloud_renderer
+                        .draw_point(point, self.appconfig.point_color)
+                }
+            }
         }
     }
 }
-
-pub(crate) fn setup_renderer(
-    gil: GILGuard,
-    tt_module: PyObject,
-    data_stream_fh: String,
-    app_config: &AppConfig,
-) -> (Window, AppState<File>) {
-    let window = Window::new("RPySight 0.1.0");
-    let app = AppState::new(
-        PointRenderer::new(),
-        tt_module,
-        gil,
-        data_stream_fh,
-        app_config.clone(),
-    );
-    (window, app)
-}
-
-#[cfg(test)]
-mod tests {}

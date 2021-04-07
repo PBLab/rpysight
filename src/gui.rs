@@ -1,6 +1,6 @@
 use std::fs::write;
 
-use crate::{channel_value_to_pair, setup_rpysight};
+use crate::{channel_value_to_pair, setup_renderer, start_timetagger_with_python};
 use crate::{
     get_config_path,
     rendering_helpers::{AppConfig, Picosecond},
@@ -70,9 +70,9 @@ pub struct MainAppGui {
 async fn start_acquisition(cfg: AppConfig) {
     let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
     info!("befire setup rpysight");
-    let (window, mut app) = setup_rpysight(&cfg);
+    let (window, mut app) = setup_renderer(&cfg);
     info!("before timetagger acq started");
-    app.start_timetagger_acq().expect("Failed to start TimeTagger, aborting");
+    std::thread::spawn(move || start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting"));
     info!("after tt acq started");
     app.acquire_stream_filehandle().expect("Failed to acquire stream handle");
     info!("after acquired fh");
