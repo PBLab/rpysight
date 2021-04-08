@@ -19,8 +19,8 @@ use nalgebra::Point3;
 use pyo3::prelude::*;
 use rand::prelude::*;
 
-use crate::rendering_helpers::TimeToCoord;
 use crate::configuration::{AppConfig, DataType, Inputs};
+use crate::rendering_helpers::TimeToCoord;
 use crate::GLOBAL_OFFSET;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
@@ -233,7 +233,6 @@ impl AppState<File> {
         }
     }
 
-
     pub fn acquire_stream_filehandle(&mut self) -> Result<()> {
         let stream =
             File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
@@ -316,5 +315,4 @@ impl State for AppState<File> {
             }
         }
     }
-
 }

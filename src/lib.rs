@@ -1,9 +1,9 @@
 //! Real time parsing and rendering of data coming from a TimeTagger.
 
+pub mod configuration;
 pub mod gui;
 pub mod point_cloud_renderer;
 pub mod rendering_helpers;
-pub mod configuration;
 
 use std::path::PathBuf;
 use std::{
@@ -22,9 +22,9 @@ use pyo3::prelude::*;
 use thiserror::Error;
 use toml;
 
+use crate::configuration::{AppConfig, AppConfigBuilder};
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::AppState;
-use crate::configuration::{AppConfig, AppConfigBuilder};
 
 const TT_DATA_STREAM: &'static str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &'static str = "rpysight/call_timetagger.py";

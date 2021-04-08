@@ -4,11 +4,11 @@ use std::num::ParseFloatError;
 use std::ops::{Deref, Index};
 
 use nalgebra::Point3;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::UserInputError;
-use crate::gui::{MainAppGui, EdgeDetected, ChannelNumber};
+use crate::gui::{ChannelNumber, EdgeDetected, MainAppGui};
 use crate::rendering_helpers::Picosecond;
+use crate::UserInputError;
 
 /// Picosecond and Hz aware period
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]

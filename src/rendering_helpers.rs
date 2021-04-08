@@ -1,11 +1,10 @@
 extern crate log;
 use nalgebra::DVector;
 
-use crate::point_cloud_renderer::ImageCoor;
 use crate::configuration::{AppConfig, Bidirectionality};
+use crate::point_cloud_renderer::ImageCoor;
 
 pub(crate) type Picosecond = i64;
-
 
 /// Marker trait to allow specific types to be used as deltas between pixels -
 /// for the image space rendering case the deltas are in f32, while for the
@@ -500,8 +499,8 @@ impl TimeToCoord {
 mod tests {
     use nalgebra::Point3;
 
-    use crate::configuration::{AppConfigBuilder, Period};
     use super::*;
+    use crate::configuration::{AppConfigBuilder, Period};
 
     /// Helper method to test config-dependent things without actually caring
     /// about the different config values
@@ -679,5 +678,4 @@ mod tests {
         let snake = TimeToCoord::from_acq_params(&config, offset);
         assert_eq!(snake.data[0].end_time, offset);
     }
-
 }
