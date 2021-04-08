@@ -2,18 +2,17 @@
 extern crate simplelog;
 
 use std::fs::File;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use arrow::csv::Reader;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
-use kiss3d::renderer::PointRenderer;
 use rand::prelude::*;
+use nalgebra::Point3;
 
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Inputs};
-use librpysight::point_cloud_renderer::{EventStream, TimeTaggerIpcHandler, Event, AppState, ImageCoor};
+use librpysight::point_cloud_renderer::{EventStream, TimeTaggerIpcHandler, Event, ImageCoor};
 use librpysight::rendering_helpers::TimeToCoord;
 use simplelog::*;
 
@@ -90,7 +89,7 @@ fn mock_acquisition_loop(cfg: AppConfig) -> MockAppState {
 struct MockAppState {
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<File>>,
-    appconfig: AppConfig,
+    point_color: Point3<f32>,
     time_to_coord: TimeToCoord,
     inputs: Inputs,
 }
@@ -104,7 +103,7 @@ impl MockAppState {
         MockAppState {
             data_stream_fh,
             data_stream: None,
-            appconfig: appconfig.clone(),
+            point_color: Point3::<f32>::new(1.0, 1.0, 1.0),
             time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
             inputs: Inputs::from_config(&appconfig),
         }
@@ -195,7 +194,7 @@ impl TimeTaggerIpcHandler for MockAppState {
     }
 }
 
-fn setup() -> AppState<File> {
+fn setup() -> MockAppState {
     let _ = TestLogger::init(
         LevelFilter::Info,
         ConfigBuilder::default().set_time_to_local(true).build(),

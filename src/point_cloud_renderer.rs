@@ -173,7 +173,7 @@ pub struct AppState<R: Read> {
     point_cloud_renderer: PointRenderer,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
-    appconfig: AppConfig,
+    point_color: Point3<f32>,
     time_to_coord: TimeToCoord,
     inputs: Inputs,
 }
@@ -189,7 +189,7 @@ impl AppState<File> {
             point_cloud_renderer,
             data_stream_fh,
             data_stream: None,
-            appconfig: appconfig.clone(),
+            point_color: Point3::<f32>::new(1.0, 1.0, 1.0),
             time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
             inputs: Inputs::from_config(&appconfig),
         }
@@ -262,7 +262,7 @@ impl State for AppState<File> {
             // let v = self.mock_get_data_from_channel(batch.num_rows());
             // for p in v {
             //     self.point_cloud_renderer
-            //         .draw_point(p, self.appconfig.point_color)
+            //         .draw_point(p, self.point_color)
             // }
             let event_stream = EventStream::from_streamed_batch(&batch);
             if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time
@@ -275,7 +275,7 @@ impl State for AppState<File> {
                 if let Some(point) = self.event_to_coordinate(event) {
                     info!("This point is about to be rendered: {:?}", point);
                     self.point_cloud_renderer
-                        .draw_point(point, self.appconfig.point_color)
+                        .draw_point(point, self.point_color)
                 }
             }
         }
