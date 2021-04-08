@@ -203,14 +203,15 @@ impl AppState<File> {
     }
 
     /// Mock step function for testing.
+    /// Does not render anything, just prints out stuff.
+    /// This is probably not the right way to do things.
     fn mock_step(&mut self) {
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
             info!("Received {} rows", batch.num_rows());
             // let v = self.mock_get_data_from_channel(batch.num_rows());
             // for p in v {
-            //     self.point_cloud_renderer
-            //         .draw_point(p, self.appconfig.point_color)
+            //     info!("This point is about to be rendered: {:?}", p);
             // }
             let mut idx = 0;
             let event_stream = EventStream::from_streamed_batch(&batch);
@@ -226,8 +227,6 @@ impl AppState<File> {
                 }
                 if let Some(point) = self.event_to_coordinate(event) {
                     info!("This point is about to be rendered: {:?}", point);
-                    self.point_cloud_renderer
-                        .draw_point(point, self.appconfig.point_color)
                 }
                 idx += 1;
             }

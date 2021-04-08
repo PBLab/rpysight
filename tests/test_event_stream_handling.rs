@@ -1,15 +1,13 @@
 use std::sync::Arc;
 use std::path::PathBuf;
 use std::fs::File;
-use std::io::{Read, Write};
 
 use arrow::csv::Reader;
 use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
 use arrow::ipc::{writer::StreamWriter, reader::StreamReader};
 
 use kiss3d::renderer::PointRenderer;
-use librpysight::rendering_helpers::{AppConfig, AppConfigBuilder};
+use librpysight::configuration::{AppConfig, AppConfigBuilder};
 use librpysight::point_cloud_renderer::AppState;
 
 /// Run once to generate .dat file which behave as streams
