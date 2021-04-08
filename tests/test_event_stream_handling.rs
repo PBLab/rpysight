@@ -1,14 +1,24 @@
+#[macro_use] extern crate log;
+extern crate simplelog;
+
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use anyhow::{Context, Result};
 use arrow::csv::Reader;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
-
 use kiss3d::renderer::PointRenderer;
-use librpysight::configuration::{AppConfig, AppConfigBuilder};
-use librpysight::point_cloud_renderer::AppState;
+use rand::prelude::*;
+
+use librpysight::configuration::{AppConfig, AppConfigBuilder, Inputs};
+use librpysight::point_cloud_renderer::{EventStream, TimeTaggerIpcHandler, Event, AppState, ImageCoor};
+use librpysight::rendering_helpers::TimeToCoord;
+use simplelog::*;
+
+const GLOBAL_OFFSET: i64 = 0;
+
 
 /// Run once to generate .dat file which behave as streams
 fn test_file_to_stream() {
@@ -67,17 +77,130 @@ fn read_as_stream(fname: &str) -> StreamReader<File> {
 //     batch
 // }
 
-fn mock_acquisition_loop(cfg: AppConfig) -> AppState<File> {
-    let mut fname = PathBuf::new();
-    fname.push("tests/data/real_record_batch_short.csv");
-    let mut app = AppState::new(PointRenderer::new(), String::from(""), cfg);
+fn mock_acquisition_loop(cfg: AppConfig) -> MockAppState {
+    let mut app = MockAppState::new(String::from(
+        "tests/data/real_record_batch_full_stream.dat"
+), cfg);
     app.data_stream = Some(read_as_stream(
         "tests/data/real_record_batch_full_stream.dat",
     ));
     app
 }
 
+struct MockAppState {
+    data_stream_fh: String,
+    pub data_stream: Option<StreamReader<File>>,
+    appconfig: AppConfig,
+    time_to_coord: TimeToCoord,
+    inputs: Inputs,
+}
+
+impl MockAppState {
+    /// Generates a new app from a renderer and a receiving end of a channel
+    pub fn new(
+        data_stream_fh: String,
+        appconfig: AppConfig,
+    ) -> Self {
+        MockAppState {
+            data_stream_fh,
+            data_stream: None,
+            appconfig: appconfig.clone(),
+            time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
+            inputs: Inputs::from_config(&appconfig),
+        }
+    }
+
+    pub fn get_data_from_channel(&self, length: usize) -> Vec<ImageCoor> {
+        let mut rng = rand::thread_rng();
+        let mut data = Vec::with_capacity(10_000);
+        for _ in 0..length {
+            let x: f32 = rng.gen::<f32>();
+            let y: f32 = rng.gen::<f32>();
+            let z: f32 = rng.gen::<f32>();
+            let point = ImageCoor::new(x, y, z);
+            data.push(point);
+        }
+        data
+    }
+
+    /// Mock step function for testing.
+    /// Does not render anything, just prints out stuff.
+    /// This is probably not the right way to do things.
+    fn step(&mut self) {
+        if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
+            let batch = batch.unwrap();
+            info!("Received {} rows", batch.num_rows());
+            // let v = self.mock_get_data_from_channel(batch.num_rows());
+            // for p in v {
+            //     info!("This point is about to be rendered: {:?}", p);
+            // }
+            let mut idx = 0;
+            let event_stream = EventStream::from_streamed_batch(&batch);
+            if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time
+                <= self.time_to_coord.earliest_frame_time
+            {
+                info!("The last event in the batch arrived before the first in the frame");
+                return;
+            }
+            for event in event_stream.into_iter() {
+                if idx > 10 {
+                    break;
+                }
+                if let Some(point) = self.event_to_coordinate(event) {
+                    info!("This point is about to be rendered: {:?}", point);
+                }
+                idx += 1;
+            }
+        }
+    }
+}
+
+impl TimeTaggerIpcHandler for MockAppState {
+    /// Instantiate an IPC StreamReader using an existing file handle.
+    fn acquire_stream_filehandle(&mut self) -> Result<()> {
+        let stream =
+            File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
+        let stream =
+            StreamReader::try_new(stream).context("Stream file missing, cannot recover.")?;
+        self.data_stream = Some(stream);
+        Ok(())
+    }
+
+    /// Convert a raw event tag to a coordinate which will be displayed on the
+    /// screen.
+    ///
+    /// This is the core of the rendering logic of this application, where all
+    /// metadata (row, column info) is used to decide where to place a given
+    /// event.
+    ///
+    /// None is returned if the tag isn't a time tag. When the tag is from a
+    /// non-imaging channel it's taken into account, but otherwise (i.e. in
+    /// cases of overflow it's discarded at the moment.
+    fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor> {
+        if event.type_ != 0 {
+            return None;
+        }
+        info!("Received the following event: {:?}", event);
+        match self.inputs[event.channel] {
+            librpysight::configuration::DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),
+            librpysight::configuration::DataType::Pmt2 => self.time_to_coord.dump(event.time),
+            librpysight::configuration::DataType::Line => self.time_to_coord.new_line(event.time),
+            librpysight::configuration::DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
+            librpysight::configuration::DataType::Laser => self.time_to_coord.new_laser_event(event.time),
+            _ => {
+                error!("Unsupported event: {:?}", event);
+                None
+            }
+        }
+    }
+}
+
 fn setup() -> AppState<File> {
+    let _ = TestLogger::init(
+        LevelFilter::Info,
+        ConfigBuilder::default().set_time_to_local(true).build(),
+    );
+
     let cfg = AppConfigBuilder::default().build();
     let app = mock_acquisition_loop(cfg);
     app

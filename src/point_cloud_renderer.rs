@@ -40,7 +40,7 @@ pub struct Event {
 
 impl Event {
     /// Create a new Event with the given values
-    pub(crate) fn new(type_: u8, missed_event: u16, channel: i32, time: i64) -> Self {
+    pub fn new(type_: u8, missed_event: u16, channel: i32, time: i64) -> Self {
         Event {
             type_,
             missed_event,
@@ -49,7 +49,7 @@ impl Event {
         }
     }
 
-    pub(crate) fn from_stream_idx(stream: &EventStream, idx: usize) -> Self {
+    pub fn from_stream_idx(stream: &EventStream, idx: usize) -> Self {
         Event {
             type_: stream.type_.value(idx),
             missed_event: stream.missed_events.value(idx),
@@ -60,7 +60,7 @@ impl Event {
 }
 
 /// An iterator wrapper for [`EventStream`]
-pub(crate) struct EventStreamIter<'a> {
+pub struct EventStreamIter<'a> {
     stream: EventStream<'a>,
     idx: usize,
     len: usize,
@@ -92,7 +92,7 @@ impl<'a> Iterator for EventStreamIter<'a> {
 /// iteration over the tags for the downstream 'user', via the accompanying
 /// ['EventStreamIter`].
 #[derive(Debug)]
-pub(crate) struct EventStream<'a> {
+pub struct EventStream<'a> {
     type_: &'a UInt8Array,
     missed_events: &'a UInt16Array,
     channel: &'a Int32Array,
@@ -101,7 +101,7 @@ pub(crate) struct EventStream<'a> {
 
 impl<'a> EventStream<'a> {
     /// Creates a new stream with views over the arriving data.
-    pub(crate) fn new(
+    pub fn new(
         type_: &'a UInt8Array,
         missed_events: &'a UInt16Array,
         channel: &'a Int32Array,
@@ -115,7 +115,7 @@ impl<'a> EventStream<'a> {
         }
     }
 
-    pub(crate) fn from_streamed_batch(batch: &'a RecordBatch) -> EventStream<'a> {
+    pub fn from_streamed_batch(batch: &'a RecordBatch) -> EventStream<'a> {
         let type_ = batch
             .column(0)
             .as_any()
@@ -139,7 +139,7 @@ impl<'a> EventStream<'a> {
         EventStream::new(type_, missed_events, channel, time)
     }
 
-    pub(crate) fn iter(self) -> EventStreamIter<'a> {
+    pub fn iter(self) -> EventStreamIter<'a> {
         EventStreamIter {
             len: self.num_rows(),
             stream: self,
@@ -147,7 +147,7 @@ impl<'a> EventStream<'a> {
         }
     }
 
-    pub(crate) fn num_rows(&self) -> usize {
+    pub fn num_rows(&self) -> usize {
         self.type_.len()
     }
 }
@@ -159,6 +159,12 @@ impl<'a> IntoIterator for EventStream<'a> {
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
+}
+
+/// A handler of streaming time tagger data
+pub trait TimeTaggerIpcHandler {
+    fn acquire_stream_filehandle(&mut self) -> Result<()>;
+    fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor>;
 }
 
 /// Holds the custom renderer that will be used for rendering the
@@ -188,52 +194,11 @@ impl AppState<File> {
             inputs: Inputs::from_config(&appconfig),
         }
     }
+}
 
-    pub fn mock_get_data_from_channel(&self, length: usize) -> Vec<ImageCoor> {
-        let mut rng = rand::thread_rng();
-        let mut data = Vec::with_capacity(10_000);
-        for _ in 0..length {
-            let x: f32 = rng.gen::<f32>();
-            let y: f32 = rng.gen::<f32>();
-            let z: f32 = rng.gen::<f32>();
-            let point = ImageCoor::new(x, y, z);
-            data.push(point);
-        }
-        data
-    }
-
-    /// Mock step function for testing.
-    /// Does not render anything, just prints out stuff.
-    /// This is probably not the right way to do things.
-    fn mock_step(&mut self) {
-        if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
-            let batch = batch.unwrap();
-            info!("Received {} rows", batch.num_rows());
-            // let v = self.mock_get_data_from_channel(batch.num_rows());
-            // for p in v {
-            //     info!("This point is about to be rendered: {:?}", p);
-            // }
-            let mut idx = 0;
-            let event_stream = EventStream::from_streamed_batch(&batch);
-            if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time
-                <= self.time_to_coord.earliest_frame_time
-            {
-                info!("The last event in the batch arrived before the first in the frame");
-                return;
-            }
-            for event in event_stream.into_iter() {
-                if idx > 10 {
-                    break;
-                }
-                if let Some(point) = self.event_to_coordinate(event) {
-                    info!("This point is about to be rendered: {:?}", point);
-                }
-                idx += 1;
-            }
-        }
-    }
-
-    pub fn acquire_stream_filehandle(&mut self) -> Result<()> {
+impl TimeTaggerIpcHandler for AppState<File> {
+    /// Instantiate an IPC StreamReader using an existing file handle.
+    fn acquire_stream_filehandle(&mut self) -> Result<()> {
         let stream =
             File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
         let stream =
@@ -252,7 +217,7 @@ impl AppState<File> {
     /// None is returned if the tag isn't a time tag. When the tag is from a
     /// non-imaging channel it's taken into account, but otherwise (i.e. in
     /// cases of overflow it's discarded at the moment.
-    pub fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor> {
+    fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor> {
         if event.type_ != 0 {
             return None;
         }

@@ -1,6 +1,7 @@
 use std::fs::write;
 
 use crate::{channel_value_to_pair, setup_renderer, start_timetagger_with_python};
+use crate::point_cloud_renderer::TimeTaggerIpcHandler;
 use crate::{configuration::AppConfig, get_config_path, rendering_helpers::Picosecond};
 use iced::{
     button, pick_list, text_input, Application, Button, Checkbox, Clipboard, Column, Command,

@@ -141,7 +141,7 @@ impl TimeCoordPair {
 /// photon could be placed in that pixel. By pre-populating this snake with the
 /// suitable time -> coordinate conversion we should save some lookup time.
 #[derive(Debug)]
-pub(crate) struct TimeToCoord {
+pub struct TimeToCoord {
     /// A vector of end times with their corresponding image-space
     /// coordinates.
     data: Vec<TimeCoordPair>,
@@ -161,7 +161,7 @@ pub(crate) struct TimeToCoord {
     /// Deltas in image space of consecutive pixels, lines, etc.
     voxel_delta_im: VoxelDelta<f32>,
     /// The earliest time of the first voxel
-    pub(crate) earliest_frame_time: Picosecond,
+    pub earliest_frame_time: Picosecond,
 }
 
 impl TimeToCoord {
@@ -174,7 +174,7 @@ impl TimeToCoord {
     /// Once the mapping vector is initialized, subsequent frames only have to
     /// update the "end_time" field in each cell according to the current frame
     /// offset.
-    pub(crate) fn from_acq_params(config: &AppConfig, offset: Picosecond) -> TimeToCoord {
+    pub fn from_acq_params(config: &AppConfig, offset: Picosecond) -> TimeToCoord {
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
         if config.planes == 1 {
@@ -419,7 +419,7 @@ impl TimeToCoord {
     /// a single step, or perhaps two. This should, in theory, be faster than
     /// other options for this algorithm (which are currently unexplored), such
     /// as binary search, hashmap or an interval tree.
-    pub(crate) fn tag_to_coord_linear(&mut self, time: i64) -> Option<ImageCoor> {
+    pub fn tag_to_coord_linear(&mut self, time: i64) -> Option<ImageCoor> {
         if time > self.max_frame_time {
             info!(
                 "Photon arrived after end of Frame! Our time: {}, Max time: {}",
@@ -463,7 +463,7 @@ impl TimeToCoord {
     /// currently updates the exisitng data based on a guesstimation regarding
     /// data quality, i.e. we don't do any error checking what-so-ever, we
     /// simply trust in the data being not faulty.
-    fn update_2d_data_for_next_frame(&mut self) {
+    pub fn update_2d_data_for_next_frame(&mut self) {
         self.last_accessed_idx = 0;
         info!("Populating next frame's data");
         for pair in self.data.iter_mut() {
@@ -477,20 +477,20 @@ impl TimeToCoord {
     }
 
     /// Handles a new line event
-    pub(crate) fn new_line(&self, _time: i64) -> Option<ImageCoor> {
+    pub fn new_line(&self, _time: i64) -> Option<ImageCoor> {
         None
     }
 
     /// Handles a new TAG lens start-of-cycle event
-    pub(crate) fn new_taglens_period(&self, _time: i64) -> Option<ImageCoor> {
+    pub fn new_taglens_period(&self, _time: i64) -> Option<ImageCoor> {
         None
     }
 
-    pub(crate) fn new_laser_event(&self, _time: i64) -> Option<ImageCoor> {
+    pub fn new_laser_event(&self, _time: i64) -> Option<ImageCoor> {
         None
     }
 
-    pub(crate) fn dump(&self, _time: i64) -> Option<ImageCoor> {
+    pub fn dump(&self, _time: i64) -> Option<ImageCoor> {
         None
     }
 }

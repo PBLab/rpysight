@@ -66,7 +66,7 @@ impl From<Bidirectionality> for bool {
 /// Enumerates all possible data streams that can be handled by RPySight, like
 /// PMT data, line sync events and so on.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) enum DataType {
+pub enum DataType {
     Pmt1,
     Pmt2,
     Pmt3,
@@ -86,12 +86,12 @@ const MAX_TIMETAGGER_INPUTS: usize = 18;
 /// implemented here we can index into an Inputs instance with a positive or
 /// negative value without any difference.
 #[derive(Clone, Debug)]
-pub(crate) struct Inputs(Vec<DataType>);
+pub struct Inputs(Vec<DataType>);
 
 impl Inputs {
     /// Generates a new Inputs instance. Panics if the input channels aren't
     /// unique or if a channel was accidently assigned to a non-existent input.
-    pub(crate) fn from_config(config: &AppConfig) -> Inputs {
+    pub fn from_config(config: &AppConfig) -> Inputs {
         let mut data: Vec<DataType> = Vec::with_capacity(MAX_TIMETAGGER_INPUTS + 1);
         for _ in 0..(MAX_TIMETAGGER_INPUTS + 1) {
             data.push(DataType::Invalid);
