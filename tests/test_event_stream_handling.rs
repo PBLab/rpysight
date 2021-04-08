@@ -1,6 +1,4 @@
 #[macro_use] extern crate log;
-extern crate simplelog;
-
 use std::fs::File;
 use std::sync::Arc;
 
@@ -10,11 +8,12 @@ use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
 use rand::prelude::*;
 use nalgebra::Point3;
+use simplelog::*;
+use log::*;
 
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Inputs};
 use librpysight::point_cloud_renderer::{EventStream, TimeTaggerIpcHandler, Event, ImageCoor};
 use librpysight::rendering_helpers::TimeToCoord;
-use simplelog::*;
 
 const GLOBAL_OFFSET: i64 = 0;
 
@@ -200,7 +199,7 @@ fn setup() -> MockAppState {
         ConfigBuilder::default().set_time_to_local(true).build(),
     );
 
-    let cfg = AppConfigBuilder::default().build();
+    let cfg = AppConfigBuilder::default().with_planes(1).build();
     let app = mock_acquisition_loop(cfg);
     app
 }

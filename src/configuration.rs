@@ -40,7 +40,7 @@ impl Deref for Period {
 
 /// Determines whether the scan was bidirectional or unidirectional
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub(crate) enum Bidirectionality {
+pub enum Bidirectionality {
     Bidir,
     Unidir,
 }
@@ -365,106 +365,106 @@ impl AppConfigBuilder {
         }
     }
 
-    pub(crate) fn with_filename(&mut self, filename: String) -> &mut Self {
+    pub fn with_filename(&mut self, filename: String) -> &mut Self {
         self.filename = filename;
         self
     }
 
-    pub(crate) fn with_point_color(&mut self, point_color: Point3<f32>) -> &mut Self {
+    pub fn with_point_color(&mut self, point_color: Point3<f32>) -> &mut Self {
         self.point_color = point_color;
         self
     }
 
-    pub(crate) fn with_rows(&mut self, rows: u32) -> &mut Self {
+    pub fn with_rows(&mut self, rows: u32) -> &mut Self {
         assert!(rows < 100_000);
         self.rows = rows;
         self
     }
 
-    pub(crate) fn with_columns(&mut self, columns: u32) -> &mut Self {
+    pub fn with_columns(&mut self, columns: u32) -> &mut Self {
         assert!(columns < 100_000);
         self.columns = columns;
         self
     }
 
-    pub(crate) fn with_planes(&mut self, planes: u32) -> &mut Self {
+    pub fn with_planes(&mut self, planes: u32) -> &mut Self {
         assert!(planes < 100_000);
         self.planes = planes;
         self
     }
 
-    pub(crate) fn with_scan_period(&mut self, scan_period: Period) -> &mut Self {
+    pub fn with_scan_period(&mut self, scan_period: Period) -> &mut Self {
         self.scan_period = scan_period;
         self
     }
 
-    pub(crate) fn with_tag_period(&mut self, tag_period: Period) -> &mut Self {
+    pub fn with_tag_period(&mut self, tag_period: Period) -> &mut Self {
         assert!(*tag_period > 1_000_000);
         self.tag_period = tag_period;
         self
     }
 
-    pub(crate) fn with_bidir(&mut self, bidir: Bidirectionality) -> &mut Self {
+    pub fn with_bidir(&mut self, bidir: Bidirectionality) -> &mut Self {
         self.bidir = bidir;
         self
     }
 
-    pub(crate) fn with_fill_fraction<T: Into<f32>>(&mut self, fill_fraction: T) -> &mut Self {
+    pub fn with_fill_fraction<T: Into<f32>>(&mut self, fill_fraction: T) -> &mut Self {
         let fill_fraction = fill_fraction.into();
         assert!(fill_fraction >= 0.0 && fill_fraction <= 100.0);
         self.fill_fraction = fill_fraction;
         self
     }
 
-    pub(crate) fn with_frame_dead_time(&mut self, frame_dead_time: Picosecond) -> &mut Self {
+    pub fn with_frame_dead_time(&mut self, frame_dead_time: Picosecond) -> &mut Self {
         assert!(frame_dead_time >= 0 && frame_dead_time <= 10_000_000_000_000);
         self.frame_dead_time = frame_dead_time;
         self
     }
 
-    pub(crate) fn with_pmt1_ch(&mut self, pmt1_ch: i32) -> &mut Self {
+    pub fn with_pmt1_ch(&mut self, pmt1_ch: i32) -> &mut Self {
         assert!(pmt1_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
         self.pmt1_ch = pmt1_ch;
         self
     }
 
-    pub(crate) fn with_pmt2_ch(&mut self, pmt2_ch: i32) -> &mut Self {
+    pub fn with_pmt2_ch(&mut self, pmt2_ch: i32) -> &mut Self {
         assert!(pmt2_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
         self.pmt2_ch = pmt2_ch;
         self
     }
 
-    pub(crate) fn with_pmt3_ch(&mut self, pmt3_ch: i32) -> &mut Self {
+    pub fn with_pmt3_ch(&mut self, pmt3_ch: i32) -> &mut Self {
         assert!(pmt3_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
         self.pmt3_ch = pmt3_ch;
         self
     }
 
-    pub(crate) fn with_pmt4_ch(&mut self, pmt4_ch: i32) -> &mut Self {
+    pub fn with_pmt4_ch(&mut self, pmt4_ch: i32) -> &mut Self {
         assert!(pmt4_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
         self.pmt4_ch = pmt4_ch;
         self
     }
 
-    pub(crate) fn with_laser_ch(&mut self, laser_ch: i32) -> &mut Self {
+    pub fn with_laser_ch(&mut self, laser_ch: i32) -> &mut Self {
         assert!(laser_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
         self.laser_ch = laser_ch;
         self
     }
 
-    pub(crate) fn with_frame_ch(&mut self, frame_ch: i32) -> &mut Self {
+    pub fn with_frame_ch(&mut self, frame_ch: i32) -> &mut Self {
         assert!(frame_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
         self.frame_ch = frame_ch;
         self
     }
 
-    pub(crate) fn with_line_ch(&mut self, line_ch: i32) -> &mut Self {
+    pub fn with_line_ch(&mut self, line_ch: i32) -> &mut Self {
         assert!(line_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
         self.line_ch = line_ch;
         self
     }
 
-    pub(crate) fn with_taglens_ch(&mut self, taglens_ch: i32) -> &mut Self {
+    pub fn with_taglens_ch(&mut self, taglens_ch: i32) -> &mut Self {
         assert!(taglens_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
         self.taglens_ch = taglens_ch;
         self
