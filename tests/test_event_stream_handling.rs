@@ -22,14 +22,14 @@ fn test_file_to_stream() {
         Field::new("channel", DataType::Int32, false),
         Field::new("time", DataType::Int64, false),
     ]);
-    let mut data_as_stream_full = File::create("tests/data/real_record_batch_full_stream.dat").unwrap();
-    let mut data_as_stream_short = File::create("tests/data/real_record_batch_short_stream.dat").unwrap();
+    let data_as_stream_full = File::create("tests/data/real_record_batch_full_stream.dat").unwrap();
+    let data_as_stream_short = File::create("tests/data/real_record_batch_short_stream.dat").unwrap();
     let mut stream_writer_full = StreamWriter::try_new(data_as_stream_full, &schema).unwrap();
     let mut stream_writer_short = StreamWriter::try_new(data_as_stream_short, &schema).unwrap();
-    let mut r = Reader::new(File::open(full_batch).unwrap(), Arc::new(schema.clone()), true, None, 1024, None, None);
-    let mut r = Reader::new(File::open(short_batch).unwrap(), Arc::new(schema.clone()), true, None, 1024, None, None);
-    stream_writer_full.write(&r.next().unwrap().unwrap()).unwrap();
-    stream_writer_short.write(&r.next().unwrap().unwrap()).unwrap();
+    let mut r_full = Reader::new(File::open(full_batch).unwrap(), Arc::new(schema.clone()), true, None, 1024, None, None);
+    let mut r_short = Reader::new(File::open(short_batch).unwrap(), Arc::new(schema.clone()), true, None, 1024, None, None);
+    stream_writer_full.write(&r_full.next().unwrap().unwrap()).unwrap();
+    stream_writer_short.write(&r_short.next().unwrap().unwrap()).unwrap();
 }
 
 fn read_as_stream(fname: &str) -> StreamReader<File> {
@@ -57,8 +57,16 @@ fn mock_acquisition_loop(cfg: AppConfig) -> AppState<File> {
 
 }
 
-#[test]
-fn setup() {
+fn setup() -> AppState<File> {
     let cfg = AppConfigBuilder::default().build();
     let app = mock_acquisition_loop(cfg);
+    app
 }
+
+#[test]
+fn print() {
+    let mut app = setup();
+    println!("{:?}", app.data_stream.as_mut().unwrap().next());
+}
+
+

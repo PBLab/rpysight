@@ -201,6 +201,39 @@ impl AppState<File> {
         data
     }
 
+    /// Mock step function for testing.
+    fn mock_step(&mut self) {
+        if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
+            let batch = batch.unwrap();
+            info!("Received {} rows", batch.num_rows());
+            // let v = self.mock_get_data_from_channel(batch.num_rows());
+            // for p in v {
+            //     self.point_cloud_renderer
+            //         .draw_point(p, self.appconfig.point_color)
+            // }
+            let mut idx = 0;
+            let event_stream = EventStream::from_streamed_batch(&batch);
+            if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time
+                <= self.time_to_coord.earliest_frame_time
+            {
+                info!("The last event in the batch arrived before the first in the frame");
+                return;
+            }
+            for event in event_stream.into_iter() {
+                if idx > 10 {
+                    break;
+                }
+                if let Some(point) = self.event_to_coordinate(event) {
+                    info!("This point is about to be rendered: {:?}", point);
+                    self.point_cloud_renderer
+                        .draw_point(point, self.appconfig.point_color)
+                }
+                idx += 1;
+            }
+        }
+    }
+
+
     pub fn acquire_stream_filehandle(&mut self) -> Result<()> {
         let stream =
             File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
@@ -267,7 +300,6 @@ impl State for AppState<File> {
             //     self.point_cloud_renderer
             //         .draw_point(p, self.appconfig.point_color)
             // }
-            let mut idx = 0;
             let event_stream = EventStream::from_streamed_batch(&batch);
             if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time
                 <= self.time_to_coord.earliest_frame_time
@@ -276,16 +308,13 @@ impl State for AppState<File> {
                 return;
             }
             for event in event_stream.into_iter() {
-                if idx > 10 {
-                    break;
-                }
                 if let Some(point) = self.event_to_coordinate(event) {
                     info!("This point is about to be rendered: {:?}", point);
                     self.point_cloud_renderer
                         .draw_point(point, self.appconfig.point_color)
                 }
-                idx += 1;
             }
         }
     }
+
 }
