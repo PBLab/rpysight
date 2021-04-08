@@ -19,7 +19,8 @@ use nalgebra::Point3;
 use pyo3::prelude::*;
 use rand::prelude::*;
 
-use crate::rendering_helpers::{AppConfig, DataType, Inputs, TimeToCoord};
+use crate::rendering_helpers::TimeToCoord;
+use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::GLOBAL_OFFSET;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
