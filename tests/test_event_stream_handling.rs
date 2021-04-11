@@ -16,21 +16,25 @@ use librpysight::point_cloud_renderer::{EventStream, TimeTaggerIpcHandler, Event
 use librpysight::rendering_helpers::TimeToCoord;
 
 const GLOBAL_OFFSET: i64 = 0;
+const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
+const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
+const FULL_BATCH_STREAM: &'static str = "tests/data/real_record_batch_full_stream.dat";
+const SHORT_BATCH_STREAM: &'static str = "tests/data/real_record_batch_short_stream.dat";
 
 
 /// Run once to generate .dat file which behave as streams
 fn test_file_to_stream() {
-    let full_batch = "tests/data/real_record_batch.csv";
-    let short_batch = "tests/data/real_record_batch_short.csv";
+    let full_batch = FULL_BATCH_DATA;
+    let short_batch = SHORT_BATCH_DATA;
     let schema = Schema::new(vec![
         Field::new("type_", DataType::UInt8, false),
         Field::new("missed_events", DataType::UInt16, false),
         Field::new("channel", DataType::Int32, false),
         Field::new("time", DataType::Int64, false),
     ]);
-    let data_as_stream_full = File::create("tests/data/real_record_batch_full_stream.dat").unwrap();
+    let data_as_stream_full = File::create(FULL_BATCH_STREAM).unwrap();
     let data_as_stream_short =
-        File::create("tests/data/real_record_batch_short_stream.dat").unwrap();
+        File::create(SHORT_BATCH_STREAM).unwrap();
     let mut stream_writer_full = StreamWriter::try_new(data_as_stream_full, &schema).unwrap();
     let mut stream_writer_short = StreamWriter::try_new(data_as_stream_short, &schema).unwrap();
     let mut r_full = Reader::new(
@@ -75,12 +79,13 @@ fn read_as_stream(fname: &str) -> StreamReader<File> {
 //     batch
 // }
 
-fn mock_acquisition_loop(cfg: AppConfig) -> MockAppState {
+fn mock_acquisition_loop(cfg: AppConfig, stream: &str) -> MockAppState {
+    test_file_to_stream();
     let mut app = MockAppState::new(String::from(
-        "tests/data/real_record_batch_full_stream.dat"
+        stream
 ), cfg);
     app.data_stream = Some(read_as_stream(
-        "tests/data/real_record_batch_full_stream.dat",
+        stream
     ));
     app
 }
@@ -127,8 +132,8 @@ impl MockAppState {
     fn step(&mut self) {
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
-            info!("Received {} rows", batch.num_rows());
-            // let v = self.mock_get_data_from_channel(batch.num_rows());
+            // info!("Received {} rows", batch.num_rows());
+            // let v = self.get_data_from_channel(batch.num_rows());
             // for p in v {
             //     info!("This point is about to be rendered: {:?}", p);
             // }
@@ -139,6 +144,8 @@ impl MockAppState {
             {
                 info!("The last event in the batch arrived before the first in the frame");
                 return;
+            } else {
+                info!("Last event is later than the first");
             }
             for event in event_stream.into_iter() {
                 if idx > 10 {
@@ -152,6 +159,7 @@ impl MockAppState {
         }
     }
 }
+
 
 impl TimeTaggerIpcHandler for MockAppState {
     /// Instantiate an IPC StreamReader using an existing file handle.
@@ -193,19 +201,37 @@ impl TimeTaggerIpcHandler for MockAppState {
     }
 }
 
-fn setup() -> MockAppState {
+fn setup(stream: &str) -> MockAppState {
     let _ = TestLogger::init(
         LevelFilter::Info,
         ConfigBuilder::default().set_time_to_local(true).build(),
     );
 
     let cfg = AppConfigBuilder::default().with_planes(1).build();
-    let app = mock_acquisition_loop(cfg);
+    let app = mock_acquisition_loop(cfg, stream);
     app
 }
 
 #[test]
-fn print() {
-    let mut app = setup();
-    println!("{:?}", app.data_stream.as_mut().unwrap().next());
+fn assert_full_stream_exists() {
+    let mut app = setup(FULL_BATCH_STREAM);
+    if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
+        let _ = batch.unwrap();
+        assert!(true)
+    }
+}
+
+#[test]
+fn assert_short_stream_exists() {
+    let mut app = setup(SHORT_BATCH_STREAM);
+    if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
+        let _ = batch.unwrap();
+        assert!(true)
+    }
+}
+
+#[test]
+fn stepwise_short() {
+    let mut app = setup(SHORT_BATCH_STREAM);
+    app.step()
 }
