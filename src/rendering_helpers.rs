@@ -163,6 +163,9 @@ pub struct TimeToCoord {
     voxel_delta_im: VoxelDelta<f32>,
     /// The earliest time of the first voxel
     pub earliest_frame_time: Picosecond,
+    /// The time it takes the software to finish a full frame, not including
+    /// dead time between frames
+    frame_duration: Picosecond,
 }
 
 impl TimeToCoord {
@@ -329,6 +332,7 @@ impl TimeToCoord {
             voxel_delta_ps: voxel_delta_ps.clone(),
             voxel_delta_im: voxel_delta_im.clone(),
             earliest_frame_time: offset,
+            frame_duration: config.calc_frame_duration(),
         }
     }
 
@@ -393,6 +397,7 @@ impl TimeToCoord {
             voxel_delta_ps: voxel_delta_ps.clone(),
             voxel_delta_im: voxel_delta_im.clone(),
             earliest_frame_time: offset,
+            frame_duration: config.calc_frame_duration(),
         }
     }
 
@@ -466,15 +471,16 @@ impl TimeToCoord {
     /// simply trust in the data being not faulty.
     pub fn update_2d_data_for_next_frame(&mut self) {
         self.last_accessed_idx = 0;
-        info!("Populating next frame's data");
+        info!("Populating next frame's data (it will start at {} because voxel delta is {}", self.next_frame_starts_at, self.voxel_delta_ps.frame);
+        let delta_between_frames = self.frame_duration + self.voxel_delta_ps.frame;
         for pair in self.data.iter_mut() {
-            pair.end_time += self.next_frame_starts_at;
+            pair.end_time += delta_between_frames;
         }
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
         self.next_frame_starts_at = self.max_frame_time + self.voxel_delta_ps.frame;
         self.last_taglens_time = 0;
         self.earliest_frame_time = self.data[0].end_time - self.voxel_delta_ps.column;
-        info!("Done populating next frame");
+        info!("Done populating next frame, summary:\ndelta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time);
     }
 
     /// Handles a new line event

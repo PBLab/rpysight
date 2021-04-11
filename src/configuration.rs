@@ -180,12 +180,6 @@ pub struct AppConfig {
     pub(crate) tag_period: Period,
 }
 
-/// Converts a miliseconds number (a string) into its equivalent in ps.
-fn string_ms_to_ps(ms_as_string: &str) -> anyhow::Result<Picosecond, ParseFloatError> {
-    let ms = ms_as_string.parse::<f64>()?;
-    Ok((ms * 1_000_000_000f64) as Picosecond)
-}
-
 impl AppConfig {
     /// Parse the supplied user parameters, returning errors if illegal.
     ///
@@ -212,7 +206,7 @@ impl AppConfig {
                     .parse::<u32>()
                     .map_err(UserInputError::InvalidPlanes)?,
             )
-            .with_bidir(user_input.get_bidirectionality().into())
+            .with_bidir(user_input.get_bidirectionality())
             .with_tag_period(Period::from_freq(
                 user_input
                     .get_taglens_period()
@@ -256,6 +250,22 @@ impl AppConfig {
             ))
             .build())
     }
+
+    /// The time in ps it takes for a frame to complete. Not including the dead
+    /// time between frames.
+    pub fn calc_frame_duration(&self) -> Picosecond {
+        match self.bidir {
+            Bidirectionality::Bidir => (*self.scan_period / 2) * (self.rows as Picosecond),
+            Bidirectionality::Unidir => *self.scan_period * (self.rows as Picosecond),
+        }
+    }
+}
+
+
+/// Converts a miliseconds number (a string) into its equivalent in ps.
+fn string_ms_to_ps(ms_as_string: &str) -> anyhow::Result<Picosecond, ParseFloatError> {
+    let ms = ms_as_string.parse::<f64>()?;
+    Ok((ms * 1_000_000_000f64) as Picosecond)
 }
 
 /// Converts a chosen user channel to its TT representation in the time tag
@@ -404,8 +414,8 @@ impl AppConfigBuilder {
         self
     }
 
-    pub fn with_bidir(&mut self, bidir: Bidirectionality) -> &mut Self {
-        self.bidir = bidir;
+    pub fn with_bidir<T: Into<Bidirectionality>>(&mut self, bidir: T) -> &mut Self {
+        self.bidir = bidir.into();
         self
     }
 
@@ -554,6 +564,20 @@ mod tests {
             .with_taglens_ch(0)
             .build();
         let _ = Inputs::from_config(&config);
+    }
+
+    #[test]
+    fn frame_time_bidir() {
+        let config = setup_default_config().with_bidir(true).build();
+        assert_eq!(config.calc_frame_duration(), 16_149_035_264i64);
+
+    }
+
+    #[test]
+    fn frame_time_unidir() {
+        let config = setup_default_config().with_bidir(false).build();
+        assert_eq!(config.calc_frame_duration(), 32_298_070_528i64);
+
     }
 
     #[test]
