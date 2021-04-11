@@ -1,5 +1,6 @@
 extern crate log;
 use nalgebra::DVector;
+use serde::{Serialize, Deserialize};
 
 use crate::configuration::{AppConfig, Bidirectionality};
 use crate::point_cloud_renderer::ImageCoor;
@@ -95,14 +96,14 @@ impl VoxelDelta<Picosecond> {
 /// The mapping\pairing between a time in ps since the start of the experiment
 /// and the image-space coordinate that this time corresponds to for the
 /// current rendered volume.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TimeCoordPair {
-    pub(crate) end_time: Picosecond,
-    pub(crate) coord: ImageCoor,
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TimeCoordPair {
+    pub end_time: Picosecond,
+    pub coord: ImageCoor,
 }
 
 impl TimeCoordPair {
-    pub(crate) fn new(end_time: Picosecond, coord: ImageCoor) -> TimeCoordPair {
+    pub fn new(end_time: Picosecond, coord: ImageCoor) -> TimeCoordPair {
         TimeCoordPair { end_time, coord }
     }
 }

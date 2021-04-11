@@ -18,7 +18,7 @@ pub struct Period {
 
 impl Period {
     /// Convert a Hz-based frequency into units of picoseconds
-    pub(crate) fn from_freq<T: Into<f64>>(hz: T) -> Period {
+    pub fn from_freq<T: Into<f64>>(hz: T) -> Period {
         let hz = hz.into();
         Period {
             period: ((1.0 / hz) * 1e12).round() as Picosecond,

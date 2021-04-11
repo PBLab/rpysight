@@ -1,19 +1,20 @@
 #[macro_use] extern crate log;
 use std::fs::File;
 use std::sync::Arc;
+use std::fs::{write, read_to_string};
 
 use anyhow::{Context, Result};
 use arrow::csv::Reader;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
 use rand::prelude::*;
-use nalgebra::Point3;
 use simplelog::*;
 use log::*;
+use ron::{de::from_str, ser::{to_string_pretty, PrettyConfig}};
 
-use librpysight::configuration::{AppConfig, AppConfigBuilder, Inputs};
+use librpysight::configuration::{AppConfig, AppConfigBuilder, Inputs, Period, Bidirectionality};
 use librpysight::point_cloud_renderer::{EventStream, TimeTaggerIpcHandler, Event, ImageCoor};
-use librpysight::rendering_helpers::TimeToCoord;
+use librpysight::rendering_helpers::{TimeToCoord, TimeCoordPair};
 
 const GLOBAL_OFFSET: i64 = 0;
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
@@ -93,9 +94,10 @@ fn mock_acquisition_loop(cfg: AppConfig, stream: &str) -> MockAppState {
 struct MockAppState {
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<File>>,
-    point_color: Point3<f32>,
     time_to_coord: TimeToCoord,
     inputs: Inputs,
+    valid_events: Vec<TimeCoordPair>,
+    invalid_events: Vec<TimeCoordPair>,
 }
 
 impl MockAppState {
@@ -107,9 +109,10 @@ impl MockAppState {
         MockAppState {
             data_stream_fh,
             data_stream: None,
-            point_color: Point3::<f32>::new(1.0, 1.0, 1.0),
             time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
             inputs: Inputs::from_config(&appconfig),
+            valid_events: Vec::<TimeCoordPair>::with_capacity(100_000),
+            invalid_events: Vec::<TimeCoordPair>::with_capacity(100_000),
         }
     }
 
@@ -148,18 +151,24 @@ impl MockAppState {
                 info!("Last event is later than the first");
             }
             for event in event_stream.into_iter() {
-                if idx > 10 {
-                    break;
-                }
+                // if idx > 10 {
+                //     break;
+                // }
                 if let Some(point) = self.event_to_coordinate(event) {
                     info!("This point is about to be rendered: {:?}", point);
-                }
+                    if point.iter().copied().any(|x| x.is_nan()) {
+                        self.invalid_events.push(TimeCoordPair::new(event.time, point));
+                    } else {
+                        self.valid_events.push(TimeCoordPair::new(event.time, point));
+                    }
+                } 
                 idx += 1;
             }
+            // write("tests/data/short_batch_bidir_valid.ron", to_string_pretty(&self.valid_events, PrettyConfig::new()).unwrap());
+            // write("tests/data/short_batch_bidir_invalid.ron", to_string_pretty(&self.invalid_events, PrettyConfig::new()).unwrap());
         }
     }
 }
-
 
 impl TimeTaggerIpcHandler for MockAppState {
     /// Instantiate an IPC StreamReader using an existing file handle.
@@ -201,20 +210,23 @@ impl TimeTaggerIpcHandler for MockAppState {
     }
 }
 
-fn setup(stream: &str) -> MockAppState {
+/// Start a logger, generate a default config file (if given none) and generate
+/// a data stream from one of the CSV files.
+fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> MockAppState {
     let _ = TestLogger::init(
         LevelFilter::Info,
         ConfigBuilder::default().set_time_to_local(true).build(),
     );
-
-    let cfg = AppConfigBuilder::default().with_planes(1).build();
-    let app = mock_acquisition_loop(cfg, stream);
+    if cfg.is_none() {
+        let cfg = Some(AppConfigBuilder::default().with_planes(1).build());
+    }
+    let app = mock_acquisition_loop(cfg.unwrap(), csv_to_stream);
     app
 }
 
 #[test]
 fn assert_full_stream_exists() {
-    let mut app = setup(FULL_BATCH_STREAM);
+    let mut app = setup(FULL_BATCH_STREAM, None);
     if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
@@ -223,7 +235,7 @@ fn assert_full_stream_exists() {
 
 #[test]
 fn assert_short_stream_exists() {
-    let mut app = setup(SHORT_BATCH_STREAM);
+    let mut app = setup(SHORT_BATCH_STREAM, None);
     if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
@@ -231,7 +243,19 @@ fn assert_short_stream_exists() {
 }
 
 #[test]
-fn stepwise_short() {
-    let mut app = setup(SHORT_BATCH_STREAM);
-    app.step()
+fn stepwise_short_bidir() {
+    let cfg: AppConfig = AppConfigBuilder::default().with_scan_period(Period::from_freq(100_000.0)).with_columns(10).with_rows(10).with_planes(1).with_bidir(Bidirectionality::Bidir).build();
+    let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
+    app.step();
+    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_batch_bidir_invalid.ron").unwrap());
+    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_batch_bidir_valid.ron").unwrap());
+}
+
+#[test]
+fn stepwise_short_unidir() {
+    let cfg: AppConfig = AppConfigBuilder::default().with_scan_period(Period::from_freq(100_000.0)).with_columns(10).with_rows(10).with_planes(1).with_bidir(Bidirectionality::Unidir).build();
+    let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
+    app.step();
+    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_batch_unidir_invalid.ron").unwrap());
+    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_batch_unidir_valid.ron").unwrap());
 }
