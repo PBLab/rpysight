@@ -4,3 +4,4 @@ Cargo.lock
 *.pyc
 __tt_data_stream.dat
 *.ttbin
+*.dat
