@@ -1,0 +1,906 @@
+[
+    (
+        end_time: 0,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 3750000,
+        coord: [
+            0,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 4999884,
+        coord: [
+            0,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 8749922,
+        coord: [
+            0.11111111,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 9999758,
+        coord: [
+            0.11111111,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 13749829,
+        coord: [
+            0.22222222,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 14999920,
+        coord: [
+            0.22222222,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 18749662,
+        coord: [
+            0.33333334,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 19999729,
+        coord: [
+            0.33333334,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 23749760,
+        coord: [
+            0.44444445,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 24999648,
+        coord: [
+            0.44444445,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 28749678,
+        coord: [
+            0.5555556,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 29999688,
+        coord: [
+            0.5555556,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 33749465,
+        coord: [
+            0.6666667,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 34999627,
+        coord: [
+            0.6666667,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 38749489,
+        coord: [
+            0.7777778,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 39999517,
+        coord: [
+            0.7777778,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 43749511,
+        coord: [
+            0.8888889,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 44999289,
+        coord: [
+            0.8888889,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 48749449,
+        coord: [
+            1,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 49999459,
+        coord: [
+            1,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 51249206,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 52499360,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 53749264,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 54999406,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 56249314,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 57499283,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 58749147,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 59999285,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 63749126,
+        coord: [
+            0,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 64999226,
+        coord: [
+            0,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 68749081,
+        coord: [
+            0.11111111,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 69999043,
+        coord: [
+            0.11111111,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 73749087,
+        coord: [
+            0.22222222,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 74999059,
+        coord: [
+            0.22222222,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 78749008,
+        coord: [
+            0.33333334,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 79998909,
+        coord: [
+            0.33333334,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 83749014,
+        coord: [
+            0.44444445,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 84998992,
+        coord: [
+            0.44444445,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 88748907,
+        coord: [
+            0.5555556,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 89998844,
+        coord: [
+            0.5555556,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 93748913,
+        coord: [
+            0.6666667,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 94998703,
+        coord: [
+            0.6666667,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 98748867,
+        coord: [
+            0.7777778,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 99998889,
+        coord: [
+            0.7777778,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 103748536,
+        coord: [
+            0.8888889,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 104998659,
+        coord: [
+            0.8888889,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 108748450,
+        coord: [
+            1,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 109998581,
+        coord: [
+            1,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 111248417,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 112498339,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 113748559,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 114998488,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 116248579,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 117498519,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 118748410,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 119998321,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 121248388,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 122498232,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 123748480,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 124998419,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 126248307,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 127498243,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 128748197,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 129998337,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 131248347,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 132498047,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 133748426,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 134998124,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 136248286,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 137498042,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 138748324,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 139998148,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 141248176,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 142498120,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 143748179,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 144998170,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 146247948,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 147498136,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 148748002,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 149998108,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 151248118,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 152497865,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 153748019,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 154997923,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 156248065,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 157497973,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 158747942,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 159997806,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 161247944,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 162498047,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 163747847,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 164997785,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 166247885,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 167497850,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 168747873,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 169997740,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 171247702,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 172497841,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 173747653,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 174997746,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 176247718,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 177497788,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 178747602,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 179997667,
+        coord: [
+            NaN,
+            NaN,
+            NaN,
+        ],
+    ),
+    (
+        end_time: 183747704,
+        coord: [
+            0,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 184997673,
+        coord: [
+            0,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 188747609,
+        coord: [
+            0.11111111,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 189997566,
+        coord: [
+            0.11111111,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 193747564,
+        coord: [
+            0.22222222,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 194997572,
+        coord: [
+            0.22222222,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 198747475,
+        coord: [
+            0.33333334,
+            NaN,
+            0.5,
+        ],
+    ),
+    (
+        end_time: 199997526,
+        coord: [
+            0.33333334,
+            NaN,
+            0.5,
+        ],
+    ),
+]
