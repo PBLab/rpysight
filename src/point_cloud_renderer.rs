@@ -17,7 +17,6 @@ use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use nalgebra::Point3;
 use pyo3::prelude::*;
-use rand::prelude::*;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::rendering_helpers::TimeToCoord;
@@ -259,11 +258,6 @@ impl State for AppState<File> {
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
             // info!("Received {} rows", batch.num_rows());
-            // let v = self.mock_get_data_from_channel(batch.num_rows());
-            // for p in v {
-            //     self.point_cloud_renderer
-            //         .draw_point(p, self.point_color)
-            // }
             let event_stream = EventStream::from_streamed_batch(&batch);
             if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time
                 <= self.time_to_coord.earliest_frame_time
