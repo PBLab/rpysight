@@ -1,7 +1,5 @@
 extern crate log;
 
-use std::convert::Into;
-
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
 
@@ -184,14 +182,13 @@ impl TimeToCoord {
     pub fn from_acq_params(config: &AppConfig, offset: Picosecond) -> TimeToCoord {
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
-        let mut snake = TimeToCoord::build_snake(&config);
+        let snake = TimeToCoord::build_snake(&config);
         if config.planes == 1 {
             let (mut column_deltas_ps, column_deltas_imagespace) =
                 TimeToCoord::prep_snake_2d_metadata(
                     config.columns as usize,
                     &voxel_delta_ps,
                     &voxel_delta_im,
-                    offset,
                 );
             match config.bidir {
                 Bidirectionality::Bidir => TimeToCoord::generate_snake_2d_bidir_from_metadata(
@@ -235,7 +232,6 @@ impl TimeToCoord {
         num_columns: usize,
         voxel_delta_ps: &VoxelDelta<Picosecond>,
         voxel_delta_im: &VoxelDelta<f32>,
-        offset: Picosecond,
     ) -> (DVector<Picosecond>, DVector<f32>) {
         // We add to the naive capacity 1 due to the cell containing all events
         // arriving in between frames. The number of columns for the capacity
@@ -243,7 +239,7 @@ impl TimeToCoord {
         // during mirror rotation. Their coordinate will contain a NaN value,
         // which means that it will not be rendered.
         let column_deltas_ps = DVector::<Picosecond>::from_fn(num_columns, |i, _| {
-            (i as Picosecond) * voxel_delta_ps.column + voxel_delta_ps.column + offset
+            (i as Picosecond) * voxel_delta_ps.column + voxel_delta_ps.column
         });
         // Manually add the cell corresponding to events arriving during mirror
         // rotation
@@ -275,16 +271,13 @@ impl TimeToCoord {
     ///
     /// These numbers take into account a cell before each frame which captures
     /// photons arriving between frames, and a cell we remove from the last row
-    /// which is not needed.
+    /// which is not needed and a cell that is added so that we don't over-
+    /// allocate..
     fn calc_snake_length(config: &AppConfig) -> usize {
-        let capacity: u32 = 1 + (// Extra cell for events between frames
-            (config.columns + 1) * // Extra cell for events during mirror
-                                   // rotation
-            config.rows) - 1;  // The last row doesn't need flyback deadtime
-        let capacity = capacity as usize;
+        let baseline_count = ((config.columns + 1) * config.rows) as usize;
         match config.planes {
-            0 | 1 => capacity,
-            _ => (capacity * config.planes as usize) + 1,
+            0 | 1 => baseline_count + 1,
+            _ => baseline_count * config.planes as usize + 1,
         }
     }
 
@@ -317,7 +310,7 @@ impl TimeToCoord {
             ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
         ));
         let deadtime_during_rotation = column_deltas_ps[column_deltas_ps.len() - 1];
-        let mut line_offset: Picosecond = 0;
+        let mut line_offset: Picosecond = offset;
         let mut column_deltas_imagespace_rev: Vec<f32> = (&column_deltas_imagespace
             .iter()
             .rev()
@@ -358,7 +351,7 @@ impl TimeToCoord {
             last_accessed_idx: 0,
             last_taglens_time: 0,
             max_frame_time,
-            next_frame_starts_at: max_frame_time + voxel_delta_ps.frame,
+            next_frame_starts_at: max_frame_time + voxel_delta_ps.frame + voxel_delta_ps.row,
             voxel_delta_ps: voxel_delta_ps.clone(),
             voxel_delta_im: voxel_delta_im.clone(),
             earliest_frame_time: offset,
@@ -405,6 +398,7 @@ impl TimeToCoord {
             ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
         ));
         let line_len = column_deltas_ps.len();
+        let offset_per_row = column_deltas_ps[line_len - 1];
         let mut line_offset: Picosecond = 0;
         for row in 0..config.rows {
             let row_coord = (row as f32) * voxel_delta_im.row;
@@ -415,7 +409,7 @@ impl TimeToCoord {
                 row_coord,
                 line_offset,
             );
-            line_offset += column_deltas_ps[line_len - 1];
+            line_offset += offset_per_row;
         }
         let _ = snake.pop();
         let max_frame_time = *&snake[snake.len() - 1].end_time;
@@ -425,7 +419,7 @@ impl TimeToCoord {
             last_accessed_idx: 0,
             last_taglens_time: 0,
             max_frame_time,
-            next_frame_starts_at: max_frame_time + voxel_delta_ps.frame,
+            next_frame_starts_at: max_frame_time + voxel_delta_ps.frame + voxel_delta_ps.row,
             voxel_delta_ps: voxel_delta_ps.clone(),
             voxel_delta_im: voxel_delta_im.clone(),
             earliest_frame_time: offset,
@@ -510,10 +504,10 @@ impl TimeToCoord {
             pair.end_time += delta_between_frames;
         }
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
-        self.next_frame_starts_at = self.max_frame_time + self.voxel_delta_ps.frame;
+        self.next_frame_starts_at = self.max_frame_time + self.voxel_delta_ps.frame + self.voxel_delta_ps.row;
         self.last_taglens_time = 0;
         self.earliest_frame_time = self.data[0].end_time - self.voxel_delta_ps.column;
-        info!("Done populating next frame, summary:\ndelta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time);
+        info!("Done populating next frame, summary:\ndelta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
     }
 
     /// Handles a new line event
@@ -689,6 +683,7 @@ mod tests {
             snake.data[35],
             TimeCoordPair::new(1550, ImageCoor::new(3.0 / 9.0f32, 8.0 / 9.0f32, 0.5)),
         );
+        assert_eq!(snake.data.len() + 1, snake.data.capacity());
     }
 
     #[test]
@@ -709,6 +704,7 @@ mod tests {
             snake.data[35],
             TimeCoordPair::new(3800, ImageCoor::new(3.0 / 9.0f32, 1.0 / 9.0f32, 0.5)),
         );
+        assert_eq!(snake.data.len() + 1, snake.data.capacity());
     }
 
     #[test]
@@ -717,31 +713,47 @@ mod tests {
         let offset = 100;
         let snake = TimeToCoord::from_acq_params(&config, offset);
         assert_eq!(snake.data[0].end_time, offset);
+        assert_eq!(snake.data[snake.data.len() - 1].end_time + snake.voxel_delta_ps.row, snake.frame_duration + offset);
     }
 
+    // TODO: SECOND FRAMES' OFFSET?
     #[test]
-    fn snake_2d_metadata() {
+    fn snake_2d_metadata_bidir() {
         let config = setup_image_scanning_config().build();
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
+        let (column_deltas_ps, column_deltas_im) = TimeToCoord::prep_snake_2d_metadata(config.columns as usize, &voxel_delta_ps, &voxel_delta_im);
+        assert_eq!(column_deltas_ps.len(), 11);
+        assert_eq!(column_deltas_im.len(), 11);
+        let last_idx = column_deltas_im.len() - 1;
+        assert_eq!(column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1], voxel_delta_ps.row);
+    }
+
+    #[test]
+    fn snake_2d_metadata_unidir() {
+        let config = setup_image_scanning_config().with_bidir(false).build();
+        let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
+        let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
         let offset = 0;
-        let (column_deltas_ps, column_deltas_im) = TimeToCoord::prep_snake_2d_metadata(config.columns as usize, &voxel_delta_ps, &voxel_delta_im, offset);
-        println!("{:?}", column_deltas_ps);
-        assert!(false)
+        let (column_deltas_ps, column_deltas_im) = TimeToCoord::prep_snake_2d_metadata(config.columns as usize, &voxel_delta_ps, &voxel_delta_im);
+        assert_eq!(column_deltas_ps.len(), 11);
+        assert_eq!(column_deltas_im.len(), 11);
+        let last_idx = column_deltas_im.len() - 1;
+        assert_eq!(column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1], voxel_delta_ps.row);
     }
 
     #[test]
     fn build_snake_2d() {
         let config = setup_image_scanning_config().build();
         let snake = TimeToCoord::build_snake(&config);
-        assert_eq!(snake.capacity(), 100);
+        assert_eq!(snake.capacity(), 111);
     }
 
     #[test]
     fn build_snake_3d() {
         let config = setup_image_scanning_config().with_planes(10).build();
         let snake = TimeToCoord::build_snake(&config);
-        assert_eq!(snake.capacity(), 1000);
+        assert_eq!(snake.capacity(), 1101);
     }
 
 }

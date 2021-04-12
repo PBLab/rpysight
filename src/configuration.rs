@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn frame_time_unidir() {
         let config = setup_default_config().with_bidir(false).build();
-        assert_eq!(config.calc_frame_duration(), 32_298_070_528i64);
+        assert_eq!(config.calc_frame_duration(), 32_298_070_784i64);
 
     }
 

@@ -151,8 +151,8 @@ impl MockAppState {
                 } 
                 idx += 1;
             }
-            // write("tests/data/short_two_frame_batch_unidir_valid.ron", to_string_pretty(&self.valid_events, PrettyConfig::new()).unwrap()).unwrap();
-            // write("tests/data/short_two_frame_batch_unidir_invalid.ron", to_string_pretty(&self.invalid_events, PrettyConfig::new()).unwrap()).unwrap();
+            write("tests/data/short_two_frames_batch_bidir_valid.ron", to_string_pretty(&self.valid_events, PrettyConfig::new()).unwrap()).unwrap();
+            write("tests/data/short_two_frames_batch_bidir_invalid.ron", to_string_pretty(&self.invalid_events, PrettyConfig::new()).unwrap()).unwrap();
         }
     }
 }
@@ -213,6 +213,7 @@ fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> MockAppState {
 
 #[test]
 fn assert_full_stream_exists() {
+    test_file_to_stream();
     let mut app = setup(FULL_BATCH_STREAM, None);
     if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
@@ -222,6 +223,7 @@ fn assert_full_stream_exists() {
 
 #[test]
 fn assert_short_stream_exists() {
+    test_file_to_stream();
     let mut app = setup(SHORT_BATCH_STREAM, None);
     if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
@@ -248,19 +250,19 @@ fn stepwise_short_unidir_single_frame() {
 }
 
 #[test]
-fn stepwise_short_two_frames_bidir_single_frame() {
+fn stepwise_short_two_frames_bidir() {
     let cfg: AppConfig = AppConfigBuilder::default().with_scan_period(Period::from_freq(100_000.0)).with_columns(10).with_rows(10).with_planes(1).with_bidir(Bidirectionality::Bidir).with_frame_dead_time(10_000_000).build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
     app.step();
-    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frame_batch_bidir_invalid.ron").unwrap());
-    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frame_batch_bidir_valid.ron").unwrap());
+    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap());
+    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap());
 }
 
 #[test]
-fn stepwise_short_two_frames_unidir_single_frame() {
+fn stepwise_short_two_frames_unidir() {
     let cfg: AppConfig = AppConfigBuilder::default().with_scan_period(Period::from_freq(100_000.0)).with_columns(10).with_rows(10).with_planes(1).with_bidir(Bidirectionality::Unidir).with_frame_dead_time(10_000_000).build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
     app.step();
-    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frame_batch_unidir_invalid.ron").unwrap());
-    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frame_batch_unidir_valid.ron").unwrap());
+    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap());
+    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap());
 }
