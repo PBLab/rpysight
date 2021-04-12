@@ -154,17 +154,17 @@
     (
         end_time: 48749449,
         coord: [
-            1,
             NaN,
-            0.5,
+            NaN,
+            NaN,
         ],
     ),
     (
         end_time: 49999459,
         coord: [
-            1,
             NaN,
-            0.5,
+            NaN,
+            NaN,
         ],
     ),
     (
