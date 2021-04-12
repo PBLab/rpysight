@@ -1,4 +1,7 @@
 extern crate log;
+
+use std::convert::Into;
+
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
 
@@ -181,10 +184,11 @@ impl TimeToCoord {
     pub fn from_acq_params(config: &AppConfig, offset: Picosecond) -> TimeToCoord {
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
+        let mut snake = TimeToCoord::build_snake(&config);
         if config.planes == 1 {
-            let (snake, mut column_deltas_ps, column_deltas_imagespace) =
+            let (mut column_deltas_ps, column_deltas_imagespace) =
                 TimeToCoord::prep_snake_2d_metadata(
-                    &config,
+                    config.columns as usize,
                     &voxel_delta_ps,
                     &voxel_delta_im,
                     offset,
@@ -228,36 +232,60 @@ impl TimeToCoord {
     /// then populate the 'subsnakes' that will be used as a basis for the
     /// final snake.
     fn prep_snake_2d_metadata(
-        config: &AppConfig,
+        num_columns: usize,
         voxel_delta_ps: &VoxelDelta<Picosecond>,
         voxel_delta_im: &VoxelDelta<f32>,
         offset: Picosecond,
-    ) -> (Vec<TimeCoordPair>, DVector<Picosecond>, DVector<f32>) {
+    ) -> (DVector<Picosecond>, DVector<f32>) {
         // We add to the naive capacity 1 due to the cell containing all events
         // arriving in between frames. The number of columns for the capacity
         // calculation includes a fake column containing the photons arriving
         // during mirror rotation. Their coordinate will contain a NaN value,
         // which means that it will not be rendered.
-        let capacity = (1 + (config.rows * (config.columns + 1))) as usize;
-        let snake: Vec<TimeCoordPair> = Vec::with_capacity(capacity);
-        let column_deltas_ps = DVector::<Picosecond>::from_fn(config.columns as usize, |i, _| {
+        let column_deltas_ps = DVector::<Picosecond>::from_fn(num_columns, |i, _| {
             (i as Picosecond) * voxel_delta_ps.column + voxel_delta_ps.column + offset
         });
         // Manually add the cell corresponding to events arriving during mirror
         // rotation
         let end_of_rotation_value =
-            *&column_deltas_ps[(config.columns - 1) as usize] + voxel_delta_ps.row;
+            *&column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
         let column_deltas_ps =
-            column_deltas_ps.insert_rows(config.columns as usize, 1, end_of_rotation_value);
-        let column_deltas_imagespace = DVector::<f32>::from_fn(config.columns as usize, |i, _| {
+            column_deltas_ps.insert_rows(num_columns, 1, end_of_rotation_value);
+        let column_deltas_imagespace = DVector::<f32>::from_fn(num_columns, |i, _| {
             (i as f32) * voxel_delta_im.column
         });
         // The events during mirror rotation will be discarded - The NaN takes
         // care of that
         let column_deltas_imagespace =
-            column_deltas_imagespace.insert_rows(config.columns as usize, 1, f32::NAN);
+            column_deltas_imagespace.insert_rows(num_columns, 1, f32::NAN);
         info!("2d snake metadata prepped");
-        (snake, column_deltas_ps, column_deltas_imagespace)
+        (column_deltas_ps, column_deltas_imagespace)
+    }
+
+    /// Create an empty snake to be later populated by the 'generate' methods
+    fn build_snake(config: &AppConfig) -> Vec<TimeCoordPair> {
+        let capacity = TimeToCoord::calc_snake_length(&config);
+        Vec::<TimeCoordPair>::with_capacity(capacity)
+    }
+
+    /// Returns the value assigned to the snake's capacity
+    ///
+    /// For 2D imaging it's num_rows * (num_columns + 1), and for 3D we add
+    /// in the number of planes.
+    ///
+    /// These numbers take into account a cell before each frame which captures
+    /// photons arriving between frames, and a cell we remove from the last row
+    /// which is not needed.
+    fn calc_snake_length(config: &AppConfig) -> usize {
+        let capacity: u32 = 1 + (// Extra cell for events between frames
+            (config.columns + 1) * // Extra cell for events during mirror
+                                   // rotation
+            config.rows) - 1;  // The last row doesn't need flyback deadtime
+        let capacity = capacity as usize;
+        match config.planes {
+            0 | 1 => capacity,
+            _ => (capacity * config.planes as usize) + 1,
+        }
     }
 
     /// Constructs the 1D vector mapping the time of arrival to image-space
@@ -321,6 +349,8 @@ impl TimeToCoord {
             );
             line_offset += deadtime_during_rotation;
         }
+        let _ = snake.pop();  // Last element is the mirror rotation for the
+                              // last row, which is unneeded.
         let max_frame_time = *&snake[snake.len() - 1].end_time;
         info!("2D bidir Snake built");
         TimeToCoord {
@@ -387,6 +417,7 @@ impl TimeToCoord {
             );
             line_offset += column_deltas_ps[line_len - 1];
         }
+        let _ = snake.pop();
         let max_frame_time = *&snake[snake.len() - 1].end_time;
         info!("2D unidir snake finished");
         TimeToCoord {
@@ -687,4 +718,30 @@ mod tests {
         let snake = TimeToCoord::from_acq_params(&config, offset);
         assert_eq!(snake.data[0].end_time, offset);
     }
+
+    #[test]
+    fn snake_2d_metadata() {
+        let config = setup_image_scanning_config().build();
+        let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
+        let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
+        let offset = 0;
+        let (column_deltas_ps, column_deltas_im) = TimeToCoord::prep_snake_2d_metadata(config.columns as usize, &voxel_delta_ps, &voxel_delta_im, offset);
+        println!("{:?}", column_deltas_ps);
+        assert!(false)
+    }
+
+    #[test]
+    fn build_snake_2d() {
+        let config = setup_image_scanning_config().build();
+        let snake = TimeToCoord::build_snake(&config);
+        assert_eq!(snake.capacity(), 100);
+    }
+
+    #[test]
+    fn build_snake_3d() {
+        let config = setup_image_scanning_config().with_planes(10).build();
+        let snake = TimeToCoord::build_snake(&config);
+        assert_eq!(snake.capacity(), 1000);
+    }
+
 }
