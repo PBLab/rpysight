@@ -442,6 +442,7 @@ impl TimeToCoord {
                     "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}",
                     pair, time, additional_steps_taken
                 );
+                info!("The next pair was: {:?}", &self.data.get( self.last_accessed_idx + additional_steps_taken + 1 ));
                 self.last_accessed_idx += additional_steps_taken;
                 coord = Some(pair.coord);
                 break;
