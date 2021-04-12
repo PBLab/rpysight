@@ -288,7 +288,7 @@ impl TimeToCoord {
             offset,
             ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
         ));
-        let line_len = column_deltas_ps.len();
+        let deadtime_during_rotation = column_deltas_ps[column_deltas_ps.len() - 1];
         let mut line_offset: Picosecond = 0;
         let mut column_deltas_imagespace_rev: Vec<f32> = (&column_deltas_imagespace
             .iter()
@@ -309,7 +309,7 @@ impl TimeToCoord {
                 row_coord,
                 line_offset,
             );
-            line_offset += column_deltas_ps[line_len - 1];
+            line_offset += deadtime_during_rotation;
             // Now the bidir row
             row_coord = ((row + 1) as f32) * voxel_delta_im.row;
             TimeToCoord::push_pair_unidir(
@@ -319,7 +319,7 @@ impl TimeToCoord {
                 row_coord,
                 line_offset,
             );
-            line_offset += column_deltas_ps[line_len - 1];
+            line_offset += deadtime_during_rotation;
         }
         let max_frame_time = *&snake[snake.len() - 1].end_time;
         info!("2D bidir Snake built");
@@ -338,8 +338,9 @@ impl TimeToCoord {
 
     /// Update the time -> coordinate snake when we're scanning unidirectionally.
     ///
-    /// This method is also used in the bidirectional case, when running on
-    /// even rows.
+    /// This method is also used in the bidirectional case, except it's used
+    /// once for the even ones and again for the odd ones with different
+    /// paraneters.
     fn push_pair_unidir(
         snake: &mut Vec<TimeCoordPair>,
         column_deltas_imagespace: &DVector<f32>,
