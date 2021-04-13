@@ -753,7 +753,6 @@ mod tests {
         let config = setup_image_scanning_config().with_bidir(false).build();
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
-        let offset = 0;
         let (column_deltas_ps, column_deltas_im) = TimeToCoord::prep_snake_2d_metadata(
             config.columns as usize,
             &voxel_delta_ps,
