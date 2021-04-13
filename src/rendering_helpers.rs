@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::configuration::{AppConfig, Bidirectionality};
 use crate::point_cloud_renderer::ImageCoor;
 
-pub(crate) type Picosecond = i64;
+/// TimeTagger absolute times are i64 values that represent the number of
+/// picoseconds since the start of the experiment
+pub type Picosecond = i64;
 
 /// Marker trait to allow specific types to be used as deltas between pixels -
 /// for the image space rendering case the deltas are in f32, while for the
@@ -417,7 +419,7 @@ impl TimeToCoord {
             last_accessed_idx: 0,
             last_taglens_time: 0,
             max_frame_time,
-            next_frame_starts_at: frame_duration + voxel_delta_ps.frame,
+            next_frame_starts_at: offset + frame_duration + voxel_delta_ps.frame,
             voxel_delta_ps: voxel_delta_ps.clone(),
             voxel_delta_im: voxel_delta_im.clone(),
             earliest_frame_time: offset,
@@ -514,7 +516,7 @@ impl TimeToCoord {
             self.max_frame_time + self.voxel_delta_ps.frame + self.voxel_delta_ps.row;
         self.last_taglens_time = 0;
         self.earliest_frame_time = self.data[0].end_time - self.voxel_delta_ps.column;
-        info!("Done populating next frame, summary:\ntotal delta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
+        // info!("Done populating next frame, summary:\ntotal delta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
     }
 
     /// Handles a new line event
