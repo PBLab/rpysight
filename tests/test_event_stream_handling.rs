@@ -10,17 +10,13 @@ use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
 use log::*;
 use rand::prelude::*;
-use ron::{
-    de::from_str,
-    ser::{to_string_pretty, PrettyConfig},
-};
+use ron::ser::{to_string_pretty, PrettyConfig};
 use simplelog::*;
 
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
 use librpysight::point_cloud_renderer::{Event, EventStream, ImageCoor, TimeTaggerIpcHandler};
-use librpysight::rendering_helpers::{TimeCoordPair, TimeToCoord};
+use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
 
-const GLOBAL_OFFSET: i64 = 0;
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
 const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
 const SHORT_TWO_FRAME_BATCH_DATA: &'static str = "tests/data/short_record_batch_two_frames.csv";
@@ -82,9 +78,10 @@ fn read_as_stream(fname: &str) -> StreamReader<File> {
 //     batch
 // }
 
-fn mock_acquisition_loop(cfg: AppConfig, stream: &str) -> MockAppState {
+fn mock_acquisition_loop(cfg: AppConfig, stream: &str, offset: Option<Picosecond>) -> MockAppState {
     test_file_to_stream();
-    let mut app = MockAppState::new(String::from(stream), cfg);
+    let offset = offset.unwrap_or(0);
+    let mut app = MockAppState::new(String::from(stream), cfg, offset);
     app.data_stream = Some(read_as_stream(stream));
     app
 }
@@ -100,11 +97,11 @@ struct MockAppState {
 
 impl MockAppState {
     /// Generates a new app from a renderer and a receiving end of a channel
-    pub fn new(data_stream_fh: String, appconfig: AppConfig) -> Self {
+    pub fn new(data_stream_fh: String, appconfig: AppConfig, offset: Picosecond) -> Self {
         MockAppState {
             data_stream_fh,
             data_stream: None,
-            time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
+            time_to_coord: TimeToCoord::from_acq_params(&appconfig, offset),
             inputs: Inputs::from_config(&appconfig),
             valid_events: Vec::<TimeCoordPair>::with_capacity(100_000),
             invalid_events: Vec::<TimeCoordPair>::with_capacity(100_000),
@@ -161,16 +158,16 @@ impl MockAppState {
                 }
                 idx += 1;
             }
-            write(
-                "tests/data/short_two_frames_batch_unidir_valid.ron",
-                to_string_pretty(&self.valid_events, PrettyConfig::new()).unwrap(),
-            )
-            .unwrap();
-            write(
-                "tests/data/short_two_frames_batch_unidir_invalid.ron",
-                to_string_pretty(&self.invalid_events, PrettyConfig::new()).unwrap(),
-            )
-            .unwrap();
+            // write(
+            //     "tests/data/short_two_frames_with_offset_batch_unidir_valid.ron",
+            //     to_string_pretty(&self.valid_events, PrettyConfig::new()).unwrap(),
+            // )
+            // .unwrap();
+            // write(
+            //     "tests/data/short_two_frames_with_offset_batch_unidir_invalid.ron",
+            //     to_string_pretty(&self.invalid_events, PrettyConfig::new()).unwrap(),
+            // )
+            // .unwrap();
         }
     }
 }
@@ -223,22 +220,20 @@ impl TimeTaggerIpcHandler for MockAppState {
 
 /// Start a logger, generate a default config file (if given none) and generate
 /// a data stream from one of the CSV files.
-fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> MockAppState {
+fn setup(csv_to_stream: &str, cfg: Option<AppConfig>, offset: Option<Picosecond>) -> MockAppState {
     let _ = TestLogger::init(
         LevelFilter::Info,
         ConfigBuilder::default().set_time_to_local(true).build(),
     );
-    if cfg.is_none() {
-        let cfg = Some(AppConfigBuilder::default().with_planes(1).build());
-    }
-    let app = mock_acquisition_loop(cfg.unwrap(), csv_to_stream);
+    let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
+    let app = mock_acquisition_loop(cfg, csv_to_stream, offset);
     app
 }
 
 #[test]
 fn assert_full_stream_exists() {
     test_file_to_stream();
-    let mut app = setup(FULL_BATCH_STREAM, None);
+    let mut app = setup(FULL_BATCH_STREAM, None, None);
     if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
@@ -248,7 +243,7 @@ fn assert_full_stream_exists() {
 #[test]
 fn assert_short_stream_exists() {
     test_file_to_stream();
-    let mut app = setup(SHORT_BATCH_STREAM, None);
+    let mut app = setup(SHORT_BATCH_STREAM, None, None);
     if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
@@ -264,7 +259,7 @@ fn stepwise_short_bidir_single_frame() {
         .with_planes(1)
         .with_bidir(Bidirectionality::Bidir)
         .build();
-    let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
+    let mut app = setup(SHORT_BATCH_STREAM, Some(cfg), None);
     app.step();
     assert_eq!(
         to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
@@ -285,7 +280,7 @@ fn stepwise_short_unidir_single_frame() {
         .with_planes(1)
         .with_bidir(Bidirectionality::Unidir)
         .build();
-    let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
+    let mut app = setup(SHORT_BATCH_STREAM, Some(cfg), None);
     app.step();
     assert_eq!(
         to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
@@ -307,7 +302,7 @@ fn stepwise_short_two_frames_bidir() {
         .with_bidir(Bidirectionality::Bidir)
         .with_frame_dead_time(10_000_000)
         .build();
-    let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
+    let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), None);
     app.step();
     assert_eq!(
         to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
@@ -329,7 +324,51 @@ fn stepwise_short_two_frames_unidir() {
         .with_bidir(Bidirectionality::Unidir)
         .with_frame_dead_time(10_000_000)
         .build();
-    let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
+    let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), None);
+    app.step();
+    assert_eq!(
+        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap()
+    );
+    assert_eq!(
+        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap()
+    );
+}
+
+#[test]
+fn stepwise_short_two_frames_offset_bidir() {
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_scan_period(Period::from_freq(100_000.0))
+        .with_columns(10)
+        .with_rows(10)
+        .with_planes(1)
+        .with_bidir(Bidirectionality::Bidir)
+        .with_frame_dead_time(10_000_000)
+        .build();
+    let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
+    app.step();
+    assert_eq!(
+        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap()
+    );
+    assert_eq!(
+        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()
+    );
+}
+
+#[test]
+fn stepwise_short_two_frames_offset_unidir() {
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_scan_period(Period::from_freq(100_000.0))
+        .with_columns(10)
+        .with_rows(10)
+        .with_planes(1)
+        .with_bidir(Bidirectionality::Unidir)
+        .with_frame_dead_time(10_000_000)
+        .build();
+    let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
     app.step();
     assert_eq!(
         to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
