@@ -30,7 +30,7 @@ const TT_DATA_STREAM: &'static str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &'static str = "rpysight/call_timetagger.py";
 const DEFAULT_CONFIG_FNAME: &'static str = "default.toml";
 const TT_RUN_FUNCTION_NAME: &'static str = "run_tagger";
-const GLOBAL_OFFSET: i64 = 1_700_000_000_000;
+const GLOBAL_OFFSET: i64 = 700_000_000_000;
 
 /// Load an existing configuration file or generate a new one with default
 /// values and load that instead.
