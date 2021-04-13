@@ -1,20 +1,24 @@
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 use std::fs::File;
+use std::fs::{read_to_string, write};
 use std::sync::Arc;
-use std::fs::{write, read_to_string};
 
 use anyhow::{Context, Result};
 use arrow::csv::Reader;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
-use rand::prelude::*;
-use simplelog::*;
 use log::*;
-use ron::{de::from_str, ser::{to_string_pretty, PrettyConfig}};
+use rand::prelude::*;
+use ron::{
+    de::from_str,
+    ser::{to_string_pretty, PrettyConfig},
+};
+use simplelog::*;
 
-use librpysight::configuration::{AppConfig, AppConfigBuilder, Inputs, Period, Bidirectionality};
-use librpysight::point_cloud_renderer::{EventStream, TimeTaggerIpcHandler, Event, ImageCoor};
-use librpysight::rendering_helpers::{TimeToCoord, TimeCoordPair};
+use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
+use librpysight::point_cloud_renderer::{Event, EventStream, ImageCoor, TimeTaggerIpcHandler};
+use librpysight::rendering_helpers::{TimeCoordPair, TimeToCoord};
 
 const GLOBAL_OFFSET: i64 = 0;
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
@@ -22,8 +26,8 @@ const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
 const SHORT_TWO_FRAME_BATCH_DATA: &'static str = "tests/data/short_record_batch_two_frames.csv";
 const FULL_BATCH_STREAM: &'static str = "tests/data/real_record_batch_full_stream.dat";
 const SHORT_BATCH_STREAM: &'static str = "tests/data/real_record_batch_short_stream.dat";
-const SHORT_TWO_FRAME_BATCH_STREAM: &'static str = "tests/data/real_record_batch_short_two_frames_stream.dat";
-
+const SHORT_TWO_FRAME_BATCH_STREAM: &'static str =
+    "tests/data/real_record_batch_short_two_frames_stream.dat";
 
 /// Run once to generate .dat file which behave as streams
 fn test_file_to_stream() {
@@ -33,10 +37,23 @@ fn test_file_to_stream() {
         Field::new("channel", DataType::Int32, false),
         Field::new("time", DataType::Int64, false),
     ]);
-    for (data, stream) in vec![FULL_BATCH_DATA, SHORT_BATCH_DATA, SHORT_TWO_FRAME_BATCH_DATA].into_iter().zip(vec![FULL_BATCH_STREAM, SHORT_BATCH_STREAM, SHORT_TWO_FRAME_BATCH_STREAM].into_iter()) {
+    for (data, stream) in vec![
+        FULL_BATCH_DATA,
+        SHORT_BATCH_DATA,
+        SHORT_TWO_FRAME_BATCH_DATA,
+    ]
+    .into_iter()
+    .zip(
+        vec![
+            FULL_BATCH_STREAM,
+            SHORT_BATCH_STREAM,
+            SHORT_TWO_FRAME_BATCH_STREAM,
+        ]
+        .into_iter(),
+    ) {
         let stream_file = File::create(stream).unwrap();
         let mut stream_writer = StreamWriter::try_new(stream_file, &schema).unwrap();
-        let mut r= Reader::new(
+        let mut r = Reader::new(
             File::open(data).unwrap(),
             Arc::new(schema.clone()),
             true,
@@ -45,9 +62,7 @@ fn test_file_to_stream() {
             None,
             None,
         );
-        stream_writer
-            .write(&r.next().unwrap().unwrap())
-            .unwrap();
+        stream_writer.write(&r.next().unwrap().unwrap()).unwrap();
     }
 }
 
@@ -69,12 +84,8 @@ fn read_as_stream(fname: &str) -> StreamReader<File> {
 
 fn mock_acquisition_loop(cfg: AppConfig, stream: &str) -> MockAppState {
     test_file_to_stream();
-    let mut app = MockAppState::new(String::from(
-        stream
-), cfg);
-    app.data_stream = Some(read_as_stream(
-        stream
-    ));
+    let mut app = MockAppState::new(String::from(stream), cfg);
+    app.data_stream = Some(read_as_stream(stream));
     app
 }
 
@@ -89,10 +100,7 @@ struct MockAppState {
 
 impl MockAppState {
     /// Generates a new app from a renderer and a receiving end of a channel
-    pub fn new(
-        data_stream_fh: String,
-        appconfig: AppConfig,
-    ) -> Self {
+    pub fn new(data_stream_fh: String, appconfig: AppConfig) -> Self {
         MockAppState {
             data_stream_fh,
             data_stream: None,
@@ -144,15 +152,25 @@ impl MockAppState {
                 if let Some(point) = self.event_to_coordinate(event) {
                     info!("This point is about to be rendered: {:?}", point);
                     if point.iter().copied().any(|x| x.is_nan()) {
-                        self.invalid_events.push(TimeCoordPair::new(event.time, point));
+                        self.invalid_events
+                            .push(TimeCoordPair::new(event.time, point));
                     } else {
-                        self.valid_events.push(TimeCoordPair::new(event.time, point));
+                        self.valid_events
+                            .push(TimeCoordPair::new(event.time, point));
                     }
-                } 
+                }
                 idx += 1;
             }
-            write("tests/data/short_two_frames_batch_bidir_valid.ron", to_string_pretty(&self.valid_events, PrettyConfig::new()).unwrap()).unwrap();
-            write("tests/data/short_two_frames_batch_bidir_invalid.ron", to_string_pretty(&self.invalid_events, PrettyConfig::new()).unwrap()).unwrap();
+            write(
+                "tests/data/short_two_frames_batch_unidir_valid.ron",
+                to_string_pretty(&self.valid_events, PrettyConfig::new()).unwrap(),
+            )
+            .unwrap();
+            write(
+                "tests/data/short_two_frames_batch_unidir_invalid.ron",
+                to_string_pretty(&self.invalid_events, PrettyConfig::new()).unwrap(),
+            )
+            .unwrap();
         }
     }
 }
@@ -184,11 +202,17 @@ impl TimeTaggerIpcHandler for MockAppState {
         }
         info!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
-            librpysight::configuration::DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time),
+            librpysight::configuration::DataType::Pmt1 => {
+                self.time_to_coord.tag_to_coord_linear(event.time)
+            }
             librpysight::configuration::DataType::Pmt2 => self.time_to_coord.dump(event.time),
             librpysight::configuration::DataType::Line => self.time_to_coord.new_line(event.time),
-            librpysight::configuration::DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
-            librpysight::configuration::DataType::Laser => self.time_to_coord.new_laser_event(event.time),
+            librpysight::configuration::DataType::TagLens => {
+                self.time_to_coord.new_taglens_period(event.time)
+            }
+            librpysight::configuration::DataType::Laser => {
+                self.time_to_coord.new_laser_event(event.time)
+            }
             _ => {
                 error!("Unsupported event: {:?}", event);
                 None
@@ -233,36 +257,86 @@ fn assert_short_stream_exists() {
 
 #[test]
 fn stepwise_short_bidir_single_frame() {
-    let cfg: AppConfig = AppConfigBuilder::default().with_scan_period(Period::from_freq(100_000.0)).with_columns(10).with_rows(10).with_planes(1).with_bidir(Bidirectionality::Bidir).build();
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_scan_period(Period::from_freq(100_000.0))
+        .with_columns(10)
+        .with_rows(10)
+        .with_planes(1)
+        .with_bidir(Bidirectionality::Bidir)
+        .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
     app.step();
-    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_batch_bidir_invalid.ron").unwrap());
-    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_batch_bidir_valid.ron").unwrap());
+    assert_eq!(
+        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_batch_bidir_invalid.ron").unwrap()
+    );
+    assert_eq!(
+        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_batch_bidir_valid.ron").unwrap()
+    );
 }
 
 #[test]
 fn stepwise_short_unidir_single_frame() {
-    let cfg: AppConfig = AppConfigBuilder::default().with_scan_period(Period::from_freq(100_000.0)).with_columns(10).with_rows(10).with_planes(1).with_bidir(Bidirectionality::Unidir).build();
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_scan_period(Period::from_freq(100_000.0))
+        .with_columns(10)
+        .with_rows(10)
+        .with_planes(1)
+        .with_bidir(Bidirectionality::Unidir)
+        .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
     app.step();
-    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_batch_unidir_invalid.ron").unwrap());
-    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_batch_unidir_valid.ron").unwrap());
+    assert_eq!(
+        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_batch_unidir_invalid.ron").unwrap()
+    );
+    assert_eq!(
+        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_batch_unidir_valid.ron").unwrap()
+    );
 }
 
 #[test]
 fn stepwise_short_two_frames_bidir() {
-    let cfg: AppConfig = AppConfigBuilder::default().with_scan_period(Period::from_freq(100_000.0)).with_columns(10).with_rows(10).with_planes(1).with_bidir(Bidirectionality::Bidir).with_frame_dead_time(10_000_000).build();
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_scan_period(Period::from_freq(100_000.0))
+        .with_columns(10)
+        .with_rows(10)
+        .with_planes(1)
+        .with_bidir(Bidirectionality::Bidir)
+        .with_frame_dead_time(10_000_000)
+        .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
     app.step();
-    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap());
-    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap());
+    assert_eq!(
+        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap()
+    );
+    assert_eq!(
+        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()
+    );
 }
 
 #[test]
 fn stepwise_short_two_frames_unidir() {
-    let cfg: AppConfig = AppConfigBuilder::default().with_scan_period(Period::from_freq(100_000.0)).with_columns(10).with_rows(10).with_planes(1).with_bidir(Bidirectionality::Unidir).with_frame_dead_time(10_000_000).build();
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_scan_period(Period::from_freq(100_000.0))
+        .with_columns(10)
+        .with_rows(10)
+        .with_planes(1)
+        .with_bidir(Bidirectionality::Unidir)
+        .with_frame_dead_time(10_000_000)
+        .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
     app.step();
-    assert_eq!(to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap());
-    assert_eq!(to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(), read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap());
+    assert_eq!(
+        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap()
+    );
+    assert_eq!(
+        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
+        read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap()
+    );
 }

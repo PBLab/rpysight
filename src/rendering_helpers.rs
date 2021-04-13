@@ -399,7 +399,7 @@ impl TimeToCoord {
         ));
         let line_len = column_deltas_ps.len();
         let offset_per_row = column_deltas_ps[line_len - 1];
-        let mut line_offset: Picosecond = 0;
+        let mut line_offset: Picosecond = offset;
         for row in 0..config.rows {
             let row_coord = (row as f32) * voxel_delta_im.row;
             TimeToCoord::push_pair_unidir(
@@ -413,17 +413,18 @@ impl TimeToCoord {
         }
         let _ = snake.pop();
         let max_frame_time = *&snake[snake.len() - 1].end_time;
+        let frame_duration = config.calc_frame_duration();
         info!("2D unidir snake finished");
         TimeToCoord {
             data: snake,
             last_accessed_idx: 0,
             last_taglens_time: 0,
             max_frame_time,
-            next_frame_starts_at: max_frame_time + voxel_delta_ps.frame + voxel_delta_ps.row,
+            next_frame_starts_at: frame_duration + voxel_delta_ps.frame,
             voxel_delta_ps: voxel_delta_ps.clone(),
             voxel_delta_im: voxel_delta_im.clone(),
             earliest_frame_time: offset,
-            frame_duration: config.calc_frame_duration(),
+            frame_duration,
         }
     }
 
@@ -498,7 +499,7 @@ impl TimeToCoord {
     /// simply trust in the data being not faulty.
     pub fn update_2d_data_for_next_frame(&mut self) {
         self.last_accessed_idx = 0;
-        info!("Populating next frame's data (it will start at {} because voxel delta is {}", self.next_frame_starts_at, self.voxel_delta_ps.frame);
+        info!("Populating next frame's data (it will start at {} because voxel delta ps is {}", self.next_frame_starts_at, self.voxel_delta_ps.frame);
         let delta_between_frames = self.frame_duration + self.voxel_delta_ps.frame;
         for pair in self.data.iter_mut() {
             pair.end_time += delta_between_frames;
@@ -507,7 +508,7 @@ impl TimeToCoord {
         self.next_frame_starts_at = self.max_frame_time + self.voxel_delta_ps.frame + self.voxel_delta_ps.row;
         self.last_taglens_time = 0;
         self.earliest_frame_time = self.data[0].end_time - self.voxel_delta_ps.column;
-        info!("Done populating next frame, summary:\ndelta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
+        info!("Done populating next frame, summary:\ntotal delta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
     }
 
     /// Handles a new line event
