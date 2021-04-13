@@ -1,7 +1,7 @@
 extern crate log;
 
 use nalgebra::DVector;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::configuration::{AppConfig, Bidirectionality};
 use crate::point_cloud_renderer::ImageCoor;
@@ -243,13 +243,10 @@ impl TimeToCoord {
         });
         // Manually add the cell corresponding to events arriving during mirror
         // rotation
-        let end_of_rotation_value =
-            *&column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
-        let column_deltas_ps =
-            column_deltas_ps.insert_rows(num_columns, 1, end_of_rotation_value);
-        let column_deltas_imagespace = DVector::<f32>::from_fn(num_columns, |i, _| {
-            (i as f32) * voxel_delta_im.column
-        });
+        let end_of_rotation_value = *&column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
+        let column_deltas_ps = column_deltas_ps.insert_rows(num_columns, 1, end_of_rotation_value);
+        let column_deltas_imagespace =
+            DVector::<f32>::from_fn(num_columns, |i, _| (i as f32) * voxel_delta_im.column);
         // The events during mirror rotation will be discarded - The NaN takes
         // care of that
         let column_deltas_imagespace =
@@ -342,8 +339,8 @@ impl TimeToCoord {
             );
             line_offset += deadtime_during_rotation;
         }
-        let _ = snake.pop();  // Last element is the mirror rotation for the
-                              // last row, which is unneeded.
+        let _ = snake.pop(); // Last element is the mirror rotation for the
+                             // last row, which is unneeded.
         let max_frame_time = *&snake[snake.len() - 1].end_time;
         info!("2D bidir Snake built");
         TimeToCoord {
@@ -469,7 +466,12 @@ impl TimeToCoord {
                     "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}",
                     pair, time, additional_steps_taken
                 );
-                info!("The next pair was: {:?}", &self.data.get( self.last_accessed_idx + additional_steps_taken + 1 ));
+                info!(
+                    "The next pair was: {:?}",
+                    &self
+                        .data
+                        .get(self.last_accessed_idx + additional_steps_taken + 1)
+                );
                 self.last_accessed_idx += additional_steps_taken;
                 coord = Some(pair.coord);
                 break;
@@ -499,13 +501,17 @@ impl TimeToCoord {
     /// simply trust in the data being not faulty.
     pub fn update_2d_data_for_next_frame(&mut self) {
         self.last_accessed_idx = 0;
-        info!("Populating next frame's data (it will start at {} because voxel delta ps is {}", self.next_frame_starts_at, self.voxel_delta_ps.frame);
+        info!(
+            "Populating next frame's data (it will start at {} because voxel delta ps is {}",
+            self.next_frame_starts_at, self.voxel_delta_ps.frame
+        );
         let delta_between_frames = self.frame_duration + self.voxel_delta_ps.frame;
         for pair in self.data.iter_mut() {
             pair.end_time += delta_between_frames;
         }
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
-        self.next_frame_starts_at = self.max_frame_time + self.voxel_delta_ps.frame + self.voxel_delta_ps.row;
+        self.next_frame_starts_at =
+            self.max_frame_time + self.voxel_delta_ps.frame + self.voxel_delta_ps.row;
         self.last_taglens_time = 0;
         self.earliest_frame_time = self.data[0].end_time - self.voxel_delta_ps.column;
         info!("Done populating next frame, summary:\ntotal delta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
@@ -714,7 +720,10 @@ mod tests {
         let offset = 100;
         let snake = TimeToCoord::from_acq_params(&config, offset);
         assert_eq!(snake.data[0].end_time, offset);
-        assert_eq!(snake.data[snake.data.len() - 1].end_time + snake.voxel_delta_ps.row, snake.frame_duration + offset);
+        assert_eq!(
+            snake.data[snake.data.len() - 1].end_time + snake.voxel_delta_ps.row,
+            snake.frame_duration + offset
+        );
     }
 
     // TODO: SECOND FRAMES' OFFSET?
@@ -723,11 +732,18 @@ mod tests {
         let config = setup_image_scanning_config().build();
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
-        let (column_deltas_ps, column_deltas_im) = TimeToCoord::prep_snake_2d_metadata(config.columns as usize, &voxel_delta_ps, &voxel_delta_im);
+        let (column_deltas_ps, column_deltas_im) = TimeToCoord::prep_snake_2d_metadata(
+            config.columns as usize,
+            &voxel_delta_ps,
+            &voxel_delta_im,
+        );
         assert_eq!(column_deltas_ps.len(), 11);
         assert_eq!(column_deltas_im.len(), 11);
         let last_idx = column_deltas_im.len() - 1;
-        assert_eq!(column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1], voxel_delta_ps.row);
+        assert_eq!(
+            column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1],
+            voxel_delta_ps.row
+        );
     }
 
     #[test]
@@ -736,11 +752,18 @@ mod tests {
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
         let offset = 0;
-        let (column_deltas_ps, column_deltas_im) = TimeToCoord::prep_snake_2d_metadata(config.columns as usize, &voxel_delta_ps, &voxel_delta_im);
+        let (column_deltas_ps, column_deltas_im) = TimeToCoord::prep_snake_2d_metadata(
+            config.columns as usize,
+            &voxel_delta_ps,
+            &voxel_delta_im,
+        );
         assert_eq!(column_deltas_ps.len(), 11);
         assert_eq!(column_deltas_im.len(), 11);
         let last_idx = column_deltas_im.len() - 1;
-        assert_eq!(column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1], voxel_delta_ps.row);
+        assert_eq!(
+            column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1],
+            voxel_delta_ps.row
+        );
     }
 
     #[test]
@@ -756,5 +779,4 @@ mod tests {
         let snake = TimeToCoord::build_snake(&config);
         assert_eq!(snake.capacity(), 1101);
     }
-
 }

@@ -261,7 +261,6 @@ impl AppConfig {
     }
 }
 
-
 /// Converts a miliseconds number (a string) into its equivalent in ps.
 fn string_ms_to_ps(ms_as_string: &str) -> anyhow::Result<Picosecond, ParseFloatError> {
     let ms = ms_as_string.parse::<f64>()?;
@@ -570,14 +569,12 @@ mod tests {
     fn frame_time_bidir() {
         let config = setup_default_config().with_bidir(true).build();
         assert_eq!(config.calc_frame_duration(), 16_149_035_264i64);
-
     }
 
     #[test]
     fn frame_time_unidir() {
         let config = setup_default_config().with_bidir(false).build();
         assert_eq!(config.calc_frame_duration(), 32_298_070_784i64);
-
     }
 
     #[test]
