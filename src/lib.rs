@@ -20,16 +20,15 @@ use kiss3d::point_renderer::PointRenderer;
 use kiss3d::window::Window;
 use pyo3::prelude::*;
 use thiserror::Error;
-use toml;
 
 use crate::configuration::{AppConfig, AppConfigBuilder};
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::AppState;
 
-const TT_DATA_STREAM: &'static str = "__tt_data_stream.dat";
-const CALL_TIMETAGGER_SCRIPT_NAME: &'static str = "rpysight/call_timetagger.py";
-const DEFAULT_CONFIG_FNAME: &'static str = "default.toml";
-const TT_RUN_FUNCTION_NAME: &'static str = "run_tagger";
+const TT_DATA_STREAM: &str = "__tt_data_stream.dat";
+const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
+const DEFAULT_CONFIG_FNAME: &str = "default.toml";
+const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
 const GLOBAL_OFFSET: i64 = 700_000_000_000;
 
 /// Load an existing configuration file or generate a new one with default
@@ -41,13 +40,13 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
     let config_path = get_config_path();
     if config_path.exists() {
         read_to_string(config_path)
-            .and_then(|res| Ok(toml::from_str(&res)))
+            .map(|res| toml::from_str(&res))
             .expect("Read to string failed")
             .expect("TOML parsing failed")
     } else {
         info!("Creating new configuration file in {:?}", config_path);
         create_dir_and_populate_with_default(config_path)
-            .unwrap_or(AppConfigBuilder::default().build())
+            .unwrap_or_else(|_| AppConfigBuilder::default().build())
     }
 }
 

@@ -339,16 +339,18 @@ impl Application for MainAppGui {
     /// initialization of the buttons and such, and then the individual fields
     /// are updated from the input config instance.
     fn new(prev_config: AppConfig) -> (MainAppGui, Command<Message>) {
-        let mut app = MainAppGui::default();
-        app.filename_value = prev_config.filename;
-        app.rows_value = prev_config.rows.to_string();
-        app.columns_value = prev_config.columns.to_string();
-        app.planes_value = prev_config.planes.to_string();
-        app.scan_period_value = prev_config.scan_period.to_hz().to_string();
-        app.tag_period_value = prev_config.tag_period.to_hz().to_string();
-        app.bidirectional = prev_config.bidir.into();
-        app.fill_fraction_value = prev_config.fill_fraction.to_string();
-        app.frame_dead_time_value = ps_to_ms(prev_config.frame_dead_time).to_string();
+        let mut app = MainAppGui {
+            filename_value: prev_config.filename,
+            rows_value: prev_config.rows.to_string(),
+            columns_value: prev_config.columns.to_string(),
+            planes_value: prev_config.planes.to_string(),
+            scan_period_value: prev_config.scan_period.to_hz().to_string(),
+            tag_period_value: prev_config.tag_period.to_hz().to_string(),
+            bidirectional: prev_config.bidir.into(),
+            fill_fraction_value: prev_config.fill_fraction.to_string(),
+            frame_dead_time_value: ps_to_ms(prev_config.frame_dead_time).to_string(),
+            ..Default::default()
+        };
         let pmt1 = channel_value_to_pair(prev_config.pmt1_ch);
         app.pmt1_selected = pmt1.0;
         app.pmt1_edge_selected = pmt1.1;

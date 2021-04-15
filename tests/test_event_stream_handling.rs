@@ -1,6 +1,6 @@
 extern crate log;
-use std::fs::File;
 use std::fs::read_to_string;
+use std::fs::File;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};

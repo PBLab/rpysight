@@ -245,7 +245,7 @@ impl TimeToCoord {
         });
         // Manually add the cell corresponding to events arriving during mirror
         // rotation
-        let end_of_rotation_value = *&column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
+        let end_of_rotation_value = column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
         let column_deltas_ps = column_deltas_ps.insert_rows(num_columns, 1, end_of_rotation_value);
         let column_deltas_imagespace =
             DVector::<f32>::from_fn(num_columns, |i, _| (i as f32) * voxel_delta_im.column);
@@ -343,7 +343,7 @@ impl TimeToCoord {
         }
         let _ = snake.pop(); // Last element is the mirror rotation for the
                              // last row, which is unneeded.
-        let max_frame_time = *&snake[snake.len() - 1].end_time;
+        let max_frame_time = snake[snake.len() - 1].end_time;
         info!("2D bidir Snake built");
         TimeToCoord {
             data: snake,
@@ -351,8 +351,8 @@ impl TimeToCoord {
             last_taglens_time: 0,
             max_frame_time,
             next_frame_starts_at: max_frame_time + voxel_delta_ps.frame + voxel_delta_ps.row,
-            voxel_delta_ps: voxel_delta_ps.clone(),
-            voxel_delta_im: voxel_delta_im.clone(),
+            voxel_delta_ps: *voxel_delta_ps,
+            voxel_delta_im: *voxel_delta_im,
             earliest_frame_time: offset,
             frame_duration: config.calc_frame_duration(),
         }
@@ -411,7 +411,7 @@ impl TimeToCoord {
             line_offset += offset_per_row;
         }
         let _ = snake.pop();
-        let max_frame_time = *&snake[snake.len() - 1].end_time;
+        let max_frame_time = snake[snake.len() - 1].end_time;
         let frame_duration = config.calc_frame_duration();
         info!("2D unidir snake finished");
         TimeToCoord {
@@ -420,8 +420,8 @@ impl TimeToCoord {
             last_taglens_time: 0,
             max_frame_time,
             next_frame_starts_at: offset + frame_duration + voxel_delta_ps.frame,
-            voxel_delta_ps: voxel_delta_ps.clone(),
-            voxel_delta_im: voxel_delta_im.clone(),
+            voxel_delta_ps: *voxel_delta_ps,
+            voxel_delta_im: *voxel_delta_im,
             earliest_frame_time: offset,
             frame_duration,
         }

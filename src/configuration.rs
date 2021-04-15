@@ -420,13 +420,13 @@ impl AppConfigBuilder {
 
     pub fn with_fill_fraction<T: Into<f32>>(&mut self, fill_fraction: T) -> &mut Self {
         let fill_fraction = fill_fraction.into();
-        assert!(fill_fraction >= 0.0 && fill_fraction <= 100.0);
+        assert!((0.0..=100.0).contains(&fill_fraction));
         self.fill_fraction = fill_fraction;
         self
     }
 
     pub fn with_frame_dead_time(&mut self, frame_dead_time: Picosecond) -> &mut Self {
-        assert!(frame_dead_time >= 0 && frame_dead_time <= 10_000_000_000_000);
+        assert!((0..=10_000_000_000_000).contains(&frame_dead_time));
         self.frame_dead_time = frame_dead_time;
         self
     }
