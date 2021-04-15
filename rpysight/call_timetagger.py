@@ -185,7 +185,7 @@ def test_tagger(cfg: str):
     tagger = TimeTagger.createTimeTaggerVirtual()
     rt = RealTimeRendering(tagger, None, None)
     tagger.replay(config['filename'])
-    sleep(1)
+    sleep(6)
     
 
 
