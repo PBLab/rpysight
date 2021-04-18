@@ -15,6 +15,7 @@ it work once, and it did, which is great.
 """
 import pathlib
 from time import sleep
+from typing import Optional
 
 import numpy as np
 import pyarrow as pa
@@ -39,7 +40,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
     used independently of it.
     """
 
-    def __init__(self, tagger, channels: list, fname=None):
+    def __init__(self, tagger, channels: Optional[list], fname: Optional[str] = None):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
         if channels:
             for channel in channels:
@@ -154,6 +155,12 @@ def infer_channel_list_from_cfg(config):
     return channels
 
 
+def add_fname_suffix(fname: str) -> str:
+    fname_path = pathlib.Path(fname)
+    new_name = fname_path.stem + "_stream.ttbin"
+    return str(fname_path.with_name(new_name))
+
+
 def run_tagger(cfg: str):
     """Run a TimeTagger acquisition with the GUI's parameters.
 
@@ -174,7 +181,7 @@ def run_tagger(cfg: str):
     # channels = [1, 2]
     tagger.setTestSignal(channels, True)
     tag = RealTimeRendering(tagger, channels, config['filename'])
-    _ = TimeTagger.FileWriter(tagger, config['filename'], [CHAN_START, CHAN_STOP])
+    _ = TimeTagger.FileWriter(tagger, add_fname_suffix(config['filename']), [CHAN_START, CHAN_STOP])
     tag.startFor(int(10e12))
     tag.waitUntilFinished()
 
@@ -183,11 +190,7 @@ def replay_existing(cfg: str):
     """A testing method to replay old acquisitions."""
     config = toml.loads(cfg)
     tagger = TimeTagger.createTimeTaggerVirtual()
-    rt = RealTimeRendering(tagger, None, None)
+    _ = RealTimeRendering(tagger, None, None)
     tagger.replay(config['filename'])
     sleep(6)
-    
 
-
-if __name__ == "__main__":
-    run_tagger([CHAN_START, CHAN_STOP])

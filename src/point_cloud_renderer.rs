@@ -300,7 +300,8 @@ impl State for AppState<File> {
                         // discarding of all photons in this batch. I'll need
                         // to handle them by saving them in some buffer and
                         // render them in the next frame.
-                        break;
+                        // break;
+                        continue
                     }
                 }
             }
