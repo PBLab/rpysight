@@ -65,10 +65,11 @@ pub struct MainAppGui {
 /// This method is called once the user clicks the "Run Application" button.
 async fn start_acquisition(cfg: AppConfig) {
     let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
-    let (window, mut app) = setup_renderer(&cfg);
+    let (mut window, mut app) = setup_renderer(&cfg);
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
+    window.set_framerate_limit(Some(15));
     app.acquire_stream_filehandle()
         .expect("Failed to acquire stream handle");
     window.render_loop(app);

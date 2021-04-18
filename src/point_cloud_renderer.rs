@@ -48,12 +48,16 @@ impl Event {
         }
     }
 
-    pub fn from_stream_idx(stream: &EventStream, idx: usize) -> Self {
-        Event {
+    pub fn from_stream_idx(stream: &EventStream, idx: usize) -> Option<Self> {
+        if stream.num_rows() > idx {
+            Some(Event {
             type_: stream.type_.value(idx),
             missed_event: stream.missed_events.value(idx),
             channel: stream.channel.value(idx),
             time: stream.time.value(idx),
+        }) } else { 
+            info!("Accessed idx is out of bounds! Received {}, but length is {}", idx, stream.num_rows());
+            None
         }
     }
 }
@@ -237,6 +241,7 @@ impl TimeTaggerIpcHandler for AppState<File> {
             },
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
             DataType::Laser => self.time_to_coord.new_laser_event(event.time),
+            DataType::Frame => ProcessedEvent::NoOp,
             _ => {
                 error!("Unsupported event: {:?}", event);
                 ProcessedEvent::NoOp
@@ -279,29 +284,36 @@ impl State for AppState<File> {
     /// overflow. This iteration process filters these non-time tags from the
     /// more relevant tags.
     fn step(&mut self, _window: &mut Window) {
-        if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
-            let batch = batch.unwrap();
-            info!("Received {} rows", batch.num_rows());
-            let event_stream = EventStream::from_streamed_batch(&batch);
-            if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time
-                <= self.time_to_coord.earliest_frame_time
-            {
-                info!("The last event in the batch arrived before the first in the frame");
-                return;
-            }
-            for event in event_stream.into_iter() {
-                match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => self.point_cloud_renderer.draw_point(p, c),
-                    ProcessedEvent::NoOp => {
+        'step: loop {
+            if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
+                let batch = batch.unwrap();
+                info!("Received {} rows", batch.num_rows());
+                let event_stream = EventStream::from_streamed_batch(&batch);
+                if event_stream.num_rows() == 0 {
+                    info!("A batch with 0 rows was received");
+                    continue
+                };
+                if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
+                    if event.time <= self.time_to_coord.earliest_frame_time {
+                        info!("The last event in the batch arrived before the first in the frame");
                         continue
                     }
-                    ProcessedEvent::NewFrame => {
-                        // TODO: To test this newframe behavior I'm currently
-                        // discarding of all photons in this batch. I'll need
-                        // to handle them by saving them in some buffer and
-                        // render them in the next frame.
-                        // break;
-                        continue
+                }
+                for event in event_stream.into_iter() {
+                    match self.event_to_coordinate(event) {
+                        ProcessedEvent::Displayed(p, c) => self.point_cloud_renderer.draw_point(p, c),
+                        ProcessedEvent::NoOp => {
+                            continue
+                        }
+                        ProcessedEvent::NewFrame => {
+                            info!("New frame!");
+                            // TODO: To test this newframe behavior I'm currently
+                            // discarding of all photons in this batch. I'll need
+                            // to handle them by saving them in some buffer and
+                            // render them in the next frame.
+                            break 'step;
+                            // continue
+                        }
                     }
                 }
             }

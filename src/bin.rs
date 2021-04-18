@@ -14,7 +14,7 @@ use librpysight::{load_app_settings, reload_cfg_or_use_default};
 
 fn main() -> Result {
     let _ = WriteLogger::init(
-        LevelFilter::Warn,
+        LevelFilter::Info,
         ConfigBuilder::default().set_time_to_local(true).build(),
         File::create("target/rpysight.log")
             .map_err(|e| iced::Error::WindowCreationFailed(Box::new(e)))?,

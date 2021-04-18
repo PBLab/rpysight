@@ -50,6 +50,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
 
         if fname:
             self.filehandle = open(fname, "wb")
+
         # At the end of a CustomMeasurement construction,
         # we must indicate that we have finished.
         self.finalize_init()

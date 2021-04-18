@@ -129,9 +129,9 @@ pub fn load_timetagger_run_function(module_filename: PathBuf, replay_existing: b
     let run_tt = PyModule::from_code(py, &python_code, "run_tt.py", "run_tt")?;
     let tt_starter;
     if replay_existing {
-        tt_starter = run_tt.getattr(TT_RUN_FUNCTION_NAME)?;
-    } else {
         tt_starter = run_tt.getattr(TT_REPLAY_FUNCTION_NAME)?;
+    } else {
+        tt_starter = run_tt.getattr(TT_RUN_FUNCTION_NAME)?;
     };
     // Generate an owned object to be returned by value
     Ok(tt_starter.to_object(py))
