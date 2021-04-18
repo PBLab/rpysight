@@ -3,8 +3,9 @@ extern crate log;
 use nalgebra::DVector;
 use serde::{Deserialize, Serialize};
 
+use crate::DISPLAY_COLORS;
 use crate::configuration::{AppConfig, Bidirectionality};
-use crate::point_cloud_renderer::ImageCoor;
+use crate::point_cloud_renderer::{ImageCoor, ProcessedEvent};
 
 /// TimeTagger absolute times are i64 values that represent the number of
 /// picoseconds since the start of the experiment
@@ -451,14 +452,14 @@ impl TimeToCoord {
     /// a single step, or perhaps two. This should, in theory, be faster than
     /// other options for this algorithm (which are currently unexplored), such
     /// as binary search, hashmap or an interval tree.
-    pub fn tag_to_coord_linear(&mut self, time: i64) -> Option<ImageCoor> {
+    pub fn tag_to_coord_linear(&mut self, time: i64, ch: usize) -> ProcessedEvent {
         if time > self.max_frame_time {
             info!(
                 "Photon arrived after end of Frame! Our time: {}, Max time: {}",
                 time, self.max_frame_time
             );
             self.update_2d_data_for_next_frame();
-            return self.tag_to_coord_linear(time);
+            return self.tag_to_coord_linear(time, ch);
         }
         let mut additional_steps_taken = 0usize;
         let mut coord = None;
@@ -483,7 +484,7 @@ impl TimeToCoord {
         // Makes sure that we indeed captured some cell. This can be avoided in
         // principle but I'm still not confident enough in this implementation.
         if coord.is_some() {
-            coord
+            ProcessedEvent::Displayed(coord.unwrap(), DISPLAY_COLORS[ch])
         } else {
             error!(
                 "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
@@ -520,21 +521,21 @@ impl TimeToCoord {
     }
 
     /// Handles a new line event
-    pub fn new_line(&self, _time: i64) -> Option<ImageCoor> {
-        None
+    pub fn new_line(&self, _time: i64) -> ProcessedEvent {
+        ProcessedEvent::NoOp
     }
 
     /// Handles a new TAG lens start-of-cycle event
-    pub fn new_taglens_period(&self, _time: i64) -> Option<ImageCoor> {
-        None
+    pub fn new_taglens_period(&self, _time: i64) -> ProcessedEvent {
+        ProcessedEvent::NoOp
     }
 
-    pub fn new_laser_event(&self, _time: i64) -> Option<ImageCoor> {
-        None
+    pub fn new_laser_event(&self, _time: i64) -> ProcessedEvent {
+        ProcessedEvent::NoOp
     }
 
-    pub fn dump(&self, _time: i64) -> Option<ImageCoor> {
-        None
+    pub fn dump(&self, _time: i64) -> ProcessedEvent {
+        ProcessedEvent::NoOp
     }
 }
 

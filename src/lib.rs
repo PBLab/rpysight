@@ -13,6 +13,8 @@ use std::{
 
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate lazy_static;
 use anyhow::Result;
 use directories::ProjectDirs;
 use iced::Settings;
@@ -20,6 +22,7 @@ use kiss3d::point_renderer::PointRenderer;
 use kiss3d::window::Window;
 use pyo3::prelude::*;
 use thiserror::Error;
+use nalgebra::Point3;
 
 use crate::configuration::{AppConfig, AppConfigBuilder};
 use crate::gui::{ChannelNumber, EdgeDetected};
@@ -30,6 +33,11 @@ const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
 const DEFAULT_CONFIG_FNAME: &str = "default.toml";
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
 const GLOBAL_OFFSET: i64 = 700_000_000_000;
+
+lazy_static! {
+    /// GREEN, MAGENTA, CYAN, GRAY
+    static ref DISPLAY_COLORS: [Point3<f32>; 4] = [Point3::<f32>::new(0.0, 1.0, 0.0), Point3::<f32>::new(1.0, 0.0, 1.0), Point3::<f32>::new(0.0, 1.0, 1.0), Point3::<f32>::new(1.0, 1.0, 1.0)];
+}
 
 /// Load an existing configuration file or generate a new one with default
 /// values and load that instead.
