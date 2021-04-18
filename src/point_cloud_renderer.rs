@@ -174,6 +174,8 @@ pub struct AppState<R: Read> {
     pub data_stream: Option<StreamReader<R>>,
     time_to_coord: TimeToCoord,
     inputs: Inputs,
+    rows_per_frame: u32,
+    row_count: u32,
 }
 
 impl AppState<File> {
@@ -189,6 +191,8 @@ impl AppState<File> {
             data_stream: None,
             time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
             inputs: Inputs::from_config(&appconfig),
+            rows_per_frame: appconfig.rows,
+            row_count: 0,
         }
     }
 }
@@ -224,7 +228,13 @@ impl TimeTaggerIpcHandler for AppState<File> {
             DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time, 1),
             DataType::Pmt3 => self.time_to_coord.tag_to_coord_linear(event.time, 2),
             DataType::Pmt4 => self.time_to_coord.tag_to_coord_linear(event.time, 3),
-            DataType::Line => self.time_to_coord.new_line(event.time),
+            DataType::Line => { 
+                self.row_count += 1; 
+                if self.row_count == self.rows_per_frame {
+                    self.row_count = 0;
+                    ProcessedEvent::NewFrame
+                } else { ProcessedEvent::NoOp }
+            },
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
             DataType::Laser => self.time_to_coord.new_laser_event(event.time),
             _ => {
@@ -286,7 +296,11 @@ impl State for AppState<File> {
                         continue
                     }
                     ProcessedEvent::NewFrame => {
-                        todo!()
+                        // TODO: To test this newframe behavior I'm currently
+                        // discarding of all photons in this batch. I'll need
+                        // to handle them by saving them in some buffer and
+                        // render them in the next frame.
+                        break;
                     }
                 }
             }
