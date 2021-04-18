@@ -13,7 +13,7 @@ use ron::ser::{to_string_pretty, PrettyConfig};
 use simplelog::*;
 
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
-use librpysight::point_cloud_renderer::{Event, EventStream, ImageCoor, TimeTaggerIpcHandler};
+use librpysight::point_cloud_renderer::{Event, EventStream, ImageCoor, TimeTaggerIpcHandler, ProcessedEvent};
 use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
@@ -145,15 +145,19 @@ impl MockAppState {
                 // if idx > 10 {
                 //     break;
                 // }
-                if let Some(point) = self.event_to_coordinate(event) {
-                    info!("This point is about to be rendered: {:?}", point);
-                    if point.iter().copied().any(|x| x.is_nan()) {
-                        self.invalid_events
-                            .push(TimeCoordPair::new(event.time, point));
-                    } else {
-                        self.valid_events
-                            .push(TimeCoordPair::new(event.time, point));
-                    }
+                match self.event_to_coordinate(event) {
+                    ProcessedEvent::Displayed(point, _) => {
+                        info!("This point is about to be rendered: {:?}", point);
+                        if point.iter().copied().any(|x| x.is_nan()) {
+                            self.invalid_events
+                                .push(TimeCoordPair::new(event.time, point));
+                        } else {
+                            self.valid_events
+                                .push(TimeCoordPair::new(event.time, point));
+                        }
+                    },
+                    ProcessedEvent::NewFrame => {continue},
+                    ProcessedEvent::NoOp => { continue },
                 }
                 idx += 1;
             }
@@ -192,16 +196,16 @@ impl TimeTaggerIpcHandler for MockAppState {
     /// None is returned if the tag isn't a time tag. When the tag is from a
     /// non-imaging channel it's taken into account, but otherwise (i.e. in
     /// cases of overflow it's discarded at the moment.
-    fn event_to_coordinate(&mut self, event: Event) -> Option<ImageCoor> {
+    fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent {
         if event.type_ != 0 {
-            return None;
+            return ProcessedEvent::NoOp
         }
         info!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
             librpysight::configuration::DataType::Pmt1 => {
-                self.time_to_coord.tag_to_coord_linear(event.time)
+                self.time_to_coord.tag_to_coord_linear(event.time, 0)
             }
-            librpysight::configuration::DataType::Pmt2 => self.time_to_coord.dump(event.time),
+            librpysight::configuration::DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time, 1),
             librpysight::configuration::DataType::Line => self.time_to_coord.new_line(event.time),
             librpysight::configuration::DataType::TagLens => {
                 self.time_to_coord.new_taglens_period(event.time)
@@ -211,7 +215,7 @@ impl TimeTaggerIpcHandler for MockAppState {
             }
             _ => {
                 error!("Unsupported event: {:?}", event);
-                None
+                ProcessedEvent::NoOp
             }
         }
     }

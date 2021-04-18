@@ -466,14 +466,8 @@ impl TimeToCoord {
         for pair in &self.data[self.last_accessed_idx..] {
             if time <= pair.end_time {
                 info!(
-                    "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}",
-                    pair, time, additional_steps_taken
-                );
-                info!(
-                    "The next pair was: {:?}",
-                    &self
-                        .data
-                        .get(self.last_accessed_idx + additional_steps_taken + 1)
+                    "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}; Channel: {}",
+                    pair, time, additional_steps_taken, ch
                 );
                 self.last_accessed_idx += additional_steps_taken;
                 coord = Some(pair.coord);

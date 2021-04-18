@@ -170,8 +170,8 @@ def run_tagger(cfg: str):
     tagger = TimeTagger.createTimeTagger()
     tagger.reset()
     # enable the test signal
-    # channels = infer_channel_list_from_cfg(config)
-    channels = [1]
+    channels = infer_channel_list_from_cfg(config)
+    # channels = [1, 2]
     tagger.setTestSignal(channels, True)
     tag = RealTimeRendering(tagger, channels, config['filename'])
     _ = TimeTagger.FileWriter(tagger, config['filename'], [CHAN_START, CHAN_STOP])
