@@ -172,7 +172,6 @@ pub struct AppState<R: Read> {
     point_cloud_renderer: PointRenderer,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
-    point_color: Point3<f32>,
     time_to_coord: TimeToCoord,
     inputs: Inputs,
 }
@@ -188,7 +187,6 @@ impl AppState<File> {
             point_cloud_renderer,
             data_stream_fh,
             data_stream: None,
-            point_color: Point3::<f32>::new(1.0, 1.0, 1.0),
             time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
             inputs: Inputs::from_config(&appconfig),
         }
@@ -218,12 +216,14 @@ impl TimeTaggerIpcHandler for AppState<File> {
     /// cases of overflow it's discarded at the moment.
     fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent {
         if event.type_ != 0 {
-            return ProcessedEvent::NoOp
+            return ProcessedEvent::NoOp;
         }
         info!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time, 0),
             DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time, 1),
+            DataType::Pmt3 => self.time_to_coord.tag_to_coord_linear(event.time, 2),
+            DataType::Pmt4 => self.time_to_coord.tag_to_coord_linear(event.time, 3),
             DataType::Line => self.time_to_coord.new_line(event.time),
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
             DataType::Laser => self.time_to_coord.new_laser_event(event.time),
@@ -281,11 +281,14 @@ impl State for AppState<File> {
             }
             for event in event_stream.into_iter() {
                 match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => { self.point_cloud_renderer.draw_point(p, c) },
-                    ProcessedEvent::NoOp => { todo!() },
-                    ProcessedEvent::NewFrame => { todo!() },
+                    ProcessedEvent::Displayed(p, c) => self.point_cloud_renderer.draw_point(p, c),
+                    ProcessedEvent::NoOp => {
+                        continue
+                    }
+                    ProcessedEvent::NewFrame => {
+                        todo!()
+                    }
                 }
-                
             }
         }
     }

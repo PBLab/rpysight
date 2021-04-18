@@ -3,9 +3,9 @@ extern crate log;
 use nalgebra::DVector;
 use serde::{Deserialize, Serialize};
 
-use crate::DISPLAY_COLORS;
 use crate::configuration::{AppConfig, Bidirectionality};
 use crate::point_cloud_renderer::{ImageCoor, ProcessedEvent};
+use crate::DISPLAY_COLORS;
 
 /// TimeTagger absolute times are i64 values that represent the number of
 /// picoseconds since the start of the experiment

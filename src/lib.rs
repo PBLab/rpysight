@@ -20,9 +20,9 @@ use directories::ProjectDirs;
 use iced::Settings;
 use kiss3d::point_renderer::PointRenderer;
 use kiss3d::window::Window;
+use nalgebra::Point3;
 use pyo3::prelude::*;
 use thiserror::Error;
-use nalgebra::Point3;
 
 use crate::configuration::{AppConfig, AppConfigBuilder};
 use crate::gui::{ChannelNumber, EdgeDetected};
