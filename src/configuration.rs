@@ -174,6 +174,7 @@ pub struct AppConfig {
     pub(crate) frame_ch: i32,
     pub(crate) line_ch: i32,
     pub(crate) taglens_ch: i32,
+    pub(crate) replay_existing: bool,
     pub(crate) bidir: Bidirectionality,
     pub(crate) point_color: Point3<f32>,
     pub(crate) scan_period: Period,
@@ -248,6 +249,7 @@ impl AppConfig {
             .with_taglens_ch(convert_user_channel_input_to_num(
                 user_input.get_tag_channel(),
             ))
+            .with_replay_existing(user_input.get_replay_existing())
             .build())
     }
 
@@ -315,6 +317,7 @@ pub struct AppConfigBuilder {
     bidir: Bidirectionality,
     fill_fraction: f32, // (0..100)
     frame_dead_time: Picosecond,
+    replay_existing: bool,
     pmt1_ch: i32,
     pmt2_ch: i32,
     pmt3_ch: i32,
@@ -338,6 +341,7 @@ impl AppConfigBuilder {
             scan_period: Period::from_freq(7923.0),
             tag_period: Period::from_freq(189800.0),
             bidir: Bidirectionality::Bidir,
+            replay_existing: false,
             fill_fraction: 71.0,
             frame_dead_time: 1_310_000_000,
             pmt1_ch: -1,
@@ -371,6 +375,7 @@ impl AppConfigBuilder {
             frame_ch: self.frame_ch,
             line_ch: self.line_ch,
             taglens_ch: self.taglens_ch,
+            replay_existing: self.replay_existing,
         }
     }
 
@@ -478,6 +483,11 @@ impl AppConfigBuilder {
         self.taglens_ch = taglens_ch;
         self
     }
+
+    pub fn with_replay_existing(&mut self, replay_existing: bool) -> &mut Self {
+        self.replay_existing = replay_existing;
+        self
+    }
 }
 
 #[cfg(test)]
@@ -505,6 +515,7 @@ mod tests {
             .with_frame_ch(0)
             .with_line_ch(2)
             .with_taglens_ch(3)
+            .with_replay_existing(false)
             .clone()
     }
 

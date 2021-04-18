@@ -3,10 +3,7 @@ use std::fs::write;
 use crate::point_cloud_renderer::TimeTaggerIpcHandler;
 use crate::{channel_value_to_pair, setup_renderer, start_timetagger_with_python};
 use crate::{configuration::AppConfig, get_config_path, rendering_helpers::Picosecond};
-use iced::{
-    button, pick_list, text_input, Application, Button, Checkbox, Clipboard, Column, Command,
-    Container, Element, Image, Length, PickList, Row, Text, TextInput,
-};
+use iced::{Align, Application, Button, Checkbox, Clipboard, Column, Command, Container, Element, Image, Length, PickList, Row, Text, TextInput, button, pick_list, text_input};
 
 #[derive(Default)]
 pub struct MainAppGui {
@@ -59,6 +56,7 @@ pub struct MainAppGui {
     taglens_selected: ChannelNumber,
     taglens_edge_list: pick_list::State<EdgeDetected>,
     taglens_edge_selected: EdgeDetected,
+    replay_existing: bool,
     run_button: button::State,
 }
 
@@ -175,6 +173,10 @@ impl MainAppGui {
     pub(crate) fn get_tag_channel(&self) -> (ChannelNumber, EdgeDetected) {
         (self.taglens_selected, self.taglens_edge_selected)
     }
+
+    pub(crate) fn get_replay_existing(&self) -> bool {
+        self.replay_existing
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -204,6 +206,7 @@ pub enum Message {
     LineEdgeChanged(EdgeDetected),
     TagLensChanged(ChannelNumber),
     TagLensEdgeChanged(EdgeDetected),
+    ReplayExistingChanged(bool),
     ButtonPressed,
     StartedAcquistion(()),
 }
@@ -349,6 +352,7 @@ impl Application for MainAppGui {
             bidirectional: prev_config.bidir.into(),
             fill_fraction_value: prev_config.fill_fraction.to_string(),
             frame_dead_time_value: ps_to_ms(prev_config.frame_dead_time).to_string(),
+            replay_existing: prev_config.replay_existing,
             ..Default::default()
         };
         let pmt1 = channel_value_to_pair(prev_config.pmt1_ch);
@@ -485,6 +489,10 @@ impl Application for MainAppGui {
                 self.taglens_edge_selected = taglens_edge;
                 Command::none()
             }
+            Message::ReplayExistingChanged(replay_existing) => {
+                self.replay_existing = replay_existing;
+                Command::none()
+            }
             Message::ButtonPressed => Command::perform(
                 start_acquisition(AppConfig::from_user_input(self).expect("")),
                 Message::StartedAcquistion,
@@ -504,7 +512,13 @@ impl Application for MainAppGui {
         .size(20);
         let filename_label =
             Text::new("Filename").vertical_alignment(iced::VerticalAlignment::Bottom);
-        let filename_row = Row::new().push(filename_label).push(filename);
+        let replay_existing_checkbox = Checkbox::new(
+            self.replay_existing,
+            "Replay existing?",
+            Message::ReplayExistingChanged,
+        )
+        .size(20);
+        let filename_row = Row::new().spacing(10).align_items(Align::Center).push(filename_label).push(filename).push(replay_existing_checkbox);
 
         let rows = TextInput::new(
             &mut self.rows_input,
@@ -515,7 +529,7 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let rows_label = Text::new("Rows");
-        let rows_row = Row::new().push(rows_label).push(rows);
+        let rows_row = Row::new().spacing(10).align_items(Align::Center).push(rows_label).push(rows);
 
         let columns = TextInput::new(
             &mut self.columns_input,
@@ -526,7 +540,7 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let columns_label = Text::new("Columns");
-        let columns_row = Row::new().push(columns_label).push(columns);
+        let columns_row = Row::new().spacing(10).align_items(Align::Center).push(columns_label).push(columns);
 
         let planes = TextInput::new(
             &mut self.planes_input,
@@ -537,7 +551,7 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let planes_label = Text::new("Planes");
-        let planes_row = Row::new().push(planes_label).push(planes);
+        let planes_row = Row::new().spacing(10).align_items(Align::Center).push(planes_label).push(planes);
 
         let scan_period = TextInput::new(
             &mut self.scan_period_input,
@@ -548,7 +562,7 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let scan_period_label = Text::new("Scan Frequency");
-        let scan_period_row = Row::new().push(scan_period_label).push(scan_period);
+        let scan_period_row = Row::new().spacing(10).align_items(Align::Center).push(scan_period_label).push(scan_period);
 
         let taglens_period = TextInput::new(
             &mut self.tag_period_input,
@@ -559,7 +573,7 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let taglens_period_label = Text::new("TAG Lens Frequency");
-        let taglens_period_row = Row::new().push(taglens_period_label).push(taglens_period);
+        let taglens_period_row = Row::new().spacing(10).align_items(Align::Center).push(taglens_period_label).push(taglens_period);
 
         let fillfrac = TextInput::new(
             &mut self.fill_fraction_input,
@@ -570,7 +584,7 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let fillfrac_label = Text::new("Fill Fraction");
-        let fillfrac_row = Row::new().push(fillfrac_label).push(fillfrac);
+        let fillfrac_row = Row::new().spacing(10).align_items(Align::Center).push(fillfrac_label).push(fillfrac);
 
         let deadtime = TextInput::new(
             &mut self.frame_dead_time_input,
@@ -581,7 +595,7 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let deadtime_label = Text::new("Deadtime Between Frames");
-        let deadtime_row = Row::new().push(deadtime_label).push(deadtime);
+        let deadtime_row = Row::new().spacing(10).align_items(Align::Center).push(deadtime_label).push(deadtime);
 
         let pmt1 = PickList::new(
             &mut self.pmt1_pick_list,
@@ -721,49 +735,49 @@ impl Application for MainAppGui {
             .push(deadtime_row)
             .push(bidir)
             .push(
-                Row::new()
+                Row::new().spacing(10).align_items(Align::Center)
                     .push(Text::new("PMT 1"))
                     .push(pmt1)
                     .push(pmt1_edge),
             )
             .push(
-                Row::new()
+                Row::new().spacing(10).align_items(Align::Center)
                     .push(Text::new("PMT 2"))
                     .push(pmt2)
                     .push(pmt2_edge),
             )
             .push(
-                Row::new()
+                Row::new().spacing(10).align_items(Align::Center)
                     .push(Text::new("PMT 3"))
                     .push(pmt3)
                     .push(pmt3_edge),
             )
             .push(
-                Row::new()
+                Row::new().spacing(10).align_items(Align::Center)
                     .push(Text::new("PMT 4"))
                     .push(pmt4)
                     .push(pmt4_edge),
             )
             .push(
-                Row::new()
+                Row::new().spacing(10).align_items(Align::Center)
                     .push(Text::new("Laser Trigger"))
                     .push(laser)
                     .push(laser_edge),
             )
             .push(
-                Row::new()
+                Row::new().spacing(10).align_items(Align::Center)
                     .push(Text::new("Frame Trigger"))
                     .push(frame)
                     .push(frame_edge),
             )
             .push(
-                Row::new()
+                Row::new().spacing(10).align_items(Align::Center)
                     .push(Text::new("Line Trigger"))
                     .push(line)
                     .push(line_edge),
             )
             .push(
-                Row::new()
+                Row::new().spacing(10).align_items(Align::Center)
                     .push(Text::new("TAG Lens Trigger"))
                     .push(taglens_input)
                     .push(taglens_edge),

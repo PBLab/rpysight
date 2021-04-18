@@ -179,7 +179,7 @@ def run_tagger(cfg: str):
     tag.waitUntilFinished()
 
 
-def test_tagger(cfg: str):
+def replay_existing(cfg: str):
     """A testing method to replay old acquisitions."""
     config = toml.loads(cfg)
     tagger = TimeTagger.createTimeTaggerVirtual()

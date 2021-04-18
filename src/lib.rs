@@ -32,6 +32,7 @@ const TT_DATA_STREAM: &str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
 const DEFAULT_CONFIG_FNAME: &str = "default.toml";
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
+const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 const GLOBAL_OFFSET: i64 = 700_000_000_000;
 
 lazy_static! {
@@ -121,19 +122,24 @@ fn create_dir_and_populate_with_default(path: PathBuf) -> Result<AppConfig> {
 /// The given filename should point to a Python file that can run the
 /// TimeTagger with a single method call. The returned object will have a
 /// "call1" method that starts the TT.
-pub fn load_timetagger_run_function(module_filename: PathBuf) -> PyResult<PyObject> {
+pub fn load_timetagger_run_function(module_filename: PathBuf, replay_existing: bool) -> PyResult<PyObject> {
     let gil = Python::acquire_gil();
     let py = gil.python();
     let python_code = read_to_string(module_filename)?;
     let run_tt = PyModule::from_code(py, &python_code, "run_tt.py", "run_tt")?;
-    let tt_starter = run_tt.getattr(TT_RUN_FUNCTION_NAME)?;
+    let tt_starter;
+    if replay_existing {
+        tt_starter = run_tt.getattr(TT_RUN_FUNCTION_NAME)?;
+    } else {
+        tt_starter = run_tt.getattr(TT_REPLAY_FUNCTION_NAME)?;
+    };
     // Generate an owned object to be returned by value
     Ok(tt_starter.to_object(py))
 }
 
 pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<()> {
     let module_filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
-    let tt_module = load_timetagger_run_function(module_filename)?;
+    let tt_module = load_timetagger_run_function(module_filename, app_config.replay_existing)?;
     tt_module
         .call1(
             Python::acquire_gil().python(),
