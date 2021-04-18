@@ -19,7 +19,7 @@ use nalgebra::Point3;
 use pyo3::prelude::*;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
-use crate::rendering_helpers::TimeToCoord;
+use crate::rendering_helpers::{TimeToCoord, Picosecond};
 use crate::GLOBAL_OFFSET;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
@@ -180,6 +180,8 @@ pub struct AppState<R: Read> {
     inputs: Inputs,
     rows_per_frame: u32,
     row_count: u32,
+    last_line: Picosecond,
+    lines_vec: Vec<Picosecond>,
 }
 
 impl AppState<File> {
@@ -197,7 +199,24 @@ impl AppState<File> {
             inputs: Inputs::from_config(&appconfig),
             rows_per_frame: appconfig.rows,
             row_count: 0,
+            last_line: 0,
+            lines_vec: Vec::<Picosecond>::with_capacity(3000),
         }
+    }
+
+    fn handle_line_event(&mut self, event: Event) -> ProcessedEvent {
+        self.row_count += 1; 
+        let time = event.time;
+        self.lines_vec.push(time);
+        info!("Elapsed time since last line: {}", time - self.last_line);
+        info!("The channel is {}", event.channel);
+        self.last_line = time;
+        if self.row_count == self.rows_per_frame {
+            self.row_count = 0;
+            info!("Here are the lines: {:#?}", self.lines_vec);
+            self.lines_vec.clear();
+            ProcessedEvent::NewFrame
+        } else { ProcessedEvent::NoOp } 
     }
 }
 
@@ -226,19 +245,13 @@ impl TimeTaggerIpcHandler for AppState<File> {
         if event.type_ != 0 {
             return ProcessedEvent::NoOp;
         }
-        info!("Received the following event: {:?}", event);
+        debug!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time, 0),
             DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time, 1),
             DataType::Pmt3 => self.time_to_coord.tag_to_coord_linear(event.time, 2),
             DataType::Pmt4 => self.time_to_coord.tag_to_coord_linear(event.time, 3),
-            DataType::Line => { 
-                self.row_count += 1; 
-                if self.row_count == self.rows_per_frame {
-                    self.row_count = 0;
-                    ProcessedEvent::NewFrame
-                } else { ProcessedEvent::NoOp }
-            },
+            DataType::Line => self.handle_line_event(event),
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
             DataType::Laser => self.time_to_coord.new_laser_event(event.time),
             DataType::Frame => ProcessedEvent::NoOp,
@@ -290,12 +303,12 @@ impl State for AppState<File> {
                 info!("Received {} rows", batch.num_rows());
                 let event_stream = EventStream::from_streamed_batch(&batch);
                 if event_stream.num_rows() == 0 {
-                    info!("A batch with 0 rows was received");
+                    debug!("A batch with 0 rows was received");
                     continue
                 };
                 if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
                     if event.time <= self.time_to_coord.earliest_frame_time {
-                        info!("The last event in the batch arrived before the first in the frame");
+                        debug!("The last event in the batch arrived before the first in the frame");
                         continue
                     }
                 }
