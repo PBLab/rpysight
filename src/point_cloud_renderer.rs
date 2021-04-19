@@ -208,25 +208,31 @@ impl AppState<File> {
         }
     }
 
-    /// Called when an event from the line channel arrives to the event stream
+    /// Called when an event from the line channel arrives to the event stream.
+    ///
+    /// It handles the first line of the experiment, by returning a special
+    /// signal, a standard line in the middle of the frame or a line which
+    /// is the first in the next frame's line count.
     fn handle_line_event(&mut self, event: Event) -> ProcessedEvent {
         if self.last_line == 0 {
-            ProcessedEvent::FirstLine(event.time)
-        } else { 
-            self.row_count += 1;
-            let time = event.time;
-            self.lines_vec.push(time);
-            info!("Elapsed time since last line: {}", time - self.last_line);
-            info!("The channel is {}", event.channel);
-            self.last_line = time;
-            if self.row_count == self.rows_per_frame {
-                self.row_count = 0;
-                info!("Here are the lines: {:#?}", self.lines_vec);
-                self.lines_vec.clear();
-                ProcessedEvent::NewFrame
-            } else {
-                ProcessedEvent::NoOp
-            }
+            self.row_count = 1;
+            self.lines_vec.push(event.time);
+            self.last_line = event.time;
+            return ProcessedEvent::FirstLine(event.time)
+        }
+        self.row_count += 1;
+        let time = event.time;
+        self.lines_vec.push(time);
+        info!("Elapsed time since last line: {}", time - self.last_line);
+        info!("The channel is {}", event.channel);
+        self.last_line = time;
+        if self.row_count == self.rows_per_frame {
+            self.row_count = 0;
+            info!("Here are the lines: {:#?}", self.lines_vec);
+            self.lines_vec.clear();
+            ProcessedEvent::NewFrame
+        } else {
+            ProcessedEvent::NoOp
         }
     }
 
@@ -241,6 +247,16 @@ impl AppState<File> {
                 false
             } else { true }
         } else { error!("For some reason no last event exists in this stream"); false }
+    }
+
+    fn find_first_line(&mut self, event: &Event) -> bool {
+        match self.event_to_coordinate(*event) {
+            ProcessedEvent::FirstLine(time) => {
+                self.time_to_coord = TimeToCoord::from_acq_params(&self.appconfig, time);
+                true
+            },
+            _ => { false },
+        }
     }
 }
 
@@ -353,15 +369,15 @@ impl State for AppState<File> {
                 true => { },
                 false => continue,
             };
+            let mut num_skips = 0;
+            let mut event_stream = event_stream.iter().skip(0);
             if self.last_line == 0 {
-                for event in event_stream.into_iter() {
-                    match self.event_to_coordinate(event) {
-                        ProcessedEvent::FirstLine(time) => { self.time_to_coord = TimeToCoord::from_acq_params(&self.appconfig, time); },
-                        _ => { },
-                    }
-                }
+                num_skips = match event_stream.position(|event| self.find_first_line(&event)) {
+                    Some(num) => num + 1,  // we discard the line event itself with the +1
+                    None => continue,
+                };
             }
-            for event in event_stream.into_iter() {
+            for event in event_stream.skip(num_skips) {
                 match self.event_to_coordinate(event) {
                     ProcessedEvent::Displayed(p, c) => {
                         self.point_cloud_renderer.draw_point(p, c)
