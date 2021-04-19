@@ -65,7 +65,7 @@ impl From<Bidirectionality> for bool {
 
 /// Enumerates all possible data streams that can be handled by RPySight, like
 /// PMT data, line sync events and so on.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Copy)]
 pub enum DataType {
     Pmt1,
     Pmt2,
@@ -78,37 +78,38 @@ pub enum DataType {
     Invalid,
 }
 
-const MAX_TIMETAGGER_INPUTS: usize = 18;
+/// Physical number of the input SMA ports on the time tagger. 
+///
+/// It's an i32 due to it having to interact with the channel values that
+/// return from the time tagger stream, which are also i32.
+const MAX_TIMETAGGER_INPUTS: i32 = 18;
 
 /// A data structure which maps the input channel to the data type it relays.
 ///
-/// The underlying storage is a Vec, and due to the way the Index trait is
+/// The underlying storage is an array, and due to the way the Index trait is
 /// implemented here we can index into an Inputs instance with a positive or
-/// negative value without any difference.
+/// negative value without any conversions.
 #[derive(Clone, Debug)]
-pub struct Inputs(Vec<DataType>);
+pub struct Inputs([ DataType; 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1 ]);
 
 impl Inputs {
     /// Generates a new Inputs instance. Panics if the input channels aren't
     /// unique or if a channel was accidently assigned to a non-existent input.
     pub fn from_config(config: &AppConfig) -> Inputs {
-        let mut data: Vec<DataType> = Vec::with_capacity(MAX_TIMETAGGER_INPUTS + 1);
-        for _ in 0..(MAX_TIMETAGGER_INPUTS + 1) {
-            data.push(DataType::Invalid);
-        }
-        let mut set = std::collections::HashSet::<usize>::new();
+        let mut data = [DataType::Invalid; 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1];
+        let mut set = std::collections::HashSet::<i32>::new();
         let mut used_channels = 0;
         // Loop over a pair of input and the corresponding data type, but only
         // register the inputs which are actually used, i.e. different than 0.
         for (ch, dt) in vec![
-            config.pmt1_ch.abs() as usize,
-            config.pmt2_ch.abs() as usize,
-            config.pmt3_ch.abs() as usize,
-            config.pmt4_ch.abs() as usize,
-            config.frame_ch.abs() as usize,
-            config.line_ch.abs() as usize,
-            config.taglens_ch.abs() as usize,
-            config.laser_ch.abs() as usize,
+            config.pmt1_ch,
+            config.pmt2_ch,
+            config.pmt3_ch,
+            config.pmt4_ch,
+            config.frame_ch,
+            config.line_ch,
+            config.taglens_ch,
+            config.laser_ch,
         ]
         .into_iter()
         .zip(
@@ -126,7 +127,7 @@ impl Inputs {
         ) {
             if ch != 0 {
                 set.insert(ch);
-                data[ch] = dt;
+                data[(MAX_TIMETAGGER_INPUTS + ch) as usize] = dt;
                 used_channels += 1;
             }
         }
@@ -136,7 +137,7 @@ impl Inputs {
             "One of the channels was a duplicate"
         );
         let inps = Inputs(data);
-        info!("The inputs struct was constructed successfully: {:?}", inps);
+        debug!("The inputs struct was constructed successfully: {:?}", inps);
         inps
     }
 }
@@ -145,7 +146,7 @@ impl Index<i32> for Inputs {
     type Output = DataType;
 
     fn index(&self, channel: i32) -> &Self::Output {
-        &self.0[channel.abs() as usize]
+        &self.0[(MAX_TIMETAGGER_INPUTS + channel) as usize]
     }
 }
 
@@ -437,49 +438,49 @@ impl AppConfigBuilder {
     }
 
     pub fn with_pmt1_ch(&mut self, pmt1_ch: i32) -> &mut Self {
-        assert!(pmt1_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
+        assert!(pmt1_ch.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt1_ch = pmt1_ch;
         self
     }
 
     pub fn with_pmt2_ch(&mut self, pmt2_ch: i32) -> &mut Self {
-        assert!(pmt2_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
+        assert!(pmt2_ch.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt2_ch = pmt2_ch;
         self
     }
 
     pub fn with_pmt3_ch(&mut self, pmt3_ch: i32) -> &mut Self {
-        assert!(pmt3_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
+        assert!(pmt3_ch.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt3_ch = pmt3_ch;
         self
     }
 
     pub fn with_pmt4_ch(&mut self, pmt4_ch: i32) -> &mut Self {
-        assert!(pmt4_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
+        assert!(pmt4_ch.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt4_ch = pmt4_ch;
         self
     }
 
     pub fn with_laser_ch(&mut self, laser_ch: i32) -> &mut Self {
-        assert!(laser_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
+        assert!(laser_ch.abs() <= MAX_TIMETAGGER_INPUTS);
         self.laser_ch = laser_ch;
         self
     }
 
     pub fn with_frame_ch(&mut self, frame_ch: i32) -> &mut Self {
-        assert!(frame_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
+        assert!(frame_ch.abs() <= MAX_TIMETAGGER_INPUTS);
         self.frame_ch = frame_ch;
         self
     }
 
     pub fn with_line_ch(&mut self, line_ch: i32) -> &mut Self {
-        assert!(line_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
+        assert!(line_ch.abs() <= MAX_TIMETAGGER_INPUTS);
         self.line_ch = line_ch;
         self
     }
 
     pub fn with_taglens_ch(&mut self, taglens_ch: i32) -> &mut Self {
-        assert!(taglens_ch.abs() <= MAX_TIMETAGGER_INPUTS as i32);
+        assert!(taglens_ch.abs() <= MAX_TIMETAGGER_INPUTS);
         self.taglens_ch = taglens_ch;
         self
     }
@@ -536,6 +537,22 @@ mod tests {
     }
 
     #[test]
+    fn inputs_indexing_positive_edge() {
+        let config = setup_default_config()
+            .with_pmt1_ch(1)
+            .with_pmt2_ch(2)
+            .with_pmt3_ch(3)
+            .with_pmt4_ch(4)
+            .with_laser_ch(5)
+            .with_frame_ch(6)
+            .with_line_ch(7)
+            .with_taglens_ch(18)
+            .build();
+        let inputs = Inputs::from_config(&config);
+        assert_eq!(inputs[18], DataType::TagLens);
+    }
+
+    #[test]
     fn inputs_indexing_negative() {
         let config = setup_default_config()
             .with_pmt1_ch(-1)
@@ -548,7 +565,23 @@ mod tests {
             .with_taglens_ch(8)
             .build();
         let inputs = Inputs::from_config(&config);
-        assert_eq!(inputs[1], DataType::Pmt1);
+        assert_eq!(inputs[-1], DataType::Pmt1);
+    }
+
+    #[test]
+    fn inputs_indexing_negative_edge() {
+        let config = setup_default_config()
+            .with_pmt1_ch(-1)
+            .with_pmt2_ch(2)
+            .with_pmt3_ch(3)
+            .with_pmt4_ch(4)
+            .with_laser_ch(5)
+            .with_frame_ch(6)
+            .with_line_ch(7)
+            .with_taglens_ch(-18)
+            .build();
+        let inputs = Inputs::from_config(&config);
+        assert_eq!(inputs[-18], DataType::TagLens);
     }
 
     #[test]
@@ -556,7 +589,7 @@ mod tests {
     fn inputs_duplicate_channel() {
         let config = setup_default_config()
             .with_pmt1_ch(-1)
-            .with_pmt2_ch(1)
+            .with_pmt2_ch(-1)
             .build();
         let _ = Inputs::from_config(&config);
     }
