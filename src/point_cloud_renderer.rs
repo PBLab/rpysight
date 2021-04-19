@@ -3,12 +3,8 @@ extern crate kiss3d;
 use std::fs::File;
 use std::io::Read;
 
-use anyhow::{Context, Result};
-use arrow::{
-    array::{Int32Array, Int64Array, UInt16Array, UInt8Array},
-    ipc::reader::StreamReader,
-    record_batch::RecordBatch,
-};
+use anyhow::{Result, Context};
+use arrow::{array::{Int32Array, Int64Array, UInt16Array, UInt8Array}, ipc::reader::StreamReader, record_batch::RecordBatch};
 use kiss3d::camera::Camera;
 use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::point_renderer::PointRenderer;
@@ -173,6 +169,7 @@ impl<'a> IntoIterator for EventStream<'a> {
 pub trait TimeTaggerIpcHandler {
     fn acquire_stream_filehandle(&mut self) -> Result<()>;
     fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent;
+    fn get_event_stream<'a>(&mut self, batch: &'a RecordBatch) -> Option<EventStream<'a>>;
 }
 
 /// Holds the custom renderer that will be used for rendering the
@@ -209,6 +206,7 @@ impl AppState<File> {
         }
     }
 
+    /// Called when an event from the line channel arrives to the event stream
     fn handle_line_event(&mut self, event: Event) -> ProcessedEvent {
         self.row_count += 1;
         let time = event.time;
@@ -224,6 +222,19 @@ impl AppState<File> {
         } else {
             ProcessedEvent::NoOp
         }
+    }
+
+    /// Verifies that the current event stream lies within the boundaries of
+    /// the current frame we're trying to render.
+    fn check_relevance_of_batch(&self, event_stream: &EventStream) -> bool {
+        if let Some(event) =
+            Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1)
+        {
+            if event.time <= self.time_to_coord.earliest_frame_time {
+                debug!("The last event in the batch arrived before the first in the frame");
+                false
+            } else { true }
+        } else { error!("For some reason no last event exists in this stream"); false }
     }
 }
 
@@ -250,6 +261,7 @@ impl TimeTaggerIpcHandler for AppState<File> {
     /// cases of overflow it's discarded at the moment.
     fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent {
         if event.type_ != 0 {
+            warn!("Event type was not a time tag: {:?}", event);
             return ProcessedEvent::NoOp;
         }
         debug!("Received the following event: {:?}", event);
@@ -262,11 +274,21 @@ impl TimeTaggerIpcHandler for AppState<File> {
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
             DataType::Laser => self.time_to_coord.new_laser_event(event.time),
             DataType::Frame => ProcessedEvent::NoOp,
-            _ => {
-                error!("Unsupported event: {:?}", event);
+            DataType::Invalid => {
+                warn!("Unsupported event: {:?}", event);
                 ProcessedEvent::NoOp
             }
         }
+    }
+
+    #[inline]
+    fn get_event_stream<'a>(&mut self, batch: &'a RecordBatch) -> Option<EventStream<'a>> {
+        info!("Received {} rows", batch.num_rows());
+        let event_stream = EventStream::from_streamed_batch(batch);
+        if event_stream.num_rows() == 0 {
+            debug!("A batch with 0 rows was received");
+            None
+        } else { Some(event_stream) }
     }
 }
 
@@ -302,46 +324,45 @@ impl State for AppState<File> {
 
     /// Main logic per step - required by the State trait. The function reads
     /// data awaiting from the TimeTagger and then pushes it into the renderer.
-    /// Each recorded tag (=Event) can be a time tag or a tag signaling
-    /// overflow. This iteration process filters these non-time tags from the
-    /// more relevant tags.
+    ///
+    /// There are a few checks that are done on the strean before we actuallly
+    /// start the rendering process, like whether the events are within the
+    /// boundaries of the current frame, or whether there's any data waiting
+    /// for us from the time tagger. We also verify that the recorded tags are
+    /// indeed time tags and not other types of tags, like overflow tags, which
+    /// are currently not handled.
     fn step(&mut self, _window: &mut Window) {
         'step: loop {
-            if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
-                let batch = batch.unwrap();
-                info!("Received {} rows", batch.num_rows());
-                let event_stream = EventStream::from_streamed_batch(&batch);
-                if event_stream.num_rows() == 0 {
-                    debug!("A batch with 0 rows was received");
-                    continue;
-                };
-                if let Some(event) =
-                    Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1)
-                {
-                    if event.time <= self.time_to_coord.earliest_frame_time {
-                        debug!("The last event in the batch arrived before the first in the frame");
-                        continue;
+            let batch = match self.data_stream.as_mut().unwrap().next() {
+                Some(batch) => batch.expect("Couldn't extract batch from stream"),
+                None => continue,
+            };
+            let event_stream = match self.get_event_stream(&batch) {
+                Some(stream) => stream,
+                None => continue,
+            };
+            match self.check_relevance_of_batch(&event_stream) {
+                true => { },
+                false => continue,
+            };
+            for event in event_stream.into_iter() {
+                match self.event_to_coordinate(event) {
+                    ProcessedEvent::Displayed(p, c) => {
+                        self.point_cloud_renderer.draw_point(p, c)
                     }
-                }
-                for event in event_stream.into_iter() {
-                    match self.event_to_coordinate(event) {
-                        ProcessedEvent::Displayed(p, c) => {
-                            self.point_cloud_renderer.draw_point(p, c)
-                        }
-                        ProcessedEvent::NoOp => continue,
-                        ProcessedEvent::NewFrame => {
-                            info!("New frame!");
-                            // TODO: To test this newframe behavior I'm currently
-                            // discarding of all photons in this batch. I'll need
-                            // to handle them by saving them in some buffer and
-                            // render them in the next frame.
-                            break 'step;
-                            // continue
-                        }
-                        ProcessedEvent::Error => {
-                            error!("Received an erroneuous event: {:?}", event);
-                            continue;
-                        }
+                    ProcessedEvent::NoOp => continue,
+                    ProcessedEvent::NewFrame => {
+                        info!("New frame!");
+                        // TODO: To test this newframe behavior I'm currently
+                        // discarding of all photons in this batch. I'll need
+                        // to handle them by saving them in some buffer and
+                        // render them in the next frame.
+                        break 'step;
+                        // continue
+                    }
+                    ProcessedEvent::Error => {
+                        error!("Received an erroneuous event: {:?}", event);
+                        continue;
                     }
                 }
             }
