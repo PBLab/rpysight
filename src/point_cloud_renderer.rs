@@ -218,6 +218,7 @@ impl AppState<File> {
             self.row_count = 1;
             self.lines_vec.push(event.time);
             self.last_line = event.time;
+            info!("Found the first line of the stream: {:?}", event);
             return ProcessedEvent::FirstLine(event.time)
         }
         self.row_count += 1;

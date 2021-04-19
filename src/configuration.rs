@@ -262,6 +262,11 @@ impl AppConfig {
             Bidirectionality::Unidir => *self.scan_period * (self.rows as Picosecond),
         }
     }
+
+    /// Return the frame rate in Hz
+    pub fn frame_rate(&self) -> f32 {
+        Period { period: self.calc_frame_duration() }.to_hz()        
+    }
 }
 
 /// Converts a miliseconds number (a string) into its equivalent in ps.
@@ -619,6 +624,18 @@ mod tests {
     fn frame_time_unidir() {
         let config = setup_default_config().with_bidir(false).build();
         assert_eq!(config.calc_frame_duration(), 32_298_070_784i64);
+    }
+
+    #[test]
+    fn frame_rate_unidir() {
+        let config = setup_default_config().with_bidir(false).build();
+        assert_eq!(config.frame_rate(), 30.02f32);
+    }
+
+    #[test]
+    fn frame_rate_bidir() {
+        let config = setup_default_config().with_bidir(true).build();
+        assert_eq!(config.frame_rate(), 58.24f32);
     }
 
     #[test]

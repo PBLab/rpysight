@@ -69,10 +69,11 @@ pub struct MainAppGui {
 async fn start_acquisition(cfg: AppConfig) {
     let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
     let (mut window, mut app) = setup_renderer(&cfg);
+    let frame_rate = cfg.frame_rate().round() as u64;
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
-    window.set_framerate_limit(Some(15));
+    window.set_framerate_limit(Some(frame_rate));
     app.acquire_stream_filehandle()
         .expect("Failed to acquire stream handle");
     window.render_loop(app);
