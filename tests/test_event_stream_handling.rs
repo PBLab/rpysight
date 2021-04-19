@@ -133,13 +133,12 @@ impl MockAppState {
             // }
             let mut idx = 0;
             let event_stream = EventStream::from_streamed_batch(&batch);
-            if Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1).time
-                <= self.time_to_coord.earliest_frame_time
-            {
-                info!("The last event in the batch arrived before the first in the frame");
-                return;
-            } else {
-                info!("Last event is later than the first");
+            if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
+                let time = event.time;
+                if time <= self.time_to_coord.earliest_frame_time {
+                    info!("The last event in the batch arrived before the first in the frame");
+                    return;
+                } else { info!("Last event is later than the first"); }
             }
             for event in event_stream.into_iter() {
                 // if idx > 10 {
