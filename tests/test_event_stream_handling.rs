@@ -13,7 +13,7 @@ use ron::de::from_str;
 use simplelog::*;
 
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
-use librpysight::point_cloud_renderer::{Event, EventStream, TimeTaggerIpcHandler, ProcessedEvent};
+use librpysight::point_cloud_renderer::{Event, EventStream, ProcessedEvent, TimeTaggerIpcHandler};
 use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
@@ -115,12 +115,15 @@ impl MockAppState {
             let batch = batch.unwrap();
             // let mut idx = 0;
             let event_stream = EventStream::from_streamed_batch(&batch);
-            if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
+            if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1)
+            {
                 let time = event.time;
                 if time <= self.time_to_coord.earliest_frame_time {
                     info!("The last event in the batch arrived before the first in the frame");
                     return;
-                } else { info!("Last event is later than the first"); }
+                } else {
+                    info!("Last event is later than the first");
+                }
             }
             let nanp = Point3::<f32>::new(f32::NAN, f32::NAN, f32::NAN);
             info!("Inputs: {:?}", self.inputs);
@@ -138,10 +141,12 @@ impl MockAppState {
                             self.valid_events
                                 .push(TimeCoordPair::new(event.time, point));
                         }
-                    },
-                    ProcessedEvent::NewFrame => {continue},
-                    ProcessedEvent::NoOp => { continue },
-                    ProcessedEvent::Error => self.invalid_events.push(TimeCoordPair::new(event.time, nanp))
+                    }
+                    ProcessedEvent::NewFrame => continue,
+                    ProcessedEvent::NoOp => continue,
+                    ProcessedEvent::Error => self
+                        .invalid_events
+                        .push(TimeCoordPair::new(event.time, nanp)),
                 }
                 // idx += 1;
             }
@@ -182,14 +187,16 @@ impl TimeTaggerIpcHandler for MockAppState {
     /// cases of overflow it's discarded at the moment.
     fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent {
         if event.type_ != 0 {
-            return ProcessedEvent::NoOp
+            return ProcessedEvent::NoOp;
         }
         info!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
             librpysight::configuration::DataType::Pmt1 => {
                 self.time_to_coord.tag_to_coord_linear(event.time, 0)
             }
-            librpysight::configuration::DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time, 1),
+            librpysight::configuration::DataType::Pmt2 => {
+                self.time_to_coord.tag_to_coord_linear(event.time, 1)
+            }
             librpysight::configuration::DataType::Line => self.time_to_coord.new_line(event.time),
             librpysight::configuration::DataType::TagLens => {
                 self.time_to_coord.new_taglens_period(event.time)
@@ -212,7 +219,11 @@ fn eq_with_nan_eq(a: f32, b: f32) -> bool {
 
 /// From https://stackoverflow.com/questions/40767815/how-do-i-check-whether-a-vector-is-equal-to-another-vector-that-contains-nan-and/40767977#40767977
 fn eq_timecoordpair_with_nan_eq(a: TimeCoordPair, b: TimeCoordPair) -> bool {
-    (a.coord.iter().zip(b.coord.iter()).all(|(a, b)| eq_with_nan_eq(*a, *b))) && (a.end_time == b.end_time)
+    (a.coord
+        .iter()
+        .zip(b.coord.iter())
+        .all(|(a, b)| eq_with_nan_eq(*a, *b)))
+        && (a.end_time == b.end_time)
 }
 
 /// From https://stackoverflow.com/questions/40767815/how-do-i-check-whether-a-vector-is-equal-to-another-vector-that-contains-nan-and/40767977#40767977
@@ -266,14 +277,18 @@ fn stepwise_short_bidir_single_frame() {
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg), None);
     app.step();
-    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_batch_bidir_invalid.ron").unwrap()).unwrap();
-    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
-    assert!(
-        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
-    );
-    assert!(
-        timecoordpair_vec_compare(&app.valid_events, &original_valid)
-    );
+    let original_invalid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_batch_bidir_invalid.ron").unwrap()).unwrap();
+    let original_valid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
+    assert!(timecoordpair_vec_compare(
+        &app.invalid_events,
+        &original_invalid
+    ));
+    assert!(timecoordpair_vec_compare(
+        &app.valid_events,
+        &original_valid
+    ));
 }
 
 #[test]
@@ -287,14 +302,18 @@ fn stepwise_short_unidir_single_frame() {
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg), None);
     app.step();
-    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_batch_unidir_invalid.ron").unwrap()).unwrap();
-    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();
-    assert!(
-        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
-    );
-    assert!(
-        timecoordpair_vec_compare(&app.valid_events, &original_valid)
-    );
+    let original_invalid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_batch_unidir_invalid.ron").unwrap()).unwrap();
+    let original_valid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();
+    assert!(timecoordpair_vec_compare(
+        &app.invalid_events,
+        &original_invalid
+    ));
+    assert!(timecoordpair_vec_compare(
+        &app.valid_events,
+        &original_valid
+    ));
 }
 
 #[test]
@@ -309,14 +328,20 @@ fn stepwise_short_two_frames_bidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), None);
     app.step();
-    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap()).unwrap();
-    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
-    assert!(
-        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
-    );
-    assert!(
-        timecoordpair_vec_compare(&app.valid_events, &original_valid)
-    );
+    let original_invalid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap())
+            .unwrap();
+    let original_valid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap())
+            .unwrap();
+    assert!(timecoordpair_vec_compare(
+        &app.invalid_events,
+        &original_invalid
+    ));
+    assert!(timecoordpair_vec_compare(
+        &app.valid_events,
+        &original_valid
+    ));
 }
 
 #[test]
@@ -331,14 +356,20 @@ fn stepwise_short_two_frames_unidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), None);
     app.step();
-    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap()).unwrap();
-    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap()).unwrap();
-    assert!(
-        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
-    );
-    assert!(
-        timecoordpair_vec_compare(&app.valid_events, &original_valid)
-    );
+    let original_invalid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap())
+            .unwrap();
+    let original_valid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap())
+            .unwrap();
+    assert!(timecoordpair_vec_compare(
+        &app.invalid_events,
+        &original_invalid
+    ));
+    assert!(timecoordpair_vec_compare(
+        &app.valid_events,
+        &original_valid
+    ));
 }
 
 #[test]
@@ -353,14 +384,20 @@ fn stepwise_short_two_frames_offset_bidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
     app.step();
-    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap()).unwrap();
-    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
-    assert!(
-        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
-    );
-    assert!(
-        timecoordpair_vec_compare(&app.valid_events, &original_valid)
-    );
+    let original_invalid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap())
+            .unwrap();
+    let original_valid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap())
+            .unwrap();
+    assert!(timecoordpair_vec_compare(
+        &app.invalid_events,
+        &original_invalid
+    ));
+    assert!(timecoordpair_vec_compare(
+        &app.valid_events,
+        &original_valid
+    ));
 }
 
 #[test]
@@ -375,12 +412,18 @@ fn stepwise_short_two_frames_offset_unidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
     app.step();
-    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap()).unwrap();
-    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap()).unwrap();
-    assert!(
-        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
-    );
-    assert!(
-        timecoordpair_vec_compare(&app.valid_events, &original_valid)
-    );
+    let original_invalid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap())
+            .unwrap();
+    let original_valid: Vec<TimeCoordPair> =
+        from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap())
+            .unwrap();
+    assert!(timecoordpair_vec_compare(
+        &app.invalid_events,
+        &original_invalid
+    ));
+    assert!(timecoordpair_vec_compare(
+        &app.valid_events,
+        &original_valid
+    ));
 }

@@ -78,7 +78,7 @@ pub enum DataType {
     Invalid,
 }
 
-/// Physical number of the input SMA ports on the time tagger. 
+/// Physical number of the input SMA ports on the time tagger.
 ///
 /// It's an i32 due to it having to interact with the channel values that
 /// return from the time tagger stream, which are also i32.
@@ -90,7 +90,7 @@ const MAX_TIMETAGGER_INPUTS: i32 = 18;
 /// implemented here we can index into an Inputs instance with a positive or
 /// negative value without any conversions.
 #[derive(Clone, Debug)]
-pub struct Inputs([ DataType; 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1 ]);
+pub struct Inputs([DataType; 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1]);
 
 impl Inputs {
     /// Generates a new Inputs instance. Panics if the input channels aren't

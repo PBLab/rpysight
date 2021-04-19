@@ -3,7 +3,10 @@ use std::fs::write;
 use crate::point_cloud_renderer::TimeTaggerIpcHandler;
 use crate::{channel_value_to_pair, setup_renderer, start_timetagger_with_python};
 use crate::{configuration::AppConfig, get_config_path, rendering_helpers::Picosecond};
-use iced::{Align, Application, Button, Checkbox, Clipboard, Column, Command, Container, Element, Image, Length, PickList, Row, Text, TextInput, button, pick_list, text_input};
+use iced::{
+    button, pick_list, text_input, Align, Application, Button, Checkbox, Clipboard, Column,
+    Command, Container, Element, Image, Length, PickList, Row, Text, TextInput,
+};
 
 #[derive(Default)]
 pub struct MainAppGui {
@@ -519,7 +522,12 @@ impl Application for MainAppGui {
             Message::ReplayExistingChanged,
         )
         .size(20);
-        let filename_row = Row::new().spacing(10).align_items(Align::Center).push(filename_label).push(filename).push(replay_existing_checkbox);
+        let filename_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(filename_label)
+            .push(filename)
+            .push(replay_existing_checkbox);
 
         let rows = TextInput::new(
             &mut self.rows_input,
@@ -530,7 +538,11 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let rows_label = Text::new("Rows");
-        let rows_row = Row::new().spacing(10).align_items(Align::Center).push(rows_label).push(rows);
+        let rows_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(rows_label)
+            .push(rows);
 
         let columns = TextInput::new(
             &mut self.columns_input,
@@ -541,7 +553,11 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let columns_label = Text::new("Columns");
-        let columns_row = Row::new().spacing(10).align_items(Align::Center).push(columns_label).push(columns);
+        let columns_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(columns_label)
+            .push(columns);
 
         let planes = TextInput::new(
             &mut self.planes_input,
@@ -552,7 +568,11 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let planes_label = Text::new("Planes");
-        let planes_row = Row::new().spacing(10).align_items(Align::Center).push(planes_label).push(planes);
+        let planes_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(planes_label)
+            .push(planes);
 
         let scan_period = TextInput::new(
             &mut self.scan_period_input,
@@ -563,7 +583,11 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let scan_period_label = Text::new("Scan Frequency");
-        let scan_period_row = Row::new().spacing(10).align_items(Align::Center).push(scan_period_label).push(scan_period);
+        let scan_period_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(scan_period_label)
+            .push(scan_period);
 
         let taglens_period = TextInput::new(
             &mut self.tag_period_input,
@@ -574,7 +598,11 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let taglens_period_label = Text::new("TAG Lens Frequency");
-        let taglens_period_row = Row::new().spacing(10).align_items(Align::Center).push(taglens_period_label).push(taglens_period);
+        let taglens_period_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(taglens_period_label)
+            .push(taglens_period);
 
         let fillfrac = TextInput::new(
             &mut self.fill_fraction_input,
@@ -585,7 +613,11 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let fillfrac_label = Text::new("Fill Fraction");
-        let fillfrac_row = Row::new().spacing(10).align_items(Align::Center).push(fillfrac_label).push(fillfrac);
+        let fillfrac_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(fillfrac_label)
+            .push(fillfrac);
 
         let deadtime = TextInput::new(
             &mut self.frame_dead_time_input,
@@ -596,7 +628,11 @@ impl Application for MainAppGui {
         .padding(10)
         .size(20);
         let deadtime_label = Text::new("Deadtime Between Frames");
-        let deadtime_row = Row::new().spacing(10).align_items(Align::Center).push(deadtime_label).push(deadtime);
+        let deadtime_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(deadtime_label)
+            .push(deadtime);
 
         let pmt1 = PickList::new(
             &mut self.pmt1_pick_list,
@@ -736,49 +772,65 @@ impl Application for MainAppGui {
             .push(deadtime_row)
             .push(bidir)
             .push(
-                Row::new().spacing(10).align_items(Align::Center)
+                Row::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
                     .push(Text::new("PMT 1"))
                     .push(pmt1)
                     .push(pmt1_edge),
             )
             .push(
-                Row::new().spacing(10).align_items(Align::Center)
+                Row::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
                     .push(Text::new("PMT 2"))
                     .push(pmt2)
                     .push(pmt2_edge),
             )
             .push(
-                Row::new().spacing(10).align_items(Align::Center)
+                Row::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
                     .push(Text::new("PMT 3"))
                     .push(pmt3)
                     .push(pmt3_edge),
             )
             .push(
-                Row::new().spacing(10).align_items(Align::Center)
+                Row::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
                     .push(Text::new("PMT 4"))
                     .push(pmt4)
                     .push(pmt4_edge),
             )
             .push(
-                Row::new().spacing(10).align_items(Align::Center)
+                Row::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
                     .push(Text::new("Laser Trigger"))
                     .push(laser)
                     .push(laser_edge),
             )
             .push(
-                Row::new().spacing(10).align_items(Align::Center)
+                Row::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
                     .push(Text::new("Frame Trigger"))
                     .push(frame)
                     .push(frame_edge),
             )
             .push(
-                Row::new().spacing(10).align_items(Align::Center)
+                Row::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
                     .push(Text::new("Line Trigger"))
                     .push(line)
                     .push(line_edge),
             )
             .push(
-                Row::new().spacing(10).align_items(Align::Center)
+                Row::new()
+                    .spacing(10)
+                    .align_items(Align::Center)
                     .push(Text::new("TAG Lens Trigger"))
                     .push(taglens_input)
                     .push(taglens_edge),

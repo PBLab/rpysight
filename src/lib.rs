@@ -122,7 +122,10 @@ fn create_dir_and_populate_with_default(path: PathBuf) -> Result<AppConfig> {
 /// The given filename should point to a Python file that can run the
 /// TimeTagger with a single method call. The returned object will have a
 /// "call1" method that starts the TT.
-pub fn load_timetagger_run_function(module_filename: PathBuf, replay_existing: bool) -> PyResult<PyObject> {
+pub fn load_timetagger_run_function(
+    module_filename: PathBuf,
+    replay_existing: bool,
+) -> PyResult<PyObject> {
     let gil = Python::acquire_gil();
     let py = gil.python();
     let python_code = read_to_string(module_filename)?;

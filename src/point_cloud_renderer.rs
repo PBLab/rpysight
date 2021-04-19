@@ -19,7 +19,7 @@ use nalgebra::Point3;
 use pyo3::prelude::*;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
-use crate::rendering_helpers::{TimeToCoord, Picosecond};
+use crate::rendering_helpers::{Picosecond, TimeToCoord};
 use crate::GLOBAL_OFFSET;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
@@ -51,12 +51,17 @@ impl Event {
     pub fn from_stream_idx(stream: &EventStream, idx: usize) -> Option<Self> {
         if stream.num_rows() > idx {
             Some(Event {
-            type_: stream.type_.value(idx),
-            missed_event: stream.missed_events.value(idx),
-            channel: stream.channel.value(idx),
-            time: stream.time.value(idx),
-        }) } else { 
-            info!("Accessed idx is out of bounds! Received {}, but length is {}", idx, stream.num_rows());
+                type_: stream.type_.value(idx),
+                missed_event: stream.missed_events.value(idx),
+                channel: stream.channel.value(idx),
+                time: stream.time.value(idx),
+            })
+        } else {
+            info!(
+                "Accessed idx is out of bounds! Received {}, but length is {}",
+                idx,
+                stream.num_rows()
+            );
             None
         }
     }
@@ -205,7 +210,7 @@ impl AppState<File> {
     }
 
     fn handle_line_event(&mut self, event: Event) -> ProcessedEvent {
-        self.row_count += 1; 
+        self.row_count += 1;
         let time = event.time;
         self.lines_vec.push(time);
         info!("Elapsed time since last line: {}", time - self.last_line);
@@ -216,7 +221,9 @@ impl AppState<File> {
             info!("Here are the lines: {:#?}", self.lines_vec);
             self.lines_vec.clear();
             ProcessedEvent::NewFrame
-        } else { ProcessedEvent::NoOp } 
+        } else {
+            ProcessedEvent::NoOp
+        }
     }
 }
 
@@ -306,20 +313,22 @@ impl State for AppState<File> {
                 let event_stream = EventStream::from_streamed_batch(&batch);
                 if event_stream.num_rows() == 0 {
                     debug!("A batch with 0 rows was received");
-                    continue
+                    continue;
                 };
-                if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
+                if let Some(event) =
+                    Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1)
+                {
                     if event.time <= self.time_to_coord.earliest_frame_time {
                         debug!("The last event in the batch arrived before the first in the frame");
-                        continue
+                        continue;
                     }
                 }
                 for event in event_stream.into_iter() {
                     match self.event_to_coordinate(event) {
-                        ProcessedEvent::Displayed(p, c) => self.point_cloud_renderer.draw_point(p, c),
-                        ProcessedEvent::NoOp => {
-                            continue
+                        ProcessedEvent::Displayed(p, c) => {
+                            self.point_cloud_renderer.draw_point(p, c)
                         }
+                        ProcessedEvent::NoOp => continue,
                         ProcessedEvent::NewFrame => {
                             info!("New frame!");
                             // TODO: To test this newframe behavior I'm currently
@@ -331,7 +340,7 @@ impl State for AppState<File> {
                         }
                         ProcessedEvent::Error => {
                             error!("Received an erroneuous event: {:?}", event);
-                            continue
+                            continue;
                         }
                     }
                 }
