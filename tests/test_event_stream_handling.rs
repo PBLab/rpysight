@@ -8,12 +8,12 @@ use arrow::csv::Reader;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
 use log::*;
-use rand::prelude::*;
-use ron::ser::{to_string_pretty, PrettyConfig};
+use nalgebra::Point3;
+use ron::de::from_str;
 use simplelog::*;
 
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
-use librpysight::point_cloud_renderer::{Event, EventStream, ImageCoor, TimeTaggerIpcHandler, ProcessedEvent};
+use librpysight::point_cloud_renderer::{Event, EventStream, TimeTaggerIpcHandler, ProcessedEvent};
 use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
@@ -107,31 +107,13 @@ impl MockAppState {
         }
     }
 
-    pub fn get_data_from_channel(&self, length: usize) -> Vec<ImageCoor> {
-        let mut rng = rand::thread_rng();
-        let mut data = Vec::with_capacity(10_000);
-        for _ in 0..length {
-            let x: f32 = rng.gen::<f32>();
-            let y: f32 = rng.gen::<f32>();
-            let z: f32 = rng.gen::<f32>();
-            let point = ImageCoor::new(x, y, z);
-            data.push(point);
-        }
-        data
-    }
-
     /// Mock step function for testing.
     /// Does not render anything, just prints out stuff.
     /// This is probably not the right way to do things.
     fn step(&mut self) {
         if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
             let batch = batch.unwrap();
-            // info!("Received {} rows", batch.num_rows());
-            // let v = self.get_data_from_channel(batch.num_rows());
-            // for p in v {
-            //     info!("This point is about to be rendered: {:?}", p);
-            // }
-            let mut idx = 0;
+            // let mut idx = 0;
             let event_stream = EventStream::from_streamed_batch(&batch);
             if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
                 let time = event.time;
@@ -140,6 +122,8 @@ impl MockAppState {
                     return;
                 } else { info!("Last event is later than the first"); }
             }
+            let nanp = Point3::<f32>::new(f32::NAN, f32::NAN, f32::NAN);
+            info!("Inputs: {:?}", self.inputs);
             for event in event_stream.into_iter() {
                 // if idx > 10 {
                 //     break;
@@ -157,8 +141,9 @@ impl MockAppState {
                     },
                     ProcessedEvent::NewFrame => {continue},
                     ProcessedEvent::NoOp => { continue },
+                    ProcessedEvent::Error => self.invalid_events.push(TimeCoordPair::new(event.time, nanp))
                 }
-                idx += 1;
+                // idx += 1;
             }
             // write(
             //     "tests/data/short_two_frames_with_offset_batch_unidir_valid.ron",
@@ -214,10 +199,28 @@ impl TimeTaggerIpcHandler for MockAppState {
             }
             _ => {
                 error!("Unsupported event: {:?}", event);
-                ProcessedEvent::NoOp
+                ProcessedEvent::Error
             }
         }
     }
+}
+
+/// From https://stackoverflow.com/questions/40767815/how-do-i-check-whether-a-vector-is-equal-to-another-vector-that-contains-nan-and/40767977#40767977
+fn eq_with_nan_eq(a: f32, b: f32) -> bool {
+    (a.is_nan() && b.is_nan()) || (a == b)
+}
+
+/// From https://stackoverflow.com/questions/40767815/how-do-i-check-whether-a-vector-is-equal-to-another-vector-that-contains-nan-and/40767977#40767977
+fn eq_timecoordpair_with_nan_eq(a: TimeCoordPair, b: TimeCoordPair) -> bool {
+    (a.coord.iter().zip(b.coord.iter()).all(|(a, b)| eq_with_nan_eq(*a, *b))) && (a.end_time == b.end_time)
+}
+
+/// From https://stackoverflow.com/questions/40767815/how-do-i-check-whether-a-vector-is-equal-to-another-vector-that-contains-nan-and/40767977#40767977
+fn timecoordpair_vec_compare(va: &[TimeCoordPair], vb: &[TimeCoordPair]) -> bool {
+    (va.len() == vb.len()) &&  // zip stops at the shortest
+     va.iter()
+       .zip(vb)
+       .all(|(a,b)| eq_timecoordpair_with_nan_eq(*a,*b))
 }
 
 /// Start a logger, generate a default config file (if given none) and generate
@@ -263,13 +266,13 @@ fn stepwise_short_bidir_single_frame() {
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg), None);
     app.step();
-    assert_eq!(
-        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_batch_bidir_invalid.ron").unwrap()
+    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_batch_bidir_invalid.ron").unwrap()).unwrap();
+    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
+    assert!(
+        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
     );
-    assert_eq!(
-        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_batch_bidir_valid.ron").unwrap()
+    assert!(
+        timecoordpair_vec_compare(&app.valid_events, &original_valid)
     );
 }
 
@@ -284,13 +287,13 @@ fn stepwise_short_unidir_single_frame() {
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg), None);
     app.step();
-    assert_eq!(
-        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_batch_unidir_invalid.ron").unwrap()
+    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_batch_unidir_invalid.ron").unwrap()).unwrap();
+    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();
+    assert!(
+        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
     );
-    assert_eq!(
-        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_batch_unidir_valid.ron").unwrap()
+    assert!(
+        timecoordpair_vec_compare(&app.valid_events, &original_valid)
     );
 }
 
@@ -306,13 +309,13 @@ fn stepwise_short_two_frames_bidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), None);
     app.step();
-    assert_eq!(
-        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap()
+    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap()).unwrap();
+    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
+    assert!(
+        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
     );
-    assert_eq!(
-        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()
+    assert!(
+        timecoordpair_vec_compare(&app.valid_events, &original_valid)
     );
 }
 
@@ -328,13 +331,13 @@ fn stepwise_short_two_frames_unidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), None);
     app.step();
-    assert_eq!(
-        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap()
+    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap()).unwrap();
+    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap()).unwrap();
+    assert!(
+        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
     );
-    assert_eq!(
-        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap()
+    assert!(
+        timecoordpair_vec_compare(&app.valid_events, &original_valid)
     );
 }
 
@@ -350,13 +353,13 @@ fn stepwise_short_two_frames_offset_bidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
     app.step();
-    assert_eq!(
-        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap()
+    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap()).unwrap();
+    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
+    assert!(
+        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
     );
-    assert_eq!(
-        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()
+    assert!(
+        timecoordpair_vec_compare(&app.valid_events, &original_valid)
     );
 }
 
@@ -372,12 +375,12 @@ fn stepwise_short_two_frames_offset_unidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
     app.step();
-    assert_eq!(
-        to_string_pretty(&app.invalid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap()
+    let original_invalid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap()).unwrap();
+    let original_valid: Vec<TimeCoordPair> = from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap()).unwrap();
+    assert!(
+        timecoordpair_vec_compare(&app.invalid_events, &original_invalid)
     );
-    assert_eq!(
-        to_string_pretty(&app.valid_events, PrettyConfig::new()).unwrap(),
-        read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap()
+    assert!(
+        timecoordpair_vec_compare(&app.valid_events, &original_valid)
     );
 }

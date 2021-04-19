@@ -345,13 +345,13 @@ impl AppConfigBuilder {
             replay_existing: false,
             fill_fraction: 71.0,
             frame_dead_time: 1_310_000_000,
-            pmt1_ch: -1,
+            pmt1_ch: 1,
             pmt2_ch: 0,
             pmt3_ch: 0,
             pmt4_ch: 0,
             laser_ch: 0,
             frame_ch: 0,
-            line_ch: 2,
+            line_ch: -2,
             taglens_ch: 3,
         }
     }

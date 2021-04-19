@@ -275,6 +275,8 @@ pub enum ProcessedEvent {
     NoOp,
     /// Start drawing a new frame
     NewFrame,
+    /// Erroneuous event, usually for tests
+    Error,
 }
 
 impl State for AppState<File> {
@@ -326,6 +328,10 @@ impl State for AppState<File> {
                             // render them in the next frame.
                             break 'step;
                             // continue
+                        }
+                        ProcessedEvent::Error => {
+                            error!("Received an erroneuous event: {:?}", event);
+                            continue
                         }
                     }
                 }
