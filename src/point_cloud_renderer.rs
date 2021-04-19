@@ -180,6 +180,7 @@ pub struct AppState<R: Read> {
     pub data_stream: Option<StreamReader<R>>,
     time_to_coord: TimeToCoord,
     inputs: Inputs,
+    appconfig: AppConfig,
     rows_per_frame: u32,
     row_count: u32,
     last_line: Picosecond,
@@ -199,6 +200,7 @@ impl AppState<File> {
             data_stream: None,
             time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
             inputs: Inputs::from_config(&appconfig),
+            appconfig: appconfig.clone(),
             rows_per_frame: appconfig.rows,
             row_count: 0,
             last_line: 0,
@@ -208,19 +210,23 @@ impl AppState<File> {
 
     /// Called when an event from the line channel arrives to the event stream
     fn handle_line_event(&mut self, event: Event) -> ProcessedEvent {
-        self.row_count += 1;
-        let time = event.time;
-        self.lines_vec.push(time);
-        info!("Elapsed time since last line: {}", time - self.last_line);
-        info!("The channel is {}", event.channel);
-        self.last_line = time;
-        if self.row_count == self.rows_per_frame {
-            self.row_count = 0;
-            info!("Here are the lines: {:#?}", self.lines_vec);
-            self.lines_vec.clear();
-            ProcessedEvent::NewFrame
-        } else {
-            ProcessedEvent::NoOp
+        if self.last_line == 0 {
+            ProcessedEvent::FirstLine(event.time)
+        } else { 
+            self.row_count += 1;
+            let time = event.time;
+            self.lines_vec.push(time);
+            info!("Elapsed time since last line: {}", time - self.last_line);
+            info!("The channel is {}", event.channel);
+            self.last_line = time;
+            if self.row_count == self.rows_per_frame {
+                self.row_count = 0;
+                info!("Here are the lines: {:#?}", self.lines_vec);
+                self.lines_vec.clear();
+                ProcessedEvent::NewFrame
+            } else {
+                ProcessedEvent::NoOp
+            }
         }
     }
 
@@ -306,6 +312,8 @@ pub enum ProcessedEvent {
     NewFrame,
     /// Erroneuous event, usually for tests
     Error,
+    /// First line encoutered and its timing
+    FirstLine(Picosecond),
 }
 
 impl State for AppState<File> {
@@ -345,6 +353,14 @@ impl State for AppState<File> {
                 true => { },
                 false => continue,
             };
+            if self.last_line == 0 {
+                for event in event_stream.into_iter() {
+                    match self.event_to_coordinate(event) {
+                        ProcessedEvent::FirstLine(time) => { self.time_to_coord = TimeToCoord::from_acq_params(&self.appconfig, time); },
+                        _ => { },
+                    }
+                }
+            }
             for event in event_stream.into_iter() {
                 match self.event_to_coordinate(event) {
                     ProcessedEvent::Displayed(p, c) => {
@@ -359,7 +375,8 @@ impl State for AppState<File> {
                         // render them in the next frame.
                         break 'step;
                         // continue
-                    }
+                    },
+                    ProcessedEvent::FirstLine(time) => { error!("First line already detected! {}", time); continue },
                     ProcessedEvent::Error => {
                         error!("Received an erroneuous event: {:?}", event);
                         continue;
