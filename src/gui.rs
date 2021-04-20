@@ -1,9 +1,10 @@
-use crate::channel_value_to_pair;
-use crate::{configuration::AppConfig, rendering_helpers::Picosecond};
 use iced::{
     button, pick_list, text_input, Align, Application, Button, Checkbox, Clipboard, Column,
     Command, Container, Element, Image, Length, PickList, Row, Text, TextInput,
 };
+
+use crate::{start_acquisition, channel_value_to_pair};
+use crate::{configuration::AppConfig, rendering_helpers::Picosecond};
 
 #[derive(Default)]
 pub struct MainAppGui {

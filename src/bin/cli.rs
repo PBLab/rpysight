@@ -1,7 +1,8 @@
-use std::{env, fs::read_to_string};
-use std::fs::File;
+use std::env;
+use std::fs::{File, read_to_string};
 use std::io::{Error, ErrorKind, Result};
 use std::path::PathBuf;
+use futures::executor::block_on;
 
 #[macro_use]
 extern crate log;
@@ -9,8 +10,8 @@ extern crate simplelog;
 
 use simplelog::*;
 
-use librpysight::configuration::AppConfig;
 use librpysight::start_acquisition;
+use librpysight::configuration::AppConfig;
 
 /// Asserts that the argument list to our software was given according to the
 /// specs
@@ -36,6 +37,7 @@ fn main() -> Result<()> {
     println!("rPySight 0.1.0");
     let args: Vec<String> = env::args().collect();
     let config_path = validate_and_parse_args(&args[1..])?;
-    start_acquisition(config_path)?;
+    let config: AppConfig = toml::from_str(&read_to_string(config_path)?)?;
+    block_on(start_acquisition(config));
     Ok(())
 }

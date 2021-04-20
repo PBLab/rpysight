@@ -224,7 +224,7 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
 ///
 /// This method is called once the user clicks the "Run Application" button or
 /// from the CLI.
-async fn start_acquisition(cfg: AppConfig) {
+pub async fn start_acquisition(cfg: AppConfig) {
     let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
     let (mut window, mut app) = setup_renderer(&cfg);
     let frame_rate = cfg.frame_rate().round() as u64;
