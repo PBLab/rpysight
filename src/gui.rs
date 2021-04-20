@@ -3,7 +3,7 @@ use iced::{
     Command, Container, Element, Image, Length, PickList, Row, Text, TextInput,
 };
 
-use crate::{start_acquisition, channel_value_to_pair};
+use crate::{channel_value_to_pair, start_acquisition};
 use crate::{configuration::AppConfig, rendering_helpers::Picosecond};
 
 #[derive(Default)]

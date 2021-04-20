@@ -267,5 +267,3 @@ fn save_cfg(app_config: &AppConfig) -> anyhow::Result<()> {
     };
     Ok(())
 }
-
-

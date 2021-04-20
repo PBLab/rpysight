@@ -3,8 +3,12 @@ extern crate kiss3d;
 use std::fs::File;
 use std::io::Read;
 
-use anyhow::{Result, Context};
-use arrow::{array::{Int32Array, Int64Array, UInt16Array, UInt8Array}, ipc::reader::StreamReader, record_batch::RecordBatch};
+use anyhow::{Context, Result};
+use arrow::{
+    array::{Int32Array, Int64Array, UInt16Array, UInt8Array},
+    ipc::reader::StreamReader,
+    record_batch::RecordBatch,
+};
 use kiss3d::camera::Camera;
 use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::point_renderer::PointRenderer;
@@ -219,7 +223,7 @@ impl AppState<File> {
             self.lines_vec.push(event.time);
             self.last_line = event.time;
             info!("Found the first line of the stream: {:?}", event);
-            return ProcessedEvent::FirstLine(event.time)
+            return ProcessedEvent::FirstLine(event.time);
         }
         self.row_count += 1;
         let time = event.time;
@@ -240,14 +244,17 @@ impl AppState<File> {
     /// Verifies that the current event stream lies within the boundaries of
     /// the current frame we're trying to render.
     fn check_relevance_of_batch(&self, event_stream: &EventStream) -> bool {
-        if let Some(event) =
-            Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1)
-        {
+        if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
             if event.time <= self.time_to_coord.earliest_frame_time {
                 debug!("The last event in the batch arrived before the first in the frame");
                 false
-            } else { true }
-        } else { error!("For some reason no last event exists in this stream"); false }
+            } else {
+                true
+            }
+        } else {
+            error!("For some reason no last event exists in this stream");
+            false
+        }
     }
 
     fn find_first_line(&mut self, event: &Event) -> bool {
@@ -255,8 +262,8 @@ impl AppState<File> {
             ProcessedEvent::FirstLine(time) => {
                 self.time_to_coord = TimeToCoord::from_acq_params(&self.appconfig, time);
                 true
-            },
-            _ => { false },
+            }
+            _ => false,
         }
     }
 }
@@ -311,7 +318,9 @@ impl TimeTaggerIpcHandler for AppState<File> {
         if event_stream.num_rows() == 0 {
             debug!("A batch with 0 rows was received");
             None
-        } else { Some(event_stream) }
+        } else {
+            Some(event_stream)
+        }
     }
 }
 
@@ -367,22 +376,20 @@ impl State for AppState<File> {
                 None => continue,
             };
             match self.check_relevance_of_batch(&event_stream) {
-                true => { },
+                true => {}
                 false => continue,
             };
             let mut num_skips = 0;
             let mut event_stream = event_stream.iter().skip(0);
             if self.last_line == 0 {
                 num_skips = match event_stream.position(|event| self.find_first_line(&event)) {
-                    Some(num) => num + 1,  // we discard the line event itself with the +1
+                    Some(num) => num + 1, // we discard the line event itself with the +1
                     None => continue,
                 };
             }
             for event in event_stream.skip(num_skips) {
                 match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => {
-                        self.point_cloud_renderer.draw_point(p, c)
-                    }
+                    ProcessedEvent::Displayed(p, c) => self.point_cloud_renderer.draw_point(p, c),
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::NewFrame => {
                         info!("New frame!");
@@ -392,8 +399,11 @@ impl State for AppState<File> {
                         // render them in the next frame.
                         break 'step;
                         // continue
-                    },
-                    ProcessedEvent::FirstLine(time) => { error!("First line already detected! {}", time); continue },
+                    }
+                    ProcessedEvent::FirstLine(time) => {
+                        error!("First line already detected! {}", time);
+                        continue;
+                    }
                     ProcessedEvent::Error => {
                         error!("Received an erroneuous event: {:?}", event);
                         continue;

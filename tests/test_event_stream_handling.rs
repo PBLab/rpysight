@@ -4,9 +4,9 @@ use std::fs::File;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use arrow::{csv::Reader, record_batch::RecordBatch};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
+use arrow::{csv::Reader, record_batch::RecordBatch};
 use log::*;
 use nalgebra::Point3;
 use ron::de::from_str;
@@ -108,16 +108,17 @@ impl MockAppState {
     }
 
     fn check_relevance_of_batch(&self, event_stream: &EventStream) -> bool {
-        if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1)
-        {
+        if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
             let time = event.time;
             if time <= self.time_to_coord.earliest_frame_time {
                 info!("The last event in the batch arrived before the first in the frame");
                 false
-            } else { true }
-        } else { 
-            error!("For some reason no last event exists in this stream"); 
-            false 
+            } else {
+                true
+            }
+        } else {
+            error!("For some reason no last event exists in this stream");
+            false
         }
     }
 
@@ -135,10 +136,10 @@ impl MockAppState {
                 None => continue,
             };
             match self.check_relevance_of_batch(&event_stream) {
-                true => { },
+                true => {}
                 false => continue,
             };
-                // let mut idx = 0;
+            // let mut idx = 0;
             let nanp = Point3::<f32>::new(f32::NAN, f32::NAN, f32::NAN);
             info!("Inputs: {:?}", self.inputs);
             for event in event_stream.into_iter() {
@@ -160,11 +161,14 @@ impl MockAppState {
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::Error => self
                         .invalid_events
-                            .push(TimeCoordPair::new(event.time, nanp)),
-                    ProcessedEvent::FirstLine(time) => { error!("First line already detected"); continue },
+                        .push(TimeCoordPair::new(event.time, nanp)),
+                    ProcessedEvent::FirstLine(time) => {
+                        error!("First line already detected");
+                        continue;
                     }
-                    // idx += 1;
                 }
+                // idx += 1;
+            }
             // write(
             //     "tests/data/short_two_frames_with_offset_batch_unidir_valid.ron",
             //     to_string_pretty(&self.valid_events, PrettyConfig::new()).unwrap(),
@@ -232,8 +236,9 @@ impl TimeTaggerIpcHandler for MockAppState {
         if event_stream.num_rows() == 0 {
             debug!("A batch with 0 rows was received");
             None
-        } else { Some(event_stream) }
-        
+        } else {
+            Some(event_stream)
+        }
     }
 }
 

@@ -477,8 +477,8 @@ impl TimeToCoord {
         }
         // Makes sure that we indeed captured some cell. This can be avoided in
         // principle but I'm still not confident enough in this implementation.
-        if coord.is_some() {
-            ProcessedEvent::Displayed(coord.unwrap(), DISPLAY_COLORS[ch])
+        if let Some(coord) = coord {
+            ProcessedEvent::Displayed(coord, DISPLAY_COLORS[ch])
         } else {
             error!(
                 "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",

@@ -265,7 +265,10 @@ impl AppConfig {
 
     /// Return the frame rate in Hz
     pub fn frame_rate(&self) -> f32 {
-        Period { period: self.calc_frame_duration() }.to_hz()        
+        Period {
+            period: self.calc_frame_duration(),
+        }
+        .to_hz()
     }
 }
 
