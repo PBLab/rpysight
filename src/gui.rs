@@ -1,8 +1,5 @@
-use std::fs::write;
-
-use crate::point_cloud_renderer::TimeTaggerIpcHandler;
-use crate::{channel_value_to_pair, setup_renderer, start_timetagger_with_python};
-use crate::{configuration::AppConfig, get_config_path, rendering_helpers::Picosecond};
+use crate::channel_value_to_pair;
+use crate::{configuration::AppConfig, rendering_helpers::Picosecond};
 use iced::{
     button, pick_list, text_input, Align, Application, Button, Checkbox, Clipboard, Column,
     Command, Container, Element, Image, Length, PickList, Row, Text, TextInput,
@@ -61,53 +58,6 @@ pub struct MainAppGui {
     taglens_edge_selected: EdgeDetected,
     replay_existing: bool,
     run_button: button::State,
-}
-
-/// Initializes things on the Python side and starts the acquisition.
-///
-/// This method is called once the user clicks the "Run Application" button.
-async fn start_acquisition(cfg: AppConfig) {
-    let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
-    let (mut window, mut app) = setup_renderer(&cfg);
-    let frame_rate = cfg.frame_rate().round() as u64;
-    std::thread::spawn(move || {
-        start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
-    });
-    window.set_framerate_limit(Some(frame_rate));
-    app.acquire_stream_filehandle()
-        .expect("Failed to acquire stream handle");
-    window.render_loop(app);
-}
-
-/// Saves the current configuration to disk.
-///
-/// This function is called when the user starts the acquisition, which
-/// means that it can assume that the config exists, since it's usually
-/// created during start up.
-///
-/// The function overwrites the current settings with the new ones, as we
-/// don't currently offer any profiles\configuration management system.
-///
-/// Errors during this function are called and then basically discarded,
-/// since it's not "mission critical".
-fn save_cfg(app_config: &AppConfig) -> anyhow::Result<()> {
-    let config_path = get_config_path();
-    if config_path.exists() {
-        let serialized_cfg = toml::to_string(app_config).map_err(|e| {
-            warn!(
-                "Couldn't serialize user input struct before writing to disk: {}",
-                e
-            );
-            e
-        })?;
-        write(&config_path, serialized_cfg).map_err(|e| {
-            warn!("Couldn't serialize user input to disk: {}", e);
-            e
-        })?;
-    } else {
-        warn!("Configuration path doesn't exist before running the app");
-    };
-    Ok(())
 }
 
 impl MainAppGui {

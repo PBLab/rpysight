@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 kiss3d = "0.30"
 nalgebra = { version = "0.25", features = ["serde-serialize"] }
-pyo3 = { version = "0.13" } # features = ["extension-module"] } https://github.com/PyO3/pyo3/issues/1084
+pyo3 = { version = "0.13", features = ["extension-module"] }
 arrow = "3.0.0"
 thiserror = "1.0"
 anyhow = "1.0"
@@ -28,14 +28,6 @@ rand = "0.8"
 [lib]
 name = "librpysight"
 crate-type = ["cdylib", "rlib"]
-
-[[bin]]
-name = "rpyrender"
-path = "src/bin.rs"
-
-[features]
-extension-module = ["pyo3/extension-module"]
-default = ["extension-module"]
 
 [package.metadata.maturin]
 requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=3.0.0", "toml > 0.10",]

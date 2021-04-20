@@ -20,7 +20,7 @@ fn main() -> Result {
             .map_err(|e| iced::Error::WindowCreationFailed(Box::new(e)))?,
     )
     .map_err(|e| iced::Error::WindowCreationFailed(Box::new(e)))?;
-    info!("Logger initialized successfully, starting RPySight");
+    info!("Logger initialized successfully, starting rPySight from the GUI");
     let cfg = reload_cfg_or_use_default();
     let settings = load_app_settings(cfg);
     MainAppGui::run(settings)
