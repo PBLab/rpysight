@@ -629,13 +629,13 @@ mod tests {
     #[test]
     fn frame_rate_unidir() {
         let config = setup_default_config().with_bidir(false).build();
-        assert_eq!(config.frame_rate(), 30.02f32);
+        assert_eq!(config.frame_rate(), 30.961601f32);
     }
 
     #[test]
     fn frame_rate_bidir() {
         let config = setup_default_config().with_bidir(true).build();
-        assert_eq!(config.frame_rate(), 58.24f32);
+        assert_eq!(config.frame_rate(), 61.923203f32);
     }
 
     #[test]

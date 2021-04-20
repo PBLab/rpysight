@@ -4,7 +4,7 @@ use std::fs::File;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use arrow::csv::Reader;
+use arrow::{csv::Reader, record_batch::RecordBatch};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
 use log::*;
@@ -107,24 +107,38 @@ impl MockAppState {
         }
     }
 
+    fn check_relevance_of_batch(&self, event_stream: &EventStream) -> bool {
+        if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1)
+        {
+            let time = event.time;
+            if time <= self.time_to_coord.earliest_frame_time {
+                info!("The last event in the batch arrived before the first in the frame");
+                false
+            } else { true }
+        } else { 
+            error!("For some reason no last event exists in this stream"); 
+            false 
+        }
+    }
+
     /// Mock step function for testing.
     /// Does not render anything, just prints out stuff.
     /// This is probably not the right way to do things.
     fn step(&mut self) {
-        if let Some(batch) = self.data_stream.as_mut().unwrap().next() {
-            let batch = batch.unwrap();
-            // let mut idx = 0;
-            let event_stream = EventStream::from_streamed_batch(&batch);
-            if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1)
-            {
-                let time = event.time;
-                if time <= self.time_to_coord.earliest_frame_time {
-                    info!("The last event in the batch arrived before the first in the frame");
-                    return;
-                } else {
-                    info!("Last event is later than the first");
-                }
-            }
+        'step: loop {
+            let batch = match self.data_stream.as_mut().unwrap().next() {
+                Some(batch) => batch.expect("Test data failed"),
+                None => continue,
+            };
+            let event_stream = match self.get_event_stream(&batch) {
+                Some(stream) => stream,
+                None => continue,
+            };
+            match self.check_relevance_of_batch(&event_stream) {
+                true => { },
+                false => continue,
+            };
+                // let mut idx = 0;
             let nanp = Point3::<f32>::new(f32::NAN, f32::NAN, f32::NAN);
             info!("Inputs: {:?}", self.inputs);
             for event in event_stream.into_iter() {
@@ -142,14 +156,15 @@ impl MockAppState {
                                 .push(TimeCoordPair::new(event.time, point));
                         }
                     }
-                    ProcessedEvent::NewFrame => continue,
+                    ProcessedEvent::NewFrame => break 'step,
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::Error => self
                         .invalid_events
-                        .push(TimeCoordPair::new(event.time, nanp)),
+                            .push(TimeCoordPair::new(event.time, nanp)),
+                    ProcessedEvent::FirstLine(time) => { error!("First line already detected"); continue },
+                    }
+                    // idx += 1;
                 }
-                // idx += 1;
-            }
             // write(
             //     "tests/data/short_two_frames_with_offset_batch_unidir_valid.ron",
             //     to_string_pretty(&self.valid_events, PrettyConfig::new()).unwrap(),
@@ -209,6 +224,16 @@ impl TimeTaggerIpcHandler for MockAppState {
                 ProcessedEvent::Error
             }
         }
+    }
+
+    fn get_event_stream<'a>(&mut self, batch: &'a RecordBatch) -> Option<EventStream<'a>> {
+        info!("Received {} rows", batch.num_rows());
+        let event_stream = EventStream::from_streamed_batch(batch);
+        if event_stream.num_rows() == 0 {
+            debug!("A batch with 0 rows was received");
+            None
+        } else { Some(event_stream) }
+        
     }
 }
 
