@@ -10,7 +10,7 @@ from time import sleep
 from datetime import datetime
 import pathlib
 
-from TimeTagger import createTimeTagger, FileWriter 
+from TimeTagger import createTimeTagger, FileWriter, FileReader
 import numpy as np
 import pandas as pd
 
@@ -40,7 +40,7 @@ line_thresh = 1.2
 tag_thresh = 2.0
 ta1000_thresh = -0.3
 td2000_thresh = -0.4
-laser_thresh = 1.0
+laser_thresh = 2.0
 
 tagger.setTriggerLevel(LINE_START_CH, line_thresh)
 tagger.setTriggerLevel(TAG_SYNC_CH, tag_thresh)
@@ -56,4 +56,8 @@ sleep(recording_length)
 file_writer.stop()
 del file_writer
 
-print("We're done")
+print("Acquisition done, let's see what we captured")
+
+fr = FileReader(str(filename))
+data = fr.getData(10000)
+print(data.size)
