@@ -96,6 +96,7 @@ struct MockAppState {
     inputs: Inputs,
     valid_events: Vec<TimeCoordPair>,
     invalid_events: Vec<TimeCoordPair>,
+    last_line: Picosecond,
 }
 
 impl MockAppState {
@@ -108,6 +109,7 @@ impl MockAppState {
             inputs: Inputs::from_config(&appconfig),
             valid_events: Vec::<TimeCoordPair>::with_capacity(100_000),
             invalid_events: Vec::<TimeCoordPair>::with_capacity(100_000),
+            last_line: offset,
         }
     }
 
@@ -145,7 +147,9 @@ impl MockAppState {
             };
             // let mut idx = 0;
             let nanp = Point3::<f32>::new(f32::NAN, f32::NAN, f32::NAN);
-            info!("Inputs: {:?}", self.inputs);
+            if self.last_line == 0 {
+    
+            }
             for event in event_stream.into_iter() {
                 // if idx > 10 {
                 //     break;
@@ -167,7 +171,7 @@ impl MockAppState {
                         .invalid_events
                         .push(TimeCoordPair::new(event.time, nanp)),
                     ProcessedEvent::FirstLine(time) => {
-                        error!("First line already detected");
+                        error!("First line already detected (but we also found this one: {})", time);
                         continue;
                     }
                 }
@@ -183,6 +187,7 @@ impl MockAppState {
             //     to_string_pretty(&self.invalid_events, PrettyConfig::new()).unwrap(),
             // )
             // .unwrap();
+        break;
         }
     }
 }
@@ -463,9 +468,12 @@ fn stepwise_short_two_frames_offset_unidir() {
 }
 
 #[test]
-fn test_offset_with_lines() {
+fn offset_with_lines() {
     let cfg: AppConfig = AppConfigBuilder::default()
         .with_planes(1)
+        .with_pmt1_ch(-3)
+        .with_pmt2_ch(-8)
+        .with_line_ch(1)
         .build();
     let mut app = setup(WITH_LINES_STREAM, Some(cfg), Some(0));
     app.step();

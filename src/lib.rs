@@ -63,9 +63,10 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
 ///
 /// Does the needed setup to generate the window and app objects that are used
 /// for rendering.
-pub(crate) fn setup_renderer(app_config: &AppConfig) -> (Window, AppState<File>) {
-    let window = Window::new("RPySight 0.1.0");
-    let data_stream_fh = TT_DATA_STREAM.into();
+pub(crate) fn setup_renderer(app_config: &AppConfig, data_stream_fh: String) -> (Window, AppState<File>) {
+    let mut window = Window::new("RPySight 0.1.0");
+    let frame_rate = app_config.frame_rate().round() as u64;
+    window.set_framerate_limit(Some(frame_rate)); 
     let app = AppState::new(PointRenderer::new(), data_stream_fh, app_config.clone());
     (window, app)
 }
@@ -226,12 +227,10 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
 /// from the CLI.
 pub async fn start_acquisition(cfg: AppConfig) {
     let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
-    let (mut window, mut app) = setup_renderer(&cfg);
-    let frame_rate = cfg.frame_rate().round() as u64;
+    let (window, mut app) = setup_renderer(&cfg, TT_DATA_STREAM.to_string());
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
-    window.set_framerate_limit(Some(frame_rate));
     app.acquire_stream_filehandle()
         .expect("Failed to acquire stream handle");
     window.render_loop(app);
