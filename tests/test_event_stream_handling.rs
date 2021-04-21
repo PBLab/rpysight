@@ -19,10 +19,12 @@ use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
 const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
 const SHORT_TWO_FRAME_BATCH_DATA: &'static str = "tests/data/short_record_batch_two_frames.csv";
+const WITH_LINES_DATA: &'static str = "tests/data/record_batch_with_lines.csv";
 const FULL_BATCH_STREAM: &'static str = "tests/data/real_record_batch_full_stream.dat";
 const SHORT_BATCH_STREAM: &'static str = "tests/data/real_record_batch_short_stream.dat";
 const SHORT_TWO_FRAME_BATCH_STREAM: &'static str =
     "tests/data/real_record_batch_short_two_frames_stream.dat";
+const WITH_LINES_STREAM: &'static str = "tests/data/record_batch_with_lines.dat";
 
 /// Run once to generate .dat file which behave as streams
 fn test_file_to_stream() {
@@ -36,6 +38,7 @@ fn test_file_to_stream() {
         FULL_BATCH_DATA,
         SHORT_BATCH_DATA,
         SHORT_TWO_FRAME_BATCH_DATA,
+        WITH_LINES_DATA,
     ]
     .into_iter()
     .zip(
@@ -43,6 +46,7 @@ fn test_file_to_stream() {
             FULL_BATCH_STREAM,
             SHORT_BATCH_STREAM,
             SHORT_TWO_FRAME_BATCH_STREAM,
+            WITH_LINES_STREAM,
         ]
         .into_iter(),
     ) {
@@ -456,4 +460,15 @@ fn stepwise_short_two_frames_offset_unidir() {
         &app.valid_events,
         &original_valid
     ));
+}
+
+#[test]
+fn test_offset_with_lines() {
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_planes(1)
+        .build();
+    let mut app = setup(WITH_LINES_STREAM, Some(cfg), Some(0));
+    app.step();
+    println!("{:?}", &app.invalid_events);
+    assert!(false)
 }
