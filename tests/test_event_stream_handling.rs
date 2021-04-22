@@ -46,6 +46,10 @@ impl PointLogger {
 
 impl PointDisplay for PointLogger {
     fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond) {
+        let contains_nan = p.iter().any(|x| x.is_nan());
+        if contains_nan {
+            return
+        };
         self.rendered_events_loc.push(TimeCoordPair::new(time, p));
         self.rendered_events_color.push(TimeCoordPair::new(time, c));
     }
@@ -139,7 +143,7 @@ fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> (Window, AppState<Point
 #[test]
 fn assert_full_stream_exists() {
     test_file_to_stream();
-    let (window, mut app) = setup(FULL_BATCH_STREAM, None);
+    let (_window, mut app) = setup(FULL_BATCH_STREAM, None);
     if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
@@ -149,7 +153,7 @@ fn assert_full_stream_exists() {
 #[test]
 fn assert_short_stream_exists() {
     test_file_to_stream();
-    let (window, mut app) = setup(SHORT_BATCH_STREAM, None, None);
+    let (_window, mut app) = setup(SHORT_BATCH_STREAM, None);
     if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
@@ -164,24 +168,21 @@ fn stepwise_short_bidir_single_frame() {
         .with_rows(10)
         .with_planes(1)
         .with_bidir(Bidirectionality::Bidir)
+        .with_line_ch(9)
         .build();
-    let (mut window, mut app) = setup(SHORT_BATCH_STREAM, Some(cfg), None);
+    let (mut window, mut app) = setup(SHORT_BATCH_STREAM, Some(cfg));
     window.render_with_state(&mut app);
-    let original_invalid: Vec<TimeCoordPair> =
-        from_str(&read_to_string("tests/data/short_batch_bidir_invalid.ron").unwrap()).unwrap();
-    let original_valid: Vec<TimeCoordPair> =
-        from_str(&read_to_string("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
-    let mut v = Vec::new();
-    window.snap(&mut v);
-    println!("{:?}", v);
-    // assert!(timecoordpair_vec_compare(
-    //     &app.invalid_events,
-    //     &original_invalid
-    // ));
-    // assert!(timecoordpair_vec_compare(
-    //     &app.valid_events,
-    //     &original_valid
-    // ));
+    // to_writer_pretty(File::create("tests/data/short_batch_bidir_valid.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
+    let original: PointLogger =
+        from_reader(File::open("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
+    assert!(timecoordpair_vec_compare(
+        &app.renderer.rendered_events_loc,
+        &original.rendered_events_loc,
+    ));
+    assert!(timecoordpair_vec_compare(
+        &app.renderer.rendered_events_color,
+        &original.rendered_events_color,
+    ));
 }
 
 #[test]
@@ -191,22 +192,22 @@ fn stepwise_short_unidir_single_frame() {
         .with_columns(10)
         .with_rows(10)
         .with_planes(1)
+        .with_line_ch(9)
         .with_bidir(Bidirectionality::Unidir)
         .build();
-    let (mut window, mut app) = setup(SHORT_BATCH_STREAM, Some(cfg), None);
+    let (mut window, mut app) = setup(SHORT_BATCH_STREAM, Some(cfg));
     window.render_with_state(&mut app);
-    let original_invalid: Vec<TimeCoordPair> =
-        from_str(&read_to_string("tests/data/short_batch_unidir_invalid.ron").unwrap()).unwrap();
-    let original_valid: Vec<TimeCoordPair> =
-        from_str(&read_to_string("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();
-    // assert!(timecoordpair_vec_compare(
-    //     &app.invalid_events,
-    //     &original_invalid
-    // ));
-    // assert!(timecoordpair_vec_compare(
-    //     &app.valid_events,
-    //     &original_valid
-    // ));
+    // to_writer_pretty(File::create("tests/data/short_batch_unidir_valid.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
+    let original: PointLogger =
+        from_reader(File::open("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();
+    assert!(timecoordpair_vec_compare(
+        &app.renderer.rendered_events_loc,
+        &original.rendered_events_loc,
+    ));
+    assert!(timecoordpair_vec_compare(
+        &app.renderer.rendered_events_color,
+        &original.rendered_events_color,
+    ));
 }
 
 #[test]
@@ -216,24 +217,24 @@ fn stepwise_short_two_frames_bidir() {
         .with_columns(10)
         .with_rows(10)
         .with_planes(1)
+        .with_line_ch(9)
         .with_bidir(Bidirectionality::Bidir)
         .with_frame_dead_time(10_000_000)
         .build();
-    let (window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), None);
-    // app.step();
-    // let original_invalid: Vec<TimeCoordPair> =
-    //     from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap())
-    //         .unwrap();
-    // let original_valid: Vec<TimeCoordPair> =
-    //     from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap())
-    //         .unwrap();
+    let (mut window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
+    window.render_with_state(&mut app);
+    // to_writer_pretty(File::create("tests/data/short_batch_unidir_valid.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
+    let original: Vec<TimeCoordPair> =
+        from_reader(File::open("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
+    info!("{:#?}", &app.renderer.rendered_events_loc);
+    assert!(timecoordpair_vec_compare(
+        &app.renderer.rendered_events_loc,
+        // &original.rendered_events_loc,
+        &original,
+    ));
     // assert!(timecoordpair_vec_compare(
-    //     &app.invalid_events,
-    //     &original_invalid
-    // ));
-    // assert!(timecoordpair_vec_compare(
-    //     &app.valid_events,
-    //     &original_valid
+    //     &app.renderer.rendered_events_color,
+    //     &original.rendered_events_color,
     // ));
 }
 
@@ -247,7 +248,7 @@ fn stepwise_short_two_frames_unidir() {
         .with_bidir(Bidirectionality::Unidir)
         .with_frame_dead_time(10_000_000)
         .build();
-    let (window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), None);
+    let (window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
     // app.step();
     // let original_invalid: Vec<TimeCoordPair> =
     //     from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap())
@@ -265,17 +266,17 @@ fn stepwise_short_two_frames_unidir() {
     // ));
 }
 
-#[test]
-fn stepwise_short_two_frames_offset_bidir() {
-    let cfg: AppConfig = AppConfigBuilder::default()
-        .with_scan_period(Period::from_freq(100_000.0))
-        .with_columns(10)
-        .with_rows(10)
-        .with_planes(1)
-        .with_bidir(Bidirectionality::Bidir)
-        .with_frame_dead_time(10_000_000)
-        .build();
-    let (window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
+// #[test]
+// fn stepwise_short_two_frames_offset_bidir() {
+//     let cfg: AppConfig = AppConfigBuilder::default()
+//         .with_scan_period(Period::from_freq(100_000.0))
+//         .with_columns(10)
+//         .with_rows(10)
+//         .with_planes(1)
+//         .with_bidir(Bidirectionality::Bidir)
+//         .with_frame_dead_time(10_000_000)
+//         .build();
+//     let (window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
     // app.step();
     // let original_invalid: Vec<TimeCoordPair> =
     //     from_str(&read_to_string("tests/data/short_two_frames_batch_bidir_invalid.ron").unwrap())
@@ -291,21 +292,21 @@ fn stepwise_short_two_frames_offset_bidir() {
     //     &app.valid_events,
     //     &original_valid
     // ));
-}
+// }
 
-#[test]
-fn stepwise_short_two_frames_offset_unidir() {
-    let cfg: AppConfig = AppConfigBuilder::default()
-        .with_scan_period(Period::from_freq(100_000.0))
-        .with_columns(10)
-        .with_rows(10)
-        .with_planes(1)
-        .with_bidir(Bidirectionality::Unidir)
-        .with_frame_dead_time(10_000_000)
-        .with_line_ch(9)
-        .build();
-    let (mut window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
-    window.render_with_state(&mut app);
+// #[test]
+// fn stepwise_short_two_frames_offset_unidir() {
+//     let cfg: AppConfig = AppConfigBuilder::default()
+//         .with_scan_period(Period::from_freq(100_000.0))
+//         .with_columns(10)
+//         .with_rows(10)
+//         .with_planes(1)
+//         .with_bidir(Bidirectionality::Unidir)
+//         .with_frame_dead_time(10_000_000)
+//         .with_line_ch(9)
+//         .build();
+//     let (mut window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg), Some(100));
+//     window.render_with_state(&mut app);
     // window.close();
     // // app.step();
     // let original_invalid: Vec<TimeCoordPair> =
@@ -322,7 +323,7 @@ fn stepwise_short_two_frames_offset_unidir() {
     //     &app.valid_events,
     //     &original_valid
     // ));
-}
+// }
 
 #[test]
 fn offset_with_lines() {
@@ -336,7 +337,7 @@ fn offset_with_lines() {
         .build();
     let (mut window, mut app) = setup(WITH_LINES_STREAM, Some(cfg));
     window.render_with_state(&mut app);
-    to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
-    let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines_loc.ron").unwrap()).unwrap();  
+    // to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
+    let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines.ron").unwrap()).unwrap();  
     assert_eq!(original, app.renderer);
 }
