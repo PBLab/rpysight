@@ -18,7 +18,7 @@ extern crate lazy_static;
 use anyhow::Result;
 use directories::ProjectDirs;
 use iced::Settings;
-use kiss3d::point_renderer::PointRenderer;
+use kiss3d::{point_renderer::PointRenderer, renderer::Renderer};
 use kiss3d::window::Window;
 use nalgebra::Point3;
 use pyo3::prelude::*;
@@ -26,14 +26,14 @@ use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder};
 use crate::gui::{ChannelNumber, EdgeDetected};
-use crate::point_cloud_renderer::{AppState, TimeTaggerIpcHandler};
+use crate::point_cloud_renderer::{PointDisplay, AppState, TimeTaggerIpcHandler};
 
 const TT_DATA_STREAM: &str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
 const DEFAULT_CONFIG_FNAME: &str = "default.toml";
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
-const GLOBAL_OFFSET: i64 = 700_000_000_000;
+const GLOBAL_OFFSET: i64 = 0;
 
 lazy_static! {
     /// GREEN, MAGENTA, CYAN, GRAY
@@ -58,16 +58,17 @@ pub fn reload_cfg_or_use_default() -> AppConfig {
             .unwrap_or_else(|_| AppConfigBuilder::default().build())
     }
 }
+        
 
 /// Start the renderer.
 ///
 /// Does the needed setup to generate the window and app objects that are used
 /// for rendering.
-pub(crate) fn setup_renderer(app_config: &AppConfig, data_stream_fh: String) -> (Window, AppState<File>) {
+pub fn setup_renderer<T: Renderer + PointDisplay>(renderer: T, app_config: &AppConfig, data_stream_fh: String) -> (Window, AppState<T, File>) {
     let mut window = Window::new("RPySight 0.1.0");
     let frame_rate = app_config.frame_rate().round() as u64;
     window.set_framerate_limit(Some(frame_rate)); 
-    let app = AppState::new(PointRenderer::new(), data_stream_fh, app_config.clone());
+    let app = AppState::new(renderer, data_stream_fh, app_config.clone());
     (window, app)
 }
 
@@ -227,7 +228,7 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
 /// from the CLI.
 pub async fn start_acquisition(cfg: AppConfig) {
     let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
-    let (window, mut app) = setup_renderer(&cfg, TT_DATA_STREAM.to_string());
+    let (window, mut app) = setup_renderer(PointRenderer::new(), &cfg, TT_DATA_STREAM.to_string());
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
