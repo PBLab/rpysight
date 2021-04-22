@@ -9,7 +9,7 @@ use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
 use arrow::{csv::Reader, record_batch::RecordBatch};
 use log::*;
 use nalgebra::Point3;
-use ron::de::from_str;
+use ron::{ser::{to_writer_pretty, PrettyConfig}, de::from_reader};
 use simplelog::*;
 use kiss3d::window::Window;
 use kiss3d::event;
@@ -32,7 +32,7 @@ const SHORT_TWO_FRAME_BATCH_STREAM: &'static str =
     "tests/data/real_record_batch_short_two_frames_stream.dat";
 const WITH_LINES_STREAM: &'static str = "tests/data/record_batch_with_lines.dat";
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 struct PointLogger {
     rendered_events_loc: Vec<TimeCoordPair>,
     rendered_events_color: Vec<TimeCoordPair>,
@@ -335,6 +335,7 @@ fn offset_with_lines() {
         .build();
     let (mut window, mut app) = setup(WITH_LINES_STREAM, Some(cfg));
     window.render_with_state(&mut app);
-    println!("{:#?}", app.renderer.rendered_events_loc);
-    assert!(false)
+    to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
+    let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines_loc.ron").unwrap()).unwrap();  
+    assert_eq!(original, app.renderer);
 }

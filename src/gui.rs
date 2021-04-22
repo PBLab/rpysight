@@ -1,9 +1,11 @@
+use std::path::PathBuf;
+
 use iced::{
     button, pick_list, text_input, Align, Application, Button, Checkbox, Clipboard, Column,
     Command, Container, Element, Image, Length, PickList, Row, Text, TextInput,
 };
 
-use crate::{channel_value_to_pair, start_acquisition};
+use crate::{DEFAULT_CONFIG_FNAME, channel_value_to_pair, start_acquisition};
 use crate::{configuration::AppConfig, rendering_helpers::Picosecond};
 
 #[derive(Default)]
@@ -450,7 +452,7 @@ impl Application for MainAppGui {
                 Command::none()
             }
             Message::ButtonPressed => Command::perform(
-                start_acquisition(AppConfig::from_user_input(self).expect("")),
+                start_acquisition(PathBuf::from(DEFAULT_CONFIG_FNAME), AppConfig::from_user_input(self).expect("")),
                 Message::StartedAcquistion,
             ),
             Message::StartedAcquistion(()) => Command::none(),

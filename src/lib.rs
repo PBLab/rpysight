@@ -30,7 +30,7 @@ use crate::point_cloud_renderer::{PointDisplay, AppState, TimeTaggerIpcHandler};
 
 const TT_DATA_STREAM: &str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
-const DEFAULT_CONFIG_FNAME: &str = "default.toml";
+pub const DEFAULT_CONFIG_FNAME: &str = "default.toml";
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 const GLOBAL_OFFSET: i64 = 0;
@@ -45,8 +45,8 @@ lazy_static! {
 ///
 /// Configuration files are stored in their proper locations using the
 /// directories cargo package.
-pub fn reload_cfg_or_use_default() -> AppConfig {
-    let config_path = get_config_path();
+pub fn reload_cfg_or_use_default(config_name: Option<PathBuf>) -> AppConfig {
+    let config_path = get_config_path(config_name);
     if config_path.exists() {
         read_to_string(config_path)
             .map(|res| toml::from_str(&res))
@@ -75,9 +75,9 @@ pub fn setup_renderer<T: Renderer + PointDisplay>(renderer: T, app_config: &AppC
 /// Generates a PathBuf with the location of the default configuration path.
 ///
 /// This function doesn't assert that it exists, it simply returns it.
-pub(crate) fn get_config_path() -> PathBuf {
+pub(crate) fn get_config_path(config_name: Option<PathBuf>) -> PathBuf {
     let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab", "RPySight") {
-        proj_dirs.config_dir().join(DEFAULT_CONFIG_FNAME)
+        proj_dirs.config_dir().join(config_name.unwrap_or(PathBuf::from(DEFAULT_CONFIG_FNAME)))
     } else {
         // Unreachable since config_dir() doesn't fail or returns None
         unreachable!()
@@ -226,8 +226,8 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
 ///
 /// This method is called once the user clicks the "Run Application" button or
 /// from the CLI.
-pub async fn start_acquisition(cfg: AppConfig) {
-    let _ = save_cfg(&cfg).ok(); // Errors are logged and quite irrelevant
+pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
+    let _ = save_cfg(Some(config_name), &cfg).ok(); // Errors are logged and quite irrelevant
     let (window, mut app) = setup_renderer(PointRenderer::new(), &cfg, TT_DATA_STREAM.to_string());
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
@@ -248,8 +248,8 @@ pub async fn start_acquisition(cfg: AppConfig) {
 ///
 /// Errors during this function are called and then basically discarded,
 /// since it's not "mission critical".
-fn save_cfg(app_config: &AppConfig) -> anyhow::Result<()> {
-    let config_path = get_config_path();
+fn save_cfg(config_name: Option<PathBuf>, app_config: &AppConfig) -> anyhow::Result<()> {
+    let config_path = get_config_path(config_name);
     if config_path.exists() {
         let serialized_cfg = toml::to_string(app_config).map_err(|e| {
             warn!(
