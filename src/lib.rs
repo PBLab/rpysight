@@ -64,15 +64,11 @@ pub fn reload_cfg_or_use_default(config_name: Option<PathBuf>) -> AppConfig {
 ///
 /// Does the needed setup to generate the window and app objects that are used
 /// for rendering.
-pub fn setup_renderer<T: Renderer + PointDisplay>(renderer: T, app_config: &AppConfig, data_stream_fh: String) -> (Window, AppState<T, File>) {
-    trace!("We have a window?");
-    let mut window = Window::new("RPySight 0.1.0");
-    trace!("We have a window!");
+pub fn setup_renderer<T: Renderer + PointDisplay>(window: &mut Window, renderer: T, app_config: &AppConfig, data_stream_fh: String) -> AppState<T, File> {
     let frame_rate = app_config.frame_rate().round() as u64;
     window.set_framerate_limit(Some(frame_rate)); 
     let app = AppState::new(renderer, data_stream_fh, app_config.clone());
-    trace!("We have an app");
-    (window, app)
+    app
 }
 
 /// Generates a PathBuf with the location of the default configuration path.
@@ -231,9 +227,8 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
 /// from the CLI.
 pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok(); // Errors are logged and quite irrelevant
-    let p = PointRenderer::new();
-    trace!("We have a renderer");
-    let (window, mut app) = setup_renderer(p, &cfg, TT_DATA_STREAM.to_string());
+    let mut window = Window::new("rPySight 0.1.0");
+    let mut app = setup_renderer(&mut window, PointRenderer::new(), &cfg, TT_DATA_STREAM.to_string());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")

@@ -129,7 +129,8 @@ fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> (Window, AppState<Point
     );
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
-    let (mut window, mut app) = setup_renderer(PointLogger::new(), &cfg, csv_to_stream.to_string());
+    let mut window = Window::new("rPySight 0.1.0 test");
+    let mut app = setup_renderer(&mut window, PointLogger::new(), &cfg, csv_to_stream.to_string());
     app.acquire_stream_filehandle().unwrap();
     window.hide();
     (window, app)
