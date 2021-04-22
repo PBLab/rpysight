@@ -292,7 +292,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
 }
 
 impl PointDisplay for PointRenderer {
-    #[inline]
+    // #[inline]
     fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, _time: Picosecond) {
         self.draw_point(p, c);
     }

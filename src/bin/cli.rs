@@ -40,7 +40,7 @@ fn validate_and_parse_args(args: &[String]) -> Result<PathBuf, ConfigParsingErro
 /// Runs rPySight from the CLI
 fn main() -> Result<()> {
     let _ = WriteLogger::init(
-        LevelFilter::Info,
+        LevelFilter::Trace,
         ConfigBuilder::default().set_time_to_local(true).build(),
         File::create("target/rpysight.log")?,
     );
