@@ -202,7 +202,7 @@ pub trait PointDisplay {
 
 /// Holds the custom renderer that will be used for rendering the
 /// point cloud and the needed data streams for it
-pub struct AppState<T: PointDisplay + Renderer, R: Read> {
+pub struct AppState<'a, T: PointDisplay + Renderer, R: Read> {
     pub renderer: T,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
@@ -213,9 +213,10 @@ pub struct AppState<T: PointDisplay + Renderer, R: Read> {
     row_count: u32,
     last_line: Picosecond,
     lines_vec: Vec<Picosecond>,
+    previous_event_stream: Option<EventStreamIter<'a>>,
 }
 
-impl<T: PointDisplay + Renderer> AppState<T, File> {
+impl<'a, T: PointDisplay + Renderer> AppState<'a, T, File> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(
         renderer: T,
@@ -233,6 +234,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             row_count: 0,
             last_line: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
+            previous_event_stream: None,
         }
     }
 
@@ -298,7 +300,7 @@ impl PointDisplay for PointRenderer {
     }
 }
 
-impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
+impl<'a, T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<'a, T, File> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     fn acquire_stream_filehandle(&mut self) -> Result<()> {
         let stream =
@@ -342,7 +344,7 @@ impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
     }
 
     #[inline]
-    fn get_event_stream<'a>(&mut self, batch: &'a RecordBatch) -> Option<EventStream<'a>> {
+    fn get_event_stream<'b>(&mut self, batch: &'b RecordBatch) -> Option<EventStream<'b>> {
         info!("Received {} rows", batch.num_rows());
         let event_stream = EventStream::from_streamed_batch(batch);
         if event_stream.num_rows() == 0 {
@@ -354,7 +356,7 @@ impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
     }
 }
 
-impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
+impl<T: 'static + PointDisplay + Renderer> State for AppState<'static, T, File> {
     /// Return the renderer that will be called at each render loop. Without
     /// returning it the loop still runs but the screen is blank.
     fn cameras_and_effect_and_renderer(
@@ -398,6 +400,10 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
             //     true => {}
             //     false => continue,
             // };
+            if let Some(old_stream) = self.previous_event_stream {
+                let event_stream = old_stream.chain(event_stream);
+            }
+            let mut new_frame_found_in_stream = false;
             for event in event_stream {
                 match self.event_to_coordinate(event) {
                     ProcessedEvent::Displayed(p, c) => self.renderer.display_point(p, c, event.time),
@@ -408,6 +414,7 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
                         // discarding of all photons in this batch. I'll need
                         // to handle them by saving them in some buffer and
                         // render them in the next frame.
+                        self.previous_event_stream = Some(event_stream);
                         break 'step;
                     }
                     ProcessedEvent::FirstLine(time) => {
