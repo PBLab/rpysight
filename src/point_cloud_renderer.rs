@@ -4,11 +4,7 @@ use std::fs::File;
 use std::io::Read;
 
 use anyhow::{Context, Result};
-use arrow::{
-    array::{Int32Array, Int64Array, UInt16Array, UInt8Array},
-    ipc::reader::StreamReader,
-    record_batch::RecordBatch,
-};
+use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch};
 use kiss3d::camera::Camera;
 use kiss3d::planar_camera::PlanarCamera;
 use kiss3d::point_renderer::PointRenderer;
@@ -16,158 +12,16 @@ use kiss3d::post_processing::PostProcessingEffect;
 use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use nalgebra::Point3;
-use pyo3::prelude::*;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::rendering_helpers::{Picosecond, TimeToCoord};
 use crate::GLOBAL_OFFSET;
+use crate::event_stream::{Event, EventStream, RefEventStreamIter};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
 /// requires.
 pub type ImageCoor = Point3<f32>;
-
-/// A single tag\event that arrives from the Time Tagger.
-#[pyclass]
-#[derive(Debug, Copy, Clone)]
-pub struct Event {
-    pub type_: u8,
-    pub missed_event: u16,
-    pub channel: i32,
-    pub time: i64,
-}
-
-impl Event {
-    /// Create a new Event with the given values
-    pub fn new(type_: u8, missed_event: u16, channel: i32, time: i64) -> Self {
-        Event {
-            type_,
-            missed_event,
-            channel,
-            time,
-        }
-    }
-
-    pub fn from_stream_idx(stream: &EventStream, idx: usize) -> Option<Self> {
-        if stream.num_rows() > idx {
-            Some(Event {
-                type_: stream.type_.value(idx),
-                missed_event: stream.missed_events.value(idx),
-                channel: stream.channel.value(idx),
-                time: stream.time.value(idx),
-            })
-        } else {
-            info!(
-                "Accessed idx is out of bounds! Received {}, but length is {}",
-                idx,
-                stream.num_rows()
-            );
-            None
-        }
-    }
-}
-
-/// An iterator wrapper for [`EventStream`]
-pub struct EventStreamIter<'a> {
-    stream: EventStream<'a>,
-    idx: usize,
-    len: usize,
-}
-
-impl<'a> Iterator for EventStreamIter<'a> {
-    type Item = Event;
-
-    fn next(&mut self) -> Option<Event> {
-        if self.idx < self.len {
-            let cur_row = Event::new(
-                self.stream.type_.value(self.idx),
-                self.stream.missed_events.value(self.idx),
-                self.stream.channel.value(self.idx),
-                self.stream.time.value(self.idx),
-            );
-            self.idx += 1;
-            Some(cur_row)
-        } else {
-            None
-        }
-    }
-}
-
-/// A struct of arrays containing data from the TimeTagger.
-///
-/// Each field is its own array with some specific data arriving via FFI. Since
-/// there are only slices here, the main goal of this stream is to provide easy
-/// iteration over the tags for the downstream 'user', via the accompanying
-/// ['EventStreamIter`].
-#[derive(Debug)]
-pub struct EventStream<'a> {
-    type_: &'a UInt8Array,
-    missed_events: &'a UInt16Array,
-    channel: &'a Int32Array,
-    time: &'a Int64Array,
-}
-
-impl<'a> EventStream<'a> {
-    /// Creates a new stream with views over the arriving data.
-    pub fn new(
-        type_: &'a UInt8Array,
-        missed_events: &'a UInt16Array,
-        channel: &'a Int32Array,
-        time: &'a Int64Array,
-    ) -> Self {
-        EventStream {
-            type_,
-            missed_events,
-            channel,
-            time,
-        }
-    }
-
-    pub fn from_streamed_batch(batch: &'a RecordBatch) -> EventStream<'a> {
-        let type_ = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt8Array>()
-            .expect("Type field conversion failed");
-        let missed_events = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<UInt16Array>()
-            .expect("Missed events field conversion failed");
-        let channel = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<Int32Array>()
-            .expect("Channel field conversion failed");
-        let time = batch
-            .column(3)
-            .as_any()
-            .downcast_ref::<Int64Array>()
-            .expect("Time field conversion failed");
-        EventStream::new(type_, missed_events, channel, time)
-    }
-
-    pub fn iter(self) -> EventStreamIter<'a> {
-        EventStreamIter {
-            len: self.num_rows(),
-            stream: self,
-            idx: 0usize,
-        }
-    }
-
-    pub fn num_rows(&self) -> usize {
-        self.type_.len()
-    }
-}
-
-impl<'a> IntoIterator for EventStream<'a> {
-    type Item = Event;
-    type IntoIter = EventStreamIter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
 
 /// A handler of streaming time tagger data
 pub trait TimeTaggerIpcHandler {
@@ -175,7 +29,6 @@ pub trait TimeTaggerIpcHandler {
     fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent;
     fn get_event_stream<'a>(&mut self, batch: &'a RecordBatch) -> Option<EventStream<'a>>;
 }
-
 
 /// The result of handling an event generated by the time tagger.
 ///
@@ -202,7 +55,7 @@ pub trait PointDisplay {
 
 /// Holds the custom renderer that will be used for rendering the
 /// point cloud and the needed data streams for it
-pub struct AppState<'a, T: PointDisplay + Renderer, R: Read> {
+pub struct AppState<T: PointDisplay + Renderer, R: Read> {
     pub renderer: T,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
@@ -213,10 +66,10 @@ pub struct AppState<'a, T: PointDisplay + Renderer, R: Read> {
     row_count: u32,
     last_line: Picosecond,
     lines_vec: Vec<Picosecond>,
-    previous_event_stream: Option<EventStreamIter<'a>>,
+    previous_event_stream: Vec<&'static Event>,
 }
 
-impl<'a, T: PointDisplay + Renderer> AppState<'a, T, File> {
+impl<T: PointDisplay + Renderer> AppState<T, File> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(
         renderer: T,
@@ -234,7 +87,7 @@ impl<'a, T: PointDisplay + Renderer> AppState<'a, T, File> {
             row_count: 0,
             last_line: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
-            previous_event_stream: None,
+            previous_event_stream: Vec::<&Event>::new(),
         }
     }
 
@@ -300,7 +153,7 @@ impl PointDisplay for PointRenderer {
     }
 }
 
-impl<'a, T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<'a, T, File> {
+impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     fn acquire_stream_filehandle(&mut self) -> Result<()> {
         let stream =
@@ -356,7 +209,7 @@ impl<'a, T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<'a, T, Fi
     }
 }
 
-impl<T: 'static + PointDisplay + Renderer> State for AppState<'static, T, File> {
+impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
     /// Return the renderer that will be called at each render loop. Without
     /// returning it the loop still runs but the screen is blank.
     fn cameras_and_effect_and_renderer(
@@ -389,7 +242,7 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<'static, T, File> 
                 Some(stream) => stream,
                 None => continue,
             };
-            let mut event_stream = event_stream.iter();
+            let mut event_stream = event_stream.into_iter();
             if self.last_line == 0 {
                 match event_stream.position(|event| self.find_first_line(&event)) {
                     Some(_) => { },  // .position() advances the iterator for us
@@ -400,21 +253,16 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<'static, T, File> 
             //     true => {}
             //     false => continue,
             // };
-            if let Some(old_stream) = self.previous_event_stream {
-                let event_stream = old_stream.chain(event_stream);
-            }
+            let mut previous = self.previous_event_stream.iter().copied().copied();
+            let mut event_stream = previous.by_ref().chain(event_stream.map(|x| x));
             let mut new_frame_found_in_stream = false;
-            for event in event_stream {
+            for event in event_stream.by_ref() {
                 match self.event_to_coordinate(event) {
                     ProcessedEvent::Displayed(p, c) => self.renderer.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::NewFrame => {
                         info!("New frame!");
-                        // TODO: To test this newframe behavior I'm currently
-                        // discarding of all photons in this batch. I'll need
-                        // to handle them by saving them in some buffer and
-                        // render them in the next frame.
-                        self.previous_event_stream = Some(event_stream);
+                        let previous_event_stream = event_stream.collect::<Vec<Event>>();
                         break 'step;
                     }
                     ProcessedEvent::FirstLine(time) => {
