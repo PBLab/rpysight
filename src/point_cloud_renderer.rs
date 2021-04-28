@@ -16,7 +16,7 @@ use nalgebra::Point3;
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::rendering_helpers::{Picosecond, TimeToCoord};
 use crate::GLOBAL_OFFSET;
-use crate::event_stream::{Event, EventStream, RefEventStreamIter};
+use crate::event_stream::{Event, EventStream};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -66,7 +66,7 @@ pub struct AppState<T: PointDisplay + Renderer, R: Read> {
     row_count: u32,
     last_line: Picosecond,
     lines_vec: Vec<Picosecond>,
-    previous_event_stream: Vec<&'static Event>,
+    previous_event_stream: Vec<Event>,
 }
 
 impl<T: PointDisplay + Renderer> AppState<T, File> {
@@ -87,7 +87,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             row_count: 0,
             last_line: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
-            previous_event_stream: Vec::<&Event>::new(),
+            previous_event_stream: Vec::<Event>::new(),
         }
     }
 
@@ -254,8 +254,8 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
             //     false => continue,
             // };
             let temp_prev = self.previous_event_stream.clone();
-            let mut previous = temp_prev.iter().copied().copied();
-            let mut event_stream = previous.by_ref().chain(event_stream.map(|x| x));
+            let mut previous = temp_prev.iter().copied();
+            let mut event_stream = previous.by_ref().chain(event_stream);
             let mut new_frame_found_in_stream = false;
             for event in event_stream.by_ref() {
                 match self.event_to_coordinate(event) {
@@ -263,7 +263,7 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::NewFrame => {
                         info!("New frame!");
-                        self.previous_event_stream = event_stream.collect::<Vec<&Event>>();
+                        self.previous_event_stream = event_stream.collect::<Vec<Event>>();
                         break 'step;
                     }
                     ProcessedEvent::FirstLine(time) => {
