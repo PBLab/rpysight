@@ -16,7 +16,7 @@ use nalgebra::Point3;
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::rendering_helpers::{Picosecond, TimeToCoord};
 use crate::GLOBAL_OFFSET;
-use crate::event_stream::{Event, EventStream};
+use crate::event_stream::{EventStreamIter, Event, EventStream};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -54,9 +54,38 @@ pub trait PointDisplay {
 }
 
 /// Holds the custom renderer that will be used for rendering the
-/// point cloud and the needed data streams for it
+/// point cloud
+pub struct DisplayChannel<T: PointDisplay + Renderer> {
+    window: Window,
+    renderer: T,
+}
+
+impl DisplayChannel<PointRenderer> {
+    pub fn new(title: &str, frame_rate: u64) -> Self {
+        let window = Window::new(title);
+        window.set_framerate_limit(Some(frame_rate));
+        DisplayChannel { window, renderer: PointRenderer::new() }
+    }
+}
+
+impl<T: PointDisplay + Renderer> DisplayChannel<T> {
+    pub fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond) {
+        self.renderer.display_point(p, c, time)
+    }
+
+    pub fn render(&mut self) {
+        self.window.render();
+    }
+}
+
+/// Main struct that holds the renderers and the needed data streams for
+/// them
 pub struct AppState<T: PointDisplay + Renderer, R: Read> {
-    pub renderer: T,
+    channel1: DisplayChannel<T>,
+    channel2: DisplayChannel<T>,
+    channel3: DisplayChannel<T>,
+    channel4: DisplayChannel<T>,
+    channel_merge: DisplayChannel<T>,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
     time_to_coord: TimeToCoord,
@@ -69,15 +98,20 @@ pub struct AppState<T: PointDisplay + Renderer, R: Read> {
     previous_event_stream: Vec<Event>,
 }
 
-impl<T: PointDisplay + Renderer> AppState<T, File> {
+impl AppState<PointRenderer, File> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(
-        renderer: T,
+        channel_names: &[&str],
         data_stream_fh: String,
         appconfig: AppConfig,
     ) -> Self {
+        let frame_rate = appconfig.frame_rate().round() as u64;
         AppState {
-            renderer,
+            channel1: DisplayChannel::new(channel_names[0], frame_rate),
+            channel2: DisplayChannel::new(channel_names[1], frame_rate),
+            channel3: DisplayChannel::new(channel_names[2], frame_rate),
+            channel4: DisplayChannel::new(channel_names[3], frame_rate),
+            channel_merge: DisplayChannel::new(channel_names[4], frame_rate),
             data_stream_fh,
             data_stream: None,
             time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
@@ -89,6 +123,62 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
             previous_event_stream: Vec::<Event>::new(),
         }
+    }
+
+    /// Main
+    pub fn start_acq_loop(&mut self) -> Result<()> {
+        self.acquire_stream_filehandle()?;
+        let mut events_after_newframe: Option<Vec<Event>> = None;
+        
+        'step: loop {
+            let batch = match self.data_stream.as_mut().unwrap().next() {
+                Some(batch) => batch.expect("Couldn't extract batch from stream"),
+                None => continue,
+            };
+            let event_stream = match self.get_event_stream(&batch) {
+                Some(stream) => stream,
+                None => continue,
+            };
+            let mut event_stream = event_stream.into_iter();
+            if self.last_line == 0 {
+                match event_stream.position(|event| self.find_first_line(&event)) {
+                    Some(_) => { },  // .position() advances the iterator for us
+                    None => continue,  // we need more data since this batch has no first line
+                };
+            }
+            // match self.check_relevance_of_batch(&event_stream) {
+            //     true => {}
+            //     false => continue,
+            // };
+            let event_stream = self.check_previous_iter(event_stream, new_frame_found_in_stream);
+            new_frame_found_in_stream = false;
+            for event in event_stream.by_ref() {
+                match self.event_to_coordinate(event) {
+                    ProcessedEvent::Displayed(p, c) => self.renderer.display_point(p, c, event.time),
+                    ProcessedEvent::NoOp => continue,
+                    ProcessedEvent::NewFrame => {
+                        info!("New frame!");
+                        self.previous_event_stream = event_stream.collect::<Vec<Event>>();
+                        break 'step;
+                    }
+                    ProcessedEvent::FirstLine(time) => {
+                        error!("First line already detected! {}", time);
+                        continue;
+                    }
+                    ProcessedEvent::Error => {
+                        error!("Received an erroneuous event: {:?}", event);
+                        continue;
+                    }
+                }
+            }
+            self.channel1.render();
+            self.channel2.render();
+            self.channel3.render();
+            self.channel4.render();
+            self.channel_merge.render();
+            break;
+        };
+        Ok(())
     }
 
     /// Called when an event from the line channel arrives to the event stream.
@@ -161,6 +251,7 @@ impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
         let stream =
             StreamReader::try_new(stream).context("Stream file missing, cannot recover.")?;
         self.data_stream = Some(stream);
+        debug!("File handle for stream acquired!");
         Ok(())
     }
 
@@ -233,6 +324,7 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
     /// indeed time tags and not other types of tags, like overflow tags, which
     /// are currently not handled.
     fn step(&mut self, _window: &mut Window) {
+        let mut new_frame_found_in_stream = true;
         'step: loop {
             let batch = match self.data_stream.as_mut().unwrap().next() {
                 Some(batch) => batch.expect("Couldn't extract batch from stream"),
@@ -253,13 +345,11 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
             //     true => {}
             //     false => continue,
             // };
-            let temp_prev = self.previous_event_stream.clone();
-            let mut previous = temp_prev.iter().copied();
-            let mut event_stream = previous.by_ref().chain(event_stream);
-            let mut new_frame_found_in_stream = false;
+            let event_stream = self.check_previous_iter(event_stream, new_frame_found_in_stream);
+            new_frame_found_in_stream = false;
             for event in event_stream.by_ref() {
                 match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => self.renderer.display_point(p, c, event.time),
+                    ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::NewFrame => {
                         info!("New frame!");

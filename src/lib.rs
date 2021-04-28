@@ -228,15 +228,12 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
 /// from the CLI.
 pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok(); // Errors are logged and quite irrelevant
-    let mut window = Window::new("rPySight 0.1.0");
-    let mut app = setup_renderer(&mut window, PointRenderer::new(), &cfg, TT_DATA_STREAM.to_string());
+    let mut app = AppState::new(&["Channel 1", "Channel 2", "Channel 3", "Channel 4", "Channel Merge"], TT_DATA_STREAM.to_string(), cfg.clone());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
-    app.acquire_stream_filehandle()
-        .expect("Failed to acquire stream handle");
-    window.render_loop(app);
+    app.start_acq_loop();
 }
 
 /// Saves the current configuration to disk.
