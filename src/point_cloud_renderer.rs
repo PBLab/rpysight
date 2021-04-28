@@ -62,7 +62,7 @@ pub struct DisplayChannel<T: PointDisplay + Renderer> {
 
 impl DisplayChannel<PointRenderer> {
     pub fn new(title: &str, frame_rate: u64) -> Self {
-        let window = Window::new(title);
+        let mut window = Window::new(title);
         window.set_framerate_limit(Some(frame_rate));
         DisplayChannel { window, renderer: PointRenderer::new() }
     }
@@ -96,6 +96,36 @@ pub struct AppState<T: PointDisplay + Renderer, R: Read> {
     last_line: Picosecond,
     lines_vec: Vec<Picosecond>,
     previous_event_stream: Vec<Event>,
+}
+
+impl<T: PointDisplay + Renderer> AppState<T, File> {
+    /// Called when an event from the line channel arrives to the event stream.
+    ///
+    /// It handles the first line of the experiment, by returning a special
+    /// signal, a standard line in the middle of the frame or a line which
+    /// is the first in the next frame's line count.
+    fn handle_line_event(&mut self, event: Event) -> ProcessedEvent {
+        if self.last_line == 0 {
+            self.row_count = 1;
+            self.lines_vec.push(event.time);
+            self.last_line = event.time;
+            info!("Found the first line of the stream: {:?}", event);
+            return ProcessedEvent::FirstLine(event.time);
+        }
+        let time = event.time;
+        info!("Elapsed time since last line: {}", time - self.last_line);
+        self.last_line = time;
+        if self.row_count == self.rows_per_frame {
+            self.row_count = 0;
+            info!("Here are the lines: {:#?}", self.lines_vec);
+            self.lines_vec.clear();
+            ProcessedEvent::NewFrame
+        } else {
+            self.row_count += 1;
+            self.lines_vec.push(time);
+            ProcessedEvent::NoOp
+        }
+    }
 }
 
 impl AppState<PointRenderer, File> {
@@ -150,11 +180,11 @@ impl AppState<PointRenderer, File> {
             //     true => {}
             //     false => continue,
             // };
-            let event_stream = self.check_previous_iter(event_stream, new_frame_found_in_stream);
-            new_frame_found_in_stream = false;
+            // let event_stream = self.check_previous_iter(event_stream, new_frame_found_in_stream);
+            // new_frame_found_in_stream = false;
             for event in event_stream.by_ref() {
                 match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => self.renderer.display_point(p, c, event.time),
+                    ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::NewFrame => {
                         info!("New frame!");
@@ -179,34 +209,6 @@ impl AppState<PointRenderer, File> {
             break;
         };
         Ok(())
-    }
-
-    /// Called when an event from the line channel arrives to the event stream.
-    ///
-    /// It handles the first line of the experiment, by returning a special
-    /// signal, a standard line in the middle of the frame or a line which
-    /// is the first in the next frame's line count.
-    fn handle_line_event(&mut self, event: Event) -> ProcessedEvent {
-        if self.last_line == 0 {
-            self.row_count = 1;
-            self.lines_vec.push(event.time);
-            self.last_line = event.time;
-            info!("Found the first line of the stream: {:?}", event);
-            return ProcessedEvent::FirstLine(event.time);
-        }
-        let time = event.time;
-        info!("Elapsed time since last line: {}", time - self.last_line);
-        self.last_line = time;
-        if self.row_count == self.rows_per_frame {
-            self.row_count = 0;
-            info!("Here are the lines: {:#?}", self.lines_vec);
-            self.lines_vec.clear();
-            ProcessedEvent::NewFrame
-        } else {
-            self.row_count += 1;
-            self.lines_vec.push(time);
-            ProcessedEvent::NoOp
-        }
     }
 
     /// Verifies that the current event stream lies within the boundaries of
@@ -296,76 +298,6 @@ impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
             None
         } else {
             Some(event_stream)
-        }
-    }
-}
-
-impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
-    /// Return the renderer that will be called at each render loop. Without
-    /// returning it the loop still runs but the screen is blank.
-    fn cameras_and_effect_and_renderer(
-        &mut self,
-    ) -> (
-        Option<&mut dyn Camera>,
-        Option<&mut dyn PlanarCamera>,
-        Option<&mut dyn Renderer>,
-        Option<&mut dyn PostProcessingEffect>,
-    ) {
-        (None, None, Some(&mut self.renderer), None)
-    }
-
-    /// Main logic per step - required by the State trait. The function reads
-    /// data awaiting from the TimeTagger and then pushes it into the renderer.
-    ///
-    /// There are a few checks that are done on the strean before we actuallly
-    /// start the rendering process, like whether the events are within the
-    /// boundaries of the current frame, or whether there's any data waiting
-    /// for us from the time tagger. We also verify that the recorded tags are
-    /// indeed time tags and not other types of tags, like overflow tags, which
-    /// are currently not handled.
-    fn step(&mut self, _window: &mut Window) {
-        let mut new_frame_found_in_stream = true;
-        'step: loop {
-            let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => batch.expect("Couldn't extract batch from stream"),
-                None => continue,
-            };
-            let event_stream = match self.get_event_stream(&batch) {
-                Some(stream) => stream,
-                None => continue,
-            };
-            let mut event_stream = event_stream.into_iter();
-            if self.last_line == 0 {
-                match event_stream.position(|event| self.find_first_line(&event)) {
-                    Some(_) => { },  // .position() advances the iterator for us
-                    None => continue,  // we need more data since this batch has no first line
-                };
-            }
-            // match self.check_relevance_of_batch(&event_stream) {
-            //     true => {}
-            //     false => continue,
-            // };
-            let event_stream = self.check_previous_iter(event_stream, new_frame_found_in_stream);
-            new_frame_found_in_stream = false;
-            for event in event_stream.by_ref() {
-                match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
-                    ProcessedEvent::NoOp => continue,
-                    ProcessedEvent::NewFrame => {
-                        info!("New frame!");
-                        self.previous_event_stream = event_stream.collect::<Vec<Event>>();
-                        break 'step;
-                    }
-                    ProcessedEvent::FirstLine(time) => {
-                        error!("First line already detected! {}", time);
-                        continue;
-                    }
-                    ProcessedEvent::Error => {
-                        error!("Received an erroneuous event: {:?}", event);
-                        continue;
-                    }
-                }
-            }
         }
     }
 }

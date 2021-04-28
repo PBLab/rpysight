@@ -60,18 +60,6 @@ pub fn reload_cfg_or_use_default(config_name: Option<PathBuf>) -> AppConfig {
     }
 }
         
-
-/// Start the renderer.
-///
-/// Does the needed setup to generate the window and app objects that are used
-/// for rendering.
-pub fn setup_renderer<T: Renderer + PointDisplay>(window: &mut Window, renderer: T, app_config: &AppConfig, data_stream_fh: String) -> AppState<T, File> {
-    let frame_rate = app_config.frame_rate().round() as u64;
-    window.set_framerate_limit(Some(frame_rate)); 
-    let app = AppState::new(renderer, data_stream_fh, app_config.clone());
-    app
-}
-
 /// Generates a PathBuf with the location of the default configuration path.
 ///
 /// This function doesn't assert that it exists, it simply returns it.
