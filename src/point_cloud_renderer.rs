@@ -253,7 +253,8 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
             //     true => {}
             //     false => continue,
             // };
-            let mut previous = self.previous_event_stream.iter().copied().copied();
+            let temp_prev = self.previous_event_stream.clone();
+            let mut previous = temp_prev.iter().copied().copied();
             let mut event_stream = previous.by_ref().chain(event_stream.map(|x| x));
             let mut new_frame_found_in_stream = false;
             for event in event_stream.by_ref() {
@@ -262,7 +263,7 @@ impl<T: 'static + PointDisplay + Renderer> State for AppState<T, File> {
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::NewFrame => {
                         info!("New frame!");
-                        let previous_event_stream = event_stream.collect::<Vec<Event>>();
+                        self.previous_event_stream = event_stream.collect::<Vec<&Event>>();
                         break 'step;
                     }
                     ProcessedEvent::FirstLine(time) => {
