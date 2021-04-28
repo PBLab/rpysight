@@ -20,11 +20,12 @@ tagger.reset()
 
 # Acquisition parameters
 data_directory = pathlib.Path('tests/data/').resolve()
-recording_length = 5  # seconds
+recording_length = 200  # seconds
 num_lines = 256
 acceptable_laser_event_rate = 10  # MCPS
 laser_division_factor = int(80 / acceptable_laser_event_rate)
-filename = data_directory / f'test_data_{num_lines}_{recording_length}s.ttbin'
+extra_factors = '_x1_no_tag'
+filename = data_directory / f'2d_test_data_{num_lines}_{recording_length}s{extra_factors}.ttbin'
 print(f"Writing data to: {filename}")
 
 # TimeTagger channels
