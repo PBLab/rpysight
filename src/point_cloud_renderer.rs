@@ -35,6 +35,7 @@ pub trait TimeTaggerIpcHandler {
 /// Each event might arrive from different channels which require different
 /// handling, and this enum contains all possible actions we might want to do
 /// with these results.
+#[derive(Debug, Clone, Copy)]
 pub enum ProcessedEvent {
     /// Contains the coordinates in image space and the color
     Displayed(Point3<f32>, Point3<f32>),
@@ -192,6 +193,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
                 }
             }
         }
+        info!("Moving on to process this frame's event");
         // New experiments will start out here, by loading the data and
         // looking for the first line signal
         let batch = match self.data_stream.as_mut().unwrap().next() {
@@ -213,12 +215,14 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
         //     true => {}
         //     false => continue,
         // };
+        info!("Starting iteration on this stream");
         for event in event_stream.by_ref() {
             match self.event_to_coordinate(event) {
                 ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
                 ProcessedEvent::NoOp => continue,
                 ProcessedEvent::PhotonNewFrame => {
                     events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
+                    info!("We're in a photonewframe sit!");
                     self.time_to_coord.update_2d_data_for_next_frame();
                     self.event_to_coordinate(event);
                     self.lines_vec.clear();
