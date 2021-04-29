@@ -40,8 +40,13 @@ pub enum ProcessedEvent {
     Displayed(Point3<f32>, Point3<f32>),
     /// Nothing to do with this event
     NoOp,
-    /// Start drawing a new frame
-    NewFrame,
+    /// Start drawing a new frame due to a line signal that belongs to the
+    /// next frame (> num_rows)
+    LineNewFrame,
+    /// Start drawing a new frame due to a photon signal with a time after the
+    /// end of the current frame. Probably means that we didn't record all line
+    /// signals that arrived during the frame
+    PhotonNewFrame,
     /// Erroneuous event, usually for tests
     Error,
     /// First line encoutered and its timing
@@ -147,7 +152,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             self.row_count = 0;
             info!("Here are the lines: {:#?}", self.lines_vec);
             self.lines_vec.clear();
-            ProcessedEvent::NewFrame
+            ProcessedEvent::LineNewFrame
         } else {
             self.row_count += 1;
             self.lines_vec.push(time);
@@ -156,58 +161,25 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
     }
 
     pub fn populate_single_frame(&mut self, mut events_after_newframe: Option<Vec<Event>>) -> Option<Vec<Event>> {
-        'frame: loop {
+        if let Some(ref previous_events) = events_after_newframe {
             // Start with the leftover events from the previous frame
-            if let Some(ref previous_events) = events_after_newframe {
-                for event in previous_events.iter().by_ref() {
-                    match self.event_to_coordinate(*event) {
-                        ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
-                        ProcessedEvent::NoOp => continue,
-                        ProcessedEvent::NewFrame => {
-                            info!("New frame!");
-                            events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
-                            break;
-                        }
-                        ProcessedEvent::FirstLine(time) => {
-                            error!("First line already detected! {}", time);
-                            continue;
-                        }
-                        ProcessedEvent::Error => {
-                            error!("Received an erroneuous event: {:?}", event);
-                            continue;
-                        }
-                    }
-                }
-            }
-            // New experiments will start out here, by loading the data and
-            // looking for the first line signal
-            let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => batch.expect("Couldn't extract batch from stream"),
-                None => continue,
-            };
-            let event_stream = match self.get_event_stream(&batch) {
-                Some(stream) => stream,
-                None => continue,
-            };
-            let mut event_stream = event_stream.into_iter();
-            if self.last_line == 0 {
-                match event_stream.position(|event| self.find_first_line(&event)) {
-                    Some(_) => { },  // .position() advances the iterator for us
-                    None => continue,  // we need more data since this batch has no first line
-                };
-            }
-            // match self.check_relevance_of_batch(&event_stream) {
-            //     true => {}
-            //     false => continue,
-            // };
-            for event in event_stream.by_ref() {
-                match self.event_to_coordinate(event) {
+            for event in previous_events.iter().by_ref() {
+                match self.event_to_coordinate(*event) {
                     ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
-                    ProcessedEvent::NewFrame => {
-                        info!("New frame!");
-                        events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
-                        break 'frame;
+                    ProcessedEvent::LineNewFrame => {
+                        info!("New frame due to line");
+                        let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
+                        self.time_to_coord.update_2d_data_for_next_frame();
+                        return new_events_after_newframe
+                    },
+                    ProcessedEvent::PhotonNewFrame => {
+                        let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
+                        self.time_to_coord.update_2d_data_for_next_frame();
+                        self.event_to_coordinate(*event);
+                        self.lines_vec.clear();
+                        self.row_count = 0;
+                        return new_events_after_newframe
                     }
                     ProcessedEvent::FirstLine(time) => {
                         error!("First line already detected! {}", time);
@@ -220,11 +192,71 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
                 }
             }
         }
+        // New experiments will start out here, by loading the data and
+        // looking for the first line signal
+        let batch = match self.data_stream.as_mut().unwrap().next() {
+            Some(batch) => batch.expect("Couldn't extract batch from stream"),
+            None => return None,
+        };
+        let event_stream = match self.get_event_stream(&batch) {
+            Some(stream) => stream,
+            None => return None,
+        };
+        let mut event_stream = event_stream.into_iter();
+        if self.last_line == 0 {
+            match event_stream.position(|event| self.find_first_line(&event)) {
+                Some(_) => { },  // .position() advances the iterator for us
+                None => return None,  // we need more data since this batch has no first line
+            };
+        }
+        // match self.check_relevance_of_batch(&event_stream) {
+        //     true => {}
+        //     false => continue,
+        // };
+        for event in event_stream.by_ref() {
+            match self.event_to_coordinate(event) {
+                ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
+                ProcessedEvent::NoOp => continue,
+                ProcessedEvent::PhotonNewFrame => {
+                    events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
+                    self.time_to_coord.update_2d_data_for_next_frame();
+                    self.event_to_coordinate(event);
+                    self.lines_vec.clear();
+                    self.row_count = 0;
+                    break;
+                }, 
+                ProcessedEvent::LineNewFrame => {
+                    info!("New frame due to line");
+                    events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
+                    self.time_to_coord.update_2d_data_for_next_frame();
+                    break;
+                }
+                ProcessedEvent::FirstLine(time) => {
+                    error!("First line already detected! {}", time);
+                    continue;
+                }
+                ProcessedEvent::Error => {
+                    error!("Received an erroneuous event: {:?}", event);
+                    continue;
+                }
+            }
+        }
         events_after_newframe
     }
 
+    pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
+        self.acquire_stream_filehandle()?;
+        let mut events_after_newframe = None;
+        debug!("Received {} steps", steps);
+        for _ in 0..steps {
+            events_after_newframe = self.populate_single_frame(events_after_newframe);
+            // self.channel_merge.render();
+        };
+        Ok(())
+    }
+
     /// Main
-    pub fn start_acq_loop(&mut self) -> Result<()> {
+    pub fn start_inf_acq_loop(&mut self) -> Result<()> {
         self.acquire_stream_filehandle()?;
         let mut events_after_newframe = None;
         'acquisition: loop {

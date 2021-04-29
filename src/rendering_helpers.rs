@@ -458,8 +458,7 @@ impl TimeToCoord {
                 "Photon arrived after end of Frame! Our time: {}, Max time: {}",
                 time, self.max_frame_time
             );
-            self.update_2d_data_for_next_frame();
-            return self.tag_to_coord_linear(time, ch);
+            return ProcessedEvent::PhotonNewFrame
         }
         let mut additional_steps_taken = 0usize;
         let mut coord = None;
