@@ -4,6 +4,7 @@ pub mod configuration;
 pub mod gui;
 pub mod point_cloud_renderer;
 pub mod rendering_helpers;
+pub mod event_stream;
 
 use std::path::PathBuf;
 use std::{
@@ -59,18 +60,6 @@ pub fn reload_cfg_or_use_default(config_name: Option<PathBuf>) -> AppConfig {
     }
 }
         
-
-/// Start the renderer.
-///
-/// Does the needed setup to generate the window and app objects that are used
-/// for rendering.
-pub fn setup_renderer<'a, T: Renderer + PointDisplay>(window: &mut Window, renderer: T, app_config: &AppConfig, data_stream_fh: String) -> AppState<'a, T, File> {
-    let frame_rate = app_config.frame_rate().round() as u64;
-    window.set_framerate_limit(Some(frame_rate)); 
-    let app = AppState::new(renderer, data_stream_fh, app_config.clone());
-    app
-}
-
 /// Generates a PathBuf with the location of the default configuration path.
 ///
 /// This function doesn't assert that it exists, it simply returns it.
@@ -226,16 +215,13 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
 /// This method is called once the user clicks the "Run Application" button or
 /// from the CLI.
 pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
-    let _ = save_cfg(Some(config_name), &cfg).ok(); // Errors are logged and quite irrelevant
-    let mut window = Window::new("rPySight 0.1.0");
-    let mut app = setup_renderer(&mut window, PointRenderer::new(), &cfg, TT_DATA_STREAM.to_string());
+    let _ = save_cfg(Some(config_name), &cfg).ok();  // errors are logged and quite irrelevant
+    let mut app = AppState::<PointRenderer, File>::new(None, TT_DATA_STREAM.to_string(), cfg.clone());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
-    app.acquire_stream_filehandle()
-        .expect("Failed to acquire stream handle");
-    window.render_loop(app);
+    app.start_acq_loop().expect("Some error during acq");
 }
 
 /// Saves the current configuration to disk.
