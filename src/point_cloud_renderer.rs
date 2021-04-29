@@ -50,25 +50,24 @@ pub enum ProcessedEvent {
 
 /// Implemented by Apps who wish to display points
 pub trait PointDisplay {
+    fn new() -> Self;
     fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond);
 }
 
 /// Holds the custom renderer that will be used for rendering the
 /// point cloud
 pub struct DisplayChannel<T: PointDisplay + Renderer> {
-    window: Window,
-    renderer: T,
-}
-
-impl DisplayChannel<PointRenderer> {
-    pub fn new(title: &str, frame_rate: u64) -> Self {
-        let mut window = Window::new(title);
-        window.set_framerate_limit(Some(frame_rate));
-        DisplayChannel { window, renderer: PointRenderer::new() }
-    }
+    pub window: Window,
+    pub renderer: T,
 }
 
 impl<T: PointDisplay + Renderer> DisplayChannel<T> {
+    pub fn new(channel_name: &str, frame_rate: u64) -> Self {
+        let mut window = Window::new(channel_name);
+        window.set_framerate_limit(Some(frame_rate));
+        DisplayChannel { window, renderer: T::new() }
+    }
+
     pub fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond) {
         self.renderer.display_point(p, c, time)
     }
@@ -76,16 +75,20 @@ impl<T: PointDisplay + Renderer> DisplayChannel<T> {
     pub fn render(&mut self) {
         self.window.render();
     }
+
+    pub fn get_window(&mut self) -> &mut Window {
+        &mut self.window
+    }
 }
 
 /// Main struct that holds the renderers and the needed data streams for
 /// them
 pub struct AppState<T: PointDisplay + Renderer, R: Read> {
-    channel1: DisplayChannel<T>,
-    channel2: DisplayChannel<T>,
-    channel3: DisplayChannel<T>,
-    channel4: DisplayChannel<T>,
-    channel_merge: DisplayChannel<T>,
+    pub channel1: DisplayChannel<T>,
+    pub channel2: DisplayChannel<T>,
+    pub channel3: DisplayChannel<T>,
+    pub channel4: DisplayChannel<T>,
+    pub channel_merge: DisplayChannel<T>,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
     time_to_coord: TimeToCoord,
@@ -95,10 +98,35 @@ pub struct AppState<T: PointDisplay + Renderer, R: Read> {
     row_count: u32,
     last_line: Picosecond,
     lines_vec: Vec<Picosecond>,
-    events_after_newframe: Option<Vec<Event>>,
 }
 
 impl<T: PointDisplay + Renderer> AppState<T, File> {
+    /// Generates a new app from a renderer and a receiving end of a channel
+    pub fn new(
+        channel_names: Option<&[&str]>,
+        data_stream_fh: String,
+        appconfig: AppConfig,
+    ) -> Self {
+        let frame_rate = appconfig.frame_rate().round() as u64;
+        let channel_names = channel_names.unwrap_or(&["Channel 1", "Channel 2", "Channel 3", "Channel 4", "Channel Merge"]);
+        AppState {
+            channel1: DisplayChannel::new(channel_names[0], frame_rate),
+            channel2: DisplayChannel::new(channel_names[1], frame_rate),
+            channel3: DisplayChannel::new(channel_names[2], frame_rate),
+            channel4: DisplayChannel::new(channel_names[3], frame_rate),
+            channel_merge: DisplayChannel::new(channel_names[4], frame_rate),
+            data_stream_fh,
+            data_stream: None,
+            time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
+            inputs: Inputs::from_config(&appconfig),
+            appconfig: appconfig.clone(),
+            rows_per_frame: appconfig.rows,
+            row_count: 0,
+            last_line: 0,
+            lines_vec: Vec::<Picosecond>::with_capacity(3000),
+        }
+    }
+
     /// Called when an event from the line channel arrives to the event stream.
     ///
     /// It handles the first line of the experiment, by returning a special
@@ -124,35 +152,6 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             self.row_count += 1;
             self.lines_vec.push(time);
             ProcessedEvent::NoOp
-        }
-    }
-}
-
-impl AppState<PointRenderer, File> {
-    /// Generates a new app from a renderer and a receiving end of a channel
-    pub fn new(
-        channel_names: Option<&[&str]>,
-        data_stream_fh: String,
-        appconfig: AppConfig,
-    ) -> Self {
-        let frame_rate = appconfig.frame_rate().round() as u64;
-        let channel_names = channel_names.unwrap_or(&["Channel 1", "Channel 2", "Channel 3", "Channel 4", "Channel Merge"]);
-        AppState {
-            channel1: DisplayChannel::new(channel_names[0], frame_rate),
-            channel2: DisplayChannel::new(channel_names[1], frame_rate),
-            channel3: DisplayChannel::new(channel_names[2], frame_rate),
-            channel4: DisplayChannel::new(channel_names[3], frame_rate),
-            channel_merge: DisplayChannel::new(channel_names[4], frame_rate),
-            data_stream_fh,
-            data_stream: None,
-            time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
-            inputs: Inputs::from_config(&appconfig),
-            appconfig: appconfig.clone(),
-            rows_per_frame: appconfig.rows,
-            row_count: 0,
-            last_line: 0,
-            lines_vec: Vec::<Picosecond>::with_capacity(3000),
-            events_after_newframe: None,
         }
     }
 
@@ -266,7 +265,11 @@ impl AppState<PointRenderer, File> {
 }
 
 impl PointDisplay for PointRenderer {
-    // #[inline]
+    fn new() -> Self {
+        PointRenderer::new()
+    }
+
+    #[inline]
     fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, _time: Picosecond) {
         self.draw_point(p, c);
     }

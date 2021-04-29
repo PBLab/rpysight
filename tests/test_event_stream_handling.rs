@@ -38,13 +38,11 @@ struct PointLogger {
     rendered_events_color: Vec<TimeCoordPair>,
 }
 
-impl PointLogger {
-    pub fn new() -> Self {
+impl PointDisplay for PointLogger {
+    fn new() -> Self {
         PointLogger { rendered_events_loc: Vec::<TimeCoordPair>::new(), rendered_events_color: Vec::<TimeCoordPair>::new() }
     }
-}
 
-impl PointDisplay for PointLogger {
     fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond) {
         let contains_nan = p.iter().any(|x| x.is_nan());
         if contains_nan {
@@ -126,7 +124,7 @@ fn timecoordpair_vec_compare(va: &[TimeCoordPair], vb: &[TimeCoordPair]) -> bool
 
 /// Start a logger, generate a default config file (if given none) and generate
 /// a data stream from one of the CSV files.
-fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> (Window, AppState<PointLogger, File>) {
+fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, File> {
     let _ = TestLogger::init(
         LevelFilter::Debug,
         ConfigBuilder::default().set_time_to_local(true).build(),
@@ -135,7 +133,7 @@ fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> (Window, AppState<Point
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
     let mut app = AppState::new(None, csv_to_stream.to_string(), cfg);
     app.acquire_stream_filehandle().unwrap();
-    (window, app)
+    app
 }
 
 #[test]
@@ -168,17 +166,18 @@ fn stepwise_short_bidir_single_frame() {
         .with_bidir(Bidirectionality::Bidir)
         .with_line_ch(9)
         .build();
-    let (mut window, mut app) = setup(SHORT_BATCH_STREAM, Some(cfg));
-    window.render_with_state(&mut app);
+    let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
+    app.populate_single_frame(None);
+    app.channel_merge.render();
     // to_writer_pretty(File::create("tests/data/short_batch_bidir_valid.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
     let original: PointLogger =
         from_reader(File::open("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
     assert!(timecoordpair_vec_compare(
-        &app.renderer.rendered_events_loc,
+        &app.channel_merge.renderer.rendered_events_loc,
         &original.rendered_events_loc,
     ));
     assert!(timecoordpair_vec_compare(
-        &app.renderer.rendered_events_color,
+        &app.channel_merge.renderer.rendered_events_color,
         &original.rendered_events_color,
     ));
 }

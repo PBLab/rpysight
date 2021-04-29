@@ -216,7 +216,7 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
 /// from the CLI.
 pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok();  // errors are logged and quite irrelevant
-    let mut app = AppState::new(None, TT_DATA_STREAM.to_string(), cfg.clone());
+    let mut app = AppState::<PointRenderer, File>::new(None, TT_DATA_STREAM.to_string(), cfg.clone());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
