@@ -160,55 +160,78 @@ impl AppState<PointRenderer, File> {
         self.acquire_stream_filehandle()?;
         let mut events_after_newframe: Option<Vec<Event>> = None;
         
-        'step: loop {
-            let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => batch.expect("Couldn't extract batch from stream"),
-                None => continue,
-            };
-            let event_stream = match self.get_event_stream(&batch) {
-                Some(stream) => stream,
-                None => continue,
-            };
-            let mut event_stream = event_stream.into_iter();
-            if self.last_line == 0 {
-                match event_stream.position(|event| self.find_first_line(&event)) {
-                    Some(_) => { },  // .position() advances the iterator for us
-                    None => continue,  // we need more data since this batch has no first line
+        'acquisition: loop {
+
+            'frame: loop {
+                // Start with the leftover events from the previous frame
+                if let Some(ref previous_events) = events_after_newframe {
+                    for event in previous_events.iter().by_ref() {
+                        match self.event_to_coordinate(*event) {
+                            ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
+                            ProcessedEvent::NoOp => continue,
+                            ProcessedEvent::NewFrame => {
+                                info!("New frame!");
+                                events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
+                                break;
+                            }
+                            ProcessedEvent::FirstLine(time) => {
+                                error!("First line already detected! {}", time);
+                                continue;
+                            }
+                            ProcessedEvent::Error => {
+                                error!("Received an erroneuous event: {:?}", event);
+                                continue;
+                            }
+                        }
+                    }
+                }
+                let batch = match self.data_stream.as_mut().unwrap().next() {
+                    Some(batch) => batch.expect("Couldn't extract batch from stream"),
+                    None => continue,
                 };
-            }
-            // match self.check_relevance_of_batch(&event_stream) {
-            //     true => {}
-            //     false => continue,
-            // };
-            // let event_stream = self.check_previous_iter(event_stream, new_frame_found_in_stream);
-            // new_frame_found_in_stream = false;
-            for event in event_stream.by_ref() {
-                match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
-                    ProcessedEvent::NoOp => continue,
-                    ProcessedEvent::NewFrame => {
-                        info!("New frame!");
-                        self.previous_event_stream = event_stream.collect::<Vec<Event>>();
-                        break 'step;
-                    }
-                    ProcessedEvent::FirstLine(time) => {
-                        error!("First line already detected! {}", time);
-                        continue;
-                    }
-                    ProcessedEvent::Error => {
-                        error!("Received an erroneuous event: {:?}", event);
-                        continue;
+                let event_stream = match self.get_event_stream(&batch) {
+                    Some(stream) => stream,
+                    None => continue,
+                };
+                let mut event_stream = event_stream.into_iter();
+                if self.last_line == 0 {
+                    match event_stream.position(|event| self.find_first_line(&event)) {
+                        Some(_) => { },  // .position() advances the iterator for us
+                        None => continue,  // we need more data since this batch has no first line
+                    };
+                }
+                // match self.check_relevance_of_batch(&event_stream) {
+                //     true => {}
+                //     false => continue,
+                // };
+                // let event_stream = self.check_previous_iter(event_stream, new_frame_found_in_stream);
+                // new_frame_found_in_stream = false;
+                for event in event_stream.by_ref() {
+                    match self.event_to_coordinate(event) {
+                        ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
+                        ProcessedEvent::NoOp => continue,
+                        ProcessedEvent::NewFrame => {
+                            info!("New frame!");
+                            self.previous_event_stream = event_stream.collect::<Vec<Event>>();
+                            break 'frame;
+                        }
+                        ProcessedEvent::FirstLine(time) => {
+                            error!("First line already detected! {}", time);
+                            continue;
+                        }
+                        ProcessedEvent::Error => {
+                            error!("Received an erroneuous event: {:?}", event);
+                            continue;
+                        }
                     }
                 }
             }
-            self.channel1.render();
-            self.channel2.render();
-            self.channel3.render();
-            self.channel4.render();
-            self.channel_merge.render();
-            break;
+        // self.channel1.render();
+        // self.channel2.render();
+        // self.channel3.render();
+        // self.channel4.render();
+        self.channel_merge.render();
         };
-        Ok(())
     }
 
     /// Verifies that the current event stream lies within the boundaries of
