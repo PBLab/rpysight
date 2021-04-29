@@ -18,9 +18,9 @@ use kiss3d::renderer::Renderer;
 use serde::{Serialize, Deserialize};
 
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
-use librpysight::point_cloud_renderer::{Event, EventStream, ProcessedEvent, TimeTaggerIpcHandler, AppState, PointDisplay};
+use librpysight::event_stream::{Event, EventStream};
+use librpysight::point_cloud_renderer::{ProcessedEvent, TimeTaggerIpcHandler, AppState, PointDisplay};
 use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
-use librpysight::setup_renderer;
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
 const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
@@ -133,10 +133,8 @@ fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> (Window, AppState<Point
     );
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
-    let mut window = Window::new("rPySight 0.1.0 test");
-    let mut app = setup_renderer(&mut window, PointLogger::new(), &cfg, csv_to_stream.to_string());
+    let mut app = AppState::new(None, csv_to_stream.to_string(), cfg);
     app.acquire_stream_filehandle().unwrap();
-    window.hide();
     (window, app)
 }
 
