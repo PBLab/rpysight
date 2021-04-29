@@ -177,10 +177,10 @@ def run_tagger(cfg: str):
     config = toml.loads(cfg)
     tagger = TimeTagger.createTimeTagger()
     tagger.reset()
-    # enable the test signal
     channels = infer_channel_list_from_cfg(config)
+    # Enable the test signal
     # channels = [1, 2]
-    tagger.setTestSignal(channels, True)
+    # tagger.setTestSignal(channels, True)
     tag = RealTimeRendering(tagger, channels, config['filename'])
     _ = TimeTagger.FileWriter(tagger, add_fname_suffix(config['filename']), [CHAN_START, CHAN_STOP])
     tag.startFor(int(10e12))
@@ -190,8 +190,11 @@ def run_tagger(cfg: str):
 def replay_existing(cfg: str):
     """A testing method to replay old acquisitions."""
     config = toml.loads(cfg)
+    print(f"Replay with config: {config}")
     tagger = TimeTagger.createTimeTaggerVirtual()
     _ = RealTimeRendering(tagger, None, None)
+    print("Starting replay")
     tagger.replay(config['filename'])
-    sleep(6)
+    print("Got it")
+    sleep(90)
 
