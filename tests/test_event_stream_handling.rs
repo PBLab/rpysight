@@ -130,7 +130,7 @@ fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, F
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
     let mut app = AppState::new(None, csv_to_stream.to_string(), cfg);
-    app.acquire_stream_filehandle().unwrap();
+    // app.acquire_stream_filehandle().unwrap();
     app.channel_merge.window.hide();
     app.channel1.window.hide();
     app.channel2.window.hide();
@@ -304,7 +304,7 @@ fn offset_with_lines() {
         .with_line_ch(1)
         .build();
     let mut app = setup(WITH_LINES_STREAM, Some(cfg));
-    app.start_acq_loop_for(2).unwrap();
+    app.start_acq_loop_for(20).unwrap();
     // to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
     let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines.ron").unwrap()).unwrap();  
     assert_eq!(original, app.channel_merge.renderer);
