@@ -18,7 +18,7 @@ use serde::{Serialize, Deserialize};
 
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
 use librpysight::event_stream::{Event, EventStream};
-use librpysight::point_cloud_renderer::{ProcessedEvent, TimeTaggerIpcHandler, AppState, PointDisplay};
+use librpysight::point_cloud_renderer::{ProcessedEvent, TimeTaggerIpcHandler, AppState, PointDisplay, Channels, ChannelNames};
 use librpysight::setup_logger;
 use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
 
@@ -38,11 +38,13 @@ struct PointLogger {
     rendered_events_color: Vec<TimeCoordPair>,
 }
 
-impl PointDisplay for PointLogger {
+impl PointLogger {
     fn new() -> Self {
         PointLogger { rendered_events_loc: Vec::<TimeCoordPair>::new(), rendered_events_color: Vec::<TimeCoordPair>::new() }
     }
+}
 
+impl PointDisplay for PointLogger {
     fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond) {
         let contains_nan = p.iter().any(|x| x.is_nan());
         if contains_nan {
@@ -51,10 +53,9 @@ impl PointDisplay for PointLogger {
         self.rendered_events_loc.push(TimeCoordPair::new(time, p));
         self.rendered_events_color.push(TimeCoordPair::new(time, c));
     }
-}
 
-impl Renderer for PointLogger {
-    fn render(&mut self, _pass: usize, _camera: &mut dyn Camera) { }
+    fn render(&mut self) { }
+    fn hide(&mut self) { }
 }
 
 /// Run once to generate .dat file which behave as streams
@@ -123,19 +124,24 @@ fn timecoordpair_vec_compare(va: &[TimeCoordPair], vb: &[TimeCoordPair]) -> bool
        .all(|(a,b)| eq_timecoordpair_with_nan_eq(*a,*b))
 }
 
+fn generate_mock_channels() -> Channels<PointLogger> {
+    let mut plvec = Vec::new();
+    for _ in 0..5 {
+        plvec.push(PointLogger::new());
+    }
+    Channels::new(plvec)
+}
 /// Start a logger, generate a default config file (if given none) and generate
 /// a data stream from one of the CSV files.
 fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, File> {
     setup_logger(Some(PathBuf::from("target/rpysight_test.log")));
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
-    let mut app = AppState::new(None, csv_to_stream.to_string(), cfg);
+    let channels = generate_mock_channels();
+    info!("{:?}", channels);
+    let mut app = AppState::new(channels, csv_to_stream.to_string(), cfg);
     // app.acquire_stream_filehandle().unwrap();
-    app.channel_merge.window.hide();
-    app.channel1.window.hide();
-    app.channel2.window.hide();
-    app.channel3.window.hide();
-    app.channel4.window.hide();
+    app.channels.hide_all();
     app
 }
 
@@ -174,7 +180,7 @@ fn stepwise_short_bidir_single_frame() {
     // to_writer_pretty(File::create("tests/data/short_batch_bidir_valid.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
     let original: PointLogger =
         from_reader(File::open("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
-    assert_eq!(app.channel_merge.renderer, original);
+    assert_eq!(app.channels[ChannelNames::ChannelMerge], original);
 }
 
 #[test]
@@ -192,7 +198,7 @@ fn stepwise_short_unidir_single_frame() {
     // to_writer_pretty(File::create("tests/data/short_batch_unidir_valid.ron").unwrap(), &app.channel_merge.renderer, PrettyConfig::new()).unwrap();
     let original: PointLogger =
         from_reader(File::open("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();
-    assert_eq!(app.channel_merge.renderer, original);
+    assert_eq!(app.channels[ChannelNames::ChannelMerge], original);
 }
 
 #[test]
@@ -211,7 +217,7 @@ fn stepwise_short_two_frames_bidir() {
     // to_writer_pretty(File::create("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap(), &app.channel_merge.renderer, PrettyConfig::new()).unwrap();
     let original: PointLogger = 
         from_reader(File::open("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
-    assert_eq!(app.channel_merge.renderer, original);
+    assert_eq!(app.channels[ChannelNames::ChannelMerge], original);
 }
 
 #[test]
@@ -231,7 +237,7 @@ fn stepwise_short_two_frames_unidir() {
     let original: PointLogger =
         from_reader(File::open("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap())
             .unwrap();
-    assert_eq!(app.channel_merge.renderer, original)
+    assert_eq!(app.channels[ChannelNames::ChannelMerge], original)
 }
 
 // // #[test]
@@ -307,5 +313,5 @@ fn offset_with_lines() {
     app.start_acq_loop_for(20).unwrap();
     // to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
     let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines.ron").unwrap()).unwrap();  
-    assert_eq!(original, app.channel_merge.renderer);
+    assert_eq!(original, app.channels[ChannelNames::ChannelMerge]);
 }

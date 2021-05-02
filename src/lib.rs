@@ -22,12 +22,13 @@ use iced::Settings;
 use kiss3d::{point_renderer::PointRenderer, renderer::Renderer};
 use kiss3d::window::Window;
 use nalgebra::Point3;
+use point_cloud_renderer::DisplayChannel;
 use pyo3::prelude::*;
 use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder};
 use crate::gui::{ChannelNumber, EdgeDetected};
-use crate::point_cloud_renderer::{PointDisplay, AppState, TimeTaggerIpcHandler};
+use crate::point_cloud_renderer::{Channels, AppState, TimeTaggerIpcHandler};
 
 const TT_DATA_STREAM: &str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
@@ -210,13 +211,26 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
     (chnum, edge)
 }
 
+
+fn generate_windows(fr: u64) -> Channels<DisplayChannel> {
+    let channel_names = ["Channel 1", "Channel 2", "Channel 3", "Channel 4", "Channel Merge"];
+    let mut channels = Vec::new();
+    for name in channel_names.iter() {
+        channels.push(DisplayChannel::new(*name, fr));
+    }
+    Channels::new(channels)
+
+}
+
 /// Initializes things on the Python side and starts the acquisition.
 ///
 /// This method is called once the user clicks the "Run Application" button or
 /// from the CLI.
 pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok();  // errors are logged and quite irrelevant
-    let mut app = AppState::<PointRenderer, File>::new(None, TT_DATA_STREAM.to_string(), cfg.clone());
+    let fr = (&cfg).frame_rate().round() as u64;
+    let channels = generate_windows(fr);
+    let mut app = AppState::<DisplayChannel, File>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")

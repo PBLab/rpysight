@@ -1,15 +1,11 @@
 extern crate kiss3d;
 
-use std::{fs::File, thread::JoinHandle};
+use std::fs::File;
 use std::io::Read;
+use std::ops::{Index, IndexMut};
 
 use anyhow::{Context, Result};
 use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch};
-use kiss3d::camera::Camera;
-use kiss3d::planar_camera::PlanarCamera;
-use kiss3d::point_renderer::PointRenderer;
-use kiss3d::post_processing::PostProcessingEffect;
-use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
 use kiss3d::text::Font;
 use nalgebra::{Point3, Point2};
@@ -57,32 +53,103 @@ pub enum ProcessedEvent {
 
 /// Implemented by Apps who wish to display points
 pub trait PointDisplay {
-    fn new() -> Self;
     fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond);
+    fn render(&mut self);
+    fn hide(&mut self);
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct Channels<T: PointDisplay> {
+    channel1: T,
+    channel2: T,
+    channel3: T,
+    channel4: T,
+    channel_merge: T,
+}
+
+impl<T: PointDisplay> Channels<T> {
+    pub fn new(mut channels: Vec<T>) -> Self {
+        assert!(channels.len() == 5);
+        Self { 
+            channel1: channels.remove(0), 
+            channel2: channels.remove(0), 
+            channel3: channels.remove(0), 
+            channel4: channels.remove(0), 
+            channel_merge: channels.remove(0), 
+        }
+    }
+
+    pub fn hide_all(&mut self) {
+        self.channel1.hide();
+        self.channel2.hide();
+        self.channel3.hide();
+        self.channel4.hide();
+        self.channel_merge.hide();
+    }
+}
+
+pub enum ChannelNames {
+    Channel1,
+    Channel2,
+    Channel3,
+    Channel4,
+    ChannelMerge,
+}
+
+impl<T: PointDisplay> Index<ChannelNames> for Channels<T> {
+    type Output = T;
+
+    fn index(&self, index: ChannelNames) -> &Self::Output {
+        match index {
+            ChannelNames::Channel1 => &self.channel1,
+            ChannelNames::Channel2 => &self.channel2,
+            ChannelNames::Channel3 => &self.channel3,
+            ChannelNames::Channel4 => &self.channel4,
+            ChannelNames::ChannelMerge => &self.channel_merge,
+        }
+    }
+}
+
+impl<T: PointDisplay> IndexMut<ChannelNames> for Channels<T> {
+    fn index_mut(&mut self, index: ChannelNames) -> &mut Self::Output {
+        match index {
+            ChannelNames::Channel1 => &mut self.channel1,
+            ChannelNames::Channel2 => &mut self.channel2,
+            ChannelNames::Channel3 => &mut self.channel3,
+            ChannelNames::Channel4 => &mut self.channel4,
+            ChannelNames::ChannelMerge => &mut self.channel_merge,
+        }
+    }
+}
+
 
 /// Holds the custom renderer that will be used for rendering the
 /// point cloud
-pub struct DisplayChannel<T: PointDisplay + Renderer> {
+pub struct DisplayChannel {
     pub window: Window,
-    pub renderer: T,
 }
 
-impl<T: PointDisplay + Renderer> DisplayChannel<T> {
-    pub fn new(channel_name: &str, frame_rate: u64) -> Self {
-        let mut window = Window::new(channel_name);
-        window.set_framerate_limit(Some(frame_rate));
-        DisplayChannel { window, renderer: T::new() }
-    }
-
+impl PointDisplay for DisplayChannel {
     #[inline]
-    pub fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, _time: Picosecond) {
+    fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, _time: Picosecond) {
         self.window.draw_point(&p, &c)
     }
 
-    pub fn render(&mut self) {
+    fn render(&mut self) { 
         self.window.render();
     }
+
+    fn hide(&mut self) {
+        self.window.hide();
+    }
+}
+
+impl DisplayChannel {
+    pub fn new(title: &str, frame_rate: u64) -> Self {
+        let mut window = Window::new(title);
+        window.set_framerate_limit(Some(frame_rate));
+        Self { window }
+     }
 
     pub fn get_window(&mut self) -> &mut Window {
         &mut self.window
@@ -91,12 +158,8 @@ impl<T: PointDisplay + Renderer> DisplayChannel<T> {
 
 /// Main struct that holds the renderers and the needed data streams for
 /// them
-pub struct AppState<T: PointDisplay + Renderer, R: Read> {
-    pub channel1: DisplayChannel<T>,
-    pub channel2: DisplayChannel<T>,
-    pub channel3: DisplayChannel<T>,
-    pub channel4: DisplayChannel<T>,
-    pub channel_merge: DisplayChannel<T>,
+pub struct AppState<T: PointDisplay, R: Read> {
+    pub channels: Channels<T>,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
     time_to_coord: TimeToCoord,
@@ -108,21 +171,15 @@ pub struct AppState<T: PointDisplay + Renderer, R: Read> {
     lines_vec: Vec<Picosecond>,
 }
 
-impl<T: PointDisplay + Renderer> AppState<T, File> {
+impl<T: PointDisplay> AppState<T, File> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(
-        channel_names: Option<&[&str]>,
+        channels: Channels<T>,
         data_stream_fh: String,
         appconfig: AppConfig,
     ) -> Self {
-        let frame_rate = appconfig.frame_rate().round() as u64;
-        let channel_names = channel_names.unwrap_or(&["Channel 1", "Channel 2", "Channel 3", "Channel 4", "Channel Merge"]);
         AppState {
-            channel1: DisplayChannel::new(channel_names[0], frame_rate),
-            channel2: DisplayChannel::new(channel_names[1], frame_rate),
-            channel3: DisplayChannel::new(channel_names[2], frame_rate),
-            channel4: DisplayChannel::new(channel_names[3], frame_rate),
-            channel_merge: DisplayChannel::new(channel_names[4], frame_rate),
+            channels,
             data_stream_fh,
             data_stream: None,
             time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
@@ -169,7 +226,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             // Start with the leftover events from the previous frame
             for event in previous_events.iter().by_ref() {
                 match self.event_to_coordinate(*event) {
-                    ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
+                    ProcessedEvent::Displayed(p, c) => self.channels.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::LineNewFrame => {
                         info!("New frame due to line");
@@ -225,7 +282,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             info!("Starting iteration on this stream");
             for event in event_stream.by_ref() {
                 match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
+                    ProcessedEvent::Displayed(p, c) => self.channels.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::PhotonNewFrame => {
                         events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
@@ -257,35 +314,6 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
         events_after_newframe
     }
 
-    pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
-        self.acquire_stream_filehandle()?;
-        let mut events_after_newframe = None;
-        for _ in 0..steps {
-            debug!("Starting step");
-            events_after_newframe = self.populate_single_frame(events_after_newframe);
-            debug!("Calling render");
-            self.channel_merge.render();
-        };
-        info!("Acq loop done");
-        Ok(())
-    }
-
-    /// Main
-    pub fn start_inf_acq_loop(&mut self) -> Result<()> {
-        self.acquire_stream_filehandle()?;
-        let mut events_after_newframe = None;
-        while !self.channel_merge.get_window().should_close() {
-            debug!("Starting population");
-            events_after_newframe = self.populate_single_frame(events_after_newframe);
-            // self.channel1.render();
-            // self.channel2.render();
-            // self.channel3.render();
-            // self.channel4.render();
-            self.channel_merge.render();
-        };
-        Ok(())
-    }
-
     /// Verifies that the current event stream lies within the boundaries of
     /// the current frame we're trying to render.
     fn check_relevance_of_batch(&self, event_stream: &EventStream) -> bool {
@@ -311,20 +339,40 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             _ => false,
         }
     }
+
+    pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
+        self.acquire_stream_filehandle()?;
+        let mut events_after_newframe = None;
+        for _ in 0..steps {
+            debug!("Starting population");
+            events_after_newframe = self.populate_single_frame(events_after_newframe);
+            debug!("Calling render");
+            self.channels.channel_merge.render();
+        };
+        info!("Acq loop done");
+        Ok(())
+    }
 }
 
-impl PointDisplay for PointRenderer {
-    fn new() -> Self {
-        PointRenderer::new()
-    }
-
-    #[inline]
-    fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, _time: Picosecond) {
-        self.draw_point(p, c);
+impl AppState<DisplayChannel, File> {
+    /// Main
+    pub fn start_inf_acq_loop(&mut self) -> Result<()> {
+        self.acquire_stream_filehandle()?;
+        let mut events_after_newframe = None;
+        while !self.channels.channel_merge.get_window().should_close() {
+            events_after_newframe = self.populate_single_frame(events_after_newframe);
+            debug!("Calling render");
+            // self.channel1.render();
+            // self.channel2.render();
+            // self.channel3.render();
+            // self.channel4.render();
+            self.channels.channel_merge.render();
+        };
+        Ok(())
     }
 }
 
-impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
+impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     fn acquire_stream_filehandle(&mut self) -> Result<()> {
         let stream =
