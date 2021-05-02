@@ -190,11 +190,9 @@ def run_tagger(cfg: str):
 def replay_existing(cfg: str):
     """A testing method to replay old acquisitions."""
     config = toml.loads(cfg)
-    print(f"Replay with config: {config}")
     tagger = TimeTagger.createTimeTaggerVirtual()
     _ = RealTimeRendering(tagger, None, None)
-    print("Starting replay")
     tagger.replay(config['filename'])
-    print("Got it")
-    sleep(90)
+    tagger.waitForCompletion(timeout=-1)
+    return -1
 

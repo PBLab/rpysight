@@ -89,7 +89,7 @@ impl<'a> Iterator for RefEventStreamIter<'a> {
 /// An consuming iterator wrapper for [`EventStream`]
 #[derive(Clone, Debug)]
 pub struct EventStreamIter<'a> {
-    stream: EventStream<'a>,
+    pub stream: EventStream<'a>,
     idx: usize,
     len: usize,
 }

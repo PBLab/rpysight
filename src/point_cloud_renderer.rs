@@ -1,6 +1,6 @@
 extern crate kiss3d;
 
-use std::fs::File;
+use std::{fs::File, thread::JoinHandle};
 use std::io::Read;
 
 use anyhow::{Context, Result};
@@ -198,28 +198,30 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
         }
         // New experiments will start out here, by loading the data and
         // looking for the first line signal
+        // debug!("Last line: {}", self.last_line);
+        debug!("Starting a 'frame loop");
         'frame: loop {
-            debug!("Starting a 'frame loop");
+            debug!("Last line: {}", self.last_line);
             let batch = match self.data_stream.as_mut().unwrap().next() {
                 Some(batch) => batch.expect("Couldn't extract batch from stream"),
-                None => return None,
+                None => continue,
             };
             let event_stream = match self.get_event_stream(&batch) {
                 Some(stream) => stream,
-                None => return None,
+                None => continue,
             };
             let mut event_stream = event_stream.into_iter();
             if self.last_line == 0 {
                 debug!("First line has not been found yet");
                 match event_stream.position(|event| self.find_first_line(&event)) {
                     Some(_) => { },  // .position() advances the iterator for us
-                    None => return None,  // we need more data since this batch has no first line
+                    None => continue,  // we need more data since this batch has no first line
                 };
             }
-            // match self.check_relevance_of_batch(&event_stream) {
-            //     true => {}
-            //     false => continue,
-            // };
+            match self.check_relevance_of_batch(&event_stream.stream) {
+                true => {}
+                false => continue,
+            };
             info!("Starting iteration on this stream");
             for event in event_stream.by_ref() {
                 match self.event_to_coordinate(event) {
@@ -251,7 +253,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
                 }
             }
         }
-        debug!("Returning the leftover events ({:?}) of them", &events_after_newframe);
+        debug!("Returning the leftover events ({:?} of them)", &events_after_newframe);
         events_after_newframe
     }
 
@@ -262,8 +264,8 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             debug!("Starting step");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Calling render");
-            self.channel_merge.window.draw_text("DFDFDFDFDF", &Point2::<f32>::new(0.5, 0.5), 60.0, &Font::default(), &Point3::new(1.0, 1.0, 1.0));
-            self.channel_merge.window.draw_point(&Point3::<f32>::new(0.5, 0.5, 0.5), &Point3::<f32>::new(1.0, 1.0, 1.0));
+            // self.channel_merge.window.draw_text("DFDFDFDFDF", &Point2::<f32>::new(0.5, 0.5), 60.0, &Font::default(), &Point3::new(1.0, 1.0, 1.0));
+            // self.channel_merge.window.draw_point(&Point3::<f32>::new(0.5, 0.5, 0.5), &Point3::<f32>::new(1.0, 1.0, 1.0));
             self.channel_merge.render();
         };
         info!("Acq loop done");
@@ -274,7 +276,8 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
     pub fn start_inf_acq_loop(&mut self) -> Result<()> {
         self.acquire_stream_filehandle()?;
         let mut events_after_newframe = None;
-        'acquisition: loop {
+        while !self.channel_merge.get_window().should_close() {
+            debug!("Starting population");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             // self.channel1.render();
             // self.channel2.render();
@@ -282,6 +285,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             // self.channel4.render();
             self.channel_merge.render();
         };
+        Ok(())
     }
 
     /// Verifies that the current event stream lies within the boundaries of
@@ -366,6 +370,7 @@ impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
         }
     }
 
+    /// Generates an EventStream instance from the loaded record batch
     #[inline]
     fn get_event_stream<'b>(&mut self, batch: &'b RecordBatch) -> Option<EventStream<'b>> {
         info!("Received {} rows", batch.num_rows());
