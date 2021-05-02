@@ -256,3 +256,21 @@ fn save_cfg(config_name: Option<PathBuf>, app_config: &AppConfig) -> anyhow::Res
     debug!("Config saved successfully");
     Ok(())
 }
+
+/// Setup the logger
+pub fn setup_logger() {
+    fern::Dispatch::new()
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "{date} [{target}] [{level}] {message}",
+                date = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.9f"),
+                target = record.target(),
+                level = record.level(),
+                message = message,
+            ));
+        })
+        .level(log::LevelFilter::Debug)
+        .chain(File::create("target/rpysight.log").unwrap())
+        .apply()
+        .unwrap();
+}

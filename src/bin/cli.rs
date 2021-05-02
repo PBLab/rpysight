@@ -5,15 +5,13 @@ use std::ffi::OsStr;
 
 #[macro_use]
 extern crate log;
-extern crate simplelog;
 
-use simplelog::*;
 use futures::executor::block_on;
 use anyhow::Result;
 use thiserror::Error;
 
 use librpysight::configuration::AppConfig;
-use librpysight::start_acquisition;
+use librpysight::{start_acquisition, setup_logger};
 
 #[derive(Debug, Error)]
 pub enum ConfigParsingError {
@@ -39,11 +37,7 @@ fn validate_and_parse_args(args: &[String]) -> Result<PathBuf, ConfigParsingErro
 
 /// Runs rPySight from the CLI
 fn main() -> Result<()> {
-    let _ = WriteLogger::init(
-        LevelFilter::Trace,
-        ConfigBuilder::default().set_time_to_local(true).build(),
-        File::create("target/rpysight.log")?,
-    );
+    setup_logger();
     info!("Logger initialized successfully, starting rPySight from the CLI");
     let args: Vec<String> = env::args().collect();
     let config_path = validate_and_parse_args(&args[1..])?;

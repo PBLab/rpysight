@@ -253,7 +253,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
                 }
             }
         }
-        debug!("Returning the leftover events ({:?} of them)", &events_after_newframe);
+        trace!("Returning the leftover events ({:?} of them)", &events_after_newframe);
         events_after_newframe
     }
 
@@ -353,7 +353,7 @@ impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
             warn!("Event type was not a time tag: {:?}", event);
             return ProcessedEvent::NoOp;
         }
-        debug!("Received the following event: {:?}", event);
+        trace!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time, 0),
             DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time, 1),
@@ -373,10 +373,10 @@ impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
     /// Generates an EventStream instance from the loaded record batch
     #[inline]
     fn get_event_stream<'b>(&mut self, batch: &'b RecordBatch) -> Option<EventStream<'b>> {
-        info!("Received {} rows", batch.num_rows());
+        debug!("When generating the EventStream we received {} rows", batch.num_rows());
         let event_stream = EventStream::from_streamed_batch(batch);
         if event_stream.num_rows() == 0 {
-            debug!("A batch with 0 rows was received");
+            info!("A batch with 0 rows was received");
             None
         } else {
             Some(event_stream)
