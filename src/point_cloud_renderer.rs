@@ -204,7 +204,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             debug!("Last line: {}", self.last_line);
             let batch = match self.data_stream.as_mut().unwrap().next() {
                 Some(batch) => batch.expect("Couldn't extract batch from stream"),
-                None => continue,
+                None => break 'frame,
             };
             let event_stream = match self.get_event_stream(&batch) {
                 Some(stream) => stream,

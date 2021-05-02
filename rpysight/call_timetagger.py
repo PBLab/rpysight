@@ -194,5 +194,4 @@ def replay_existing(cfg: str):
     _ = RealTimeRendering(tagger, None, None)
     tagger.replay(config['filename'])
     tagger.waitForCompletion(timeout=-1)
-    return -1
 

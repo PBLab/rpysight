@@ -257,7 +257,8 @@ fn save_cfg(config_name: Option<PathBuf>, app_config: &AppConfig) -> anyhow::Res
     Ok(())
 }
 
-/// Setup the logger
+/// Setup the logger. We're not using color here because terminals are either
+/// slow in rendering them, or their simply not supported.
 pub fn setup_logger() {
     fern::Dispatch::new()
         .format(move |out, message, record| {

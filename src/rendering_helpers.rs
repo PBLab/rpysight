@@ -513,11 +513,6 @@ impl TimeToCoord {
         debug!("Done populating next frame, summary:\ntotal delta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
     }
 
-    /// Handles a new line event
-    pub fn new_line(&self, _time: i64) -> ProcessedEvent {
-        ProcessedEvent::NoOp
-    }
-
     /// Handles a new TAG lens start-of-cycle event
     pub fn new_taglens_period(&self, _time: i64) -> ProcessedEvent {
         ProcessedEvent::NoOp
