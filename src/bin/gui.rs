@@ -1,6 +1,6 @@
 // Remember to $Env:PYTHONHOME = "C:\Users\PBLab\.conda\envs\timetagger\"
 // because powershell is too dumb to remember.
-use std::fs::File;
+use std::path::PathBuf;
 
 #[macro_use]
 extern crate log;
@@ -11,7 +11,7 @@ use librpysight::gui::MainAppGui;
 use librpysight::{load_app_settings, setup_logger, reload_cfg_or_use_default};
 
 fn main() -> Result {
-    setup_logger();
+    setup_logger(Some(PathBuf::from("target/rpysight.log")));
     info!("Logger initialized successfully, starting rPySight from the GUI");
     let cfg = reload_cfg_or_use_default(None);
     let settings = load_app_settings(cfg);

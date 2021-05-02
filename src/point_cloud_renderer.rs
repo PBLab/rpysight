@@ -264,8 +264,6 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             debug!("Starting step");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Calling render");
-            // self.channel_merge.window.draw_text("DFDFDFDFDF", &Point2::<f32>::new(0.5, 0.5), 60.0, &Font::default(), &Point3::new(1.0, 1.0, 1.0));
-            // self.channel_merge.window.draw_point(&Point3::<f32>::new(0.5, 0.5, 0.5), &Point3::<f32>::new(1.0, 1.0, 1.0));
             self.channel_merge.render();
         };
         info!("Acq loop done");

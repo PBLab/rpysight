@@ -31,9 +31,14 @@ struct VoxelDelta<T: ImageDelta> {
 
 impl VoxelDelta<f32> {
     pub(crate) fn from_config(config: &AppConfig) -> VoxelDelta<f32> {
-        let jump_between_columns = 1.0f32 / (config.columns as f32 - 1.0);
-        let jump_between_rows = 1.0f32 / (config.rows as f32 - 1.0);
-        let jump_between_planes = 1.0f32 / (config.planes as f32 - 1.0);
+        let jump_between_columns = 2.0f32 / (config.columns as f32 - 1.0);
+        let jump_between_rows = 2.0f32 / (config.rows as f32 - 1.0);
+        let jump_between_planes: f32;
+        if config.planes > 1 {
+            jump_between_planes = 2.0f32 / (config.planes as f32 - 1.0);
+        } else {
+            jump_between_planes = 2.0;
+        }
 
         VoxelDelta {
             column: jump_between_columns,
@@ -249,11 +254,11 @@ impl TimeToCoord {
         let end_of_rotation_value = column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
         let column_deltas_ps = column_deltas_ps.insert_rows(num_columns, 1, end_of_rotation_value);
         let column_deltas_imagespace =
-            DVector::<f32>::from_fn(num_columns, |i, _| (i as f32) * voxel_delta_im.column);
+            DVector::<f32>::from_fn(num_columns, |i, _| ((i as f32) * voxel_delta_im.column));
         // The events during mirror rotation will be discarded - The NaN takes
         // care of that
         let column_deltas_imagespace =
-            column_deltas_imagespace.insert_rows(num_columns, 1, f32::NAN);
+            column_deltas_imagespace.add_scalar(-1.0).insert_rows(num_columns, 1, f32::NAN);
         info!("2d snake metadata prepped");
         (column_deltas_ps, column_deltas_imagespace)
     }
@@ -320,9 +325,10 @@ impl TimeToCoord {
         let nan = column_deltas_imagespace_rev.remove(0);
         column_deltas_imagespace_rev.push(nan);
         let column_deltas_imagespace_rev = DVector::from_vec(column_deltas_imagespace_rev);
+        let mut row_coord: f32;
         for row in (0..config.rows).step_by(2) {
             // Start with the unidir row
-            let mut row_coord = (row as f32) * voxel_delta_im.row;
+            row_coord = ((row as f32) * voxel_delta_im.row) - 1.0;
             TimeToCoord::push_pair_unidir(
                 &mut snake,
                 &column_deltas_imagespace,
@@ -332,7 +338,7 @@ impl TimeToCoord {
             );
             line_offset += deadtime_during_rotation;
             // Now the bidir row
-            row_coord = ((row + 1) as f32) * voxel_delta_im.row;
+            row_coord = (((row + 1) as f32) * voxel_delta_im.row) - 1.0;
             TimeToCoord::push_pair_unidir(
                 &mut snake,
                 &column_deltas_imagespace_rev,
@@ -375,7 +381,7 @@ impl TimeToCoord {
             .into_iter()
             .zip(column_deltas_ps.into_iter())
         {
-            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.5);
+            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.0);
             snake.push(TimeCoordPair::new(
                 column_delta_ps + line_offset,
                 cur_imcoor,
@@ -401,7 +407,7 @@ impl TimeToCoord {
         let offset_per_row = column_deltas_ps[line_len - 1];
         let mut line_offset: Picosecond = offset;
         for row in 0..config.rows {
-            let row_coord = (row as f32) * voxel_delta_im.row;
+            let row_coord = ((row as f32) * voxel_delta_im.row) - 1.0;
             TimeToCoord::push_pair_unidir(
                 &mut snake,
                 &column_deltas_imagespace,
@@ -650,9 +656,9 @@ mod tests {
             .with_planes(2)
             .build();
         let vd = VoxelDelta::<f32>::from_config(&config);
-        assert_eq!(vd.row, 0.5);
-        assert_eq!(vd.column, 0.25);
-        assert_eq!(vd.plane, 1.0);
+        assert_eq!(vd.row, 1.0);
+        assert_eq!(vd.column, 0.5);
+        assert_eq!(vd.plane, 2.0);
     }
 
     #[test]
@@ -671,15 +677,19 @@ mod tests {
         let snake = TimeToCoord::from_acq_params(&config, 0);
         assert_eq!(
             snake.data[1],
-            TimeCoordPair::new(25, ImageCoor::new(0.0, 0.0, 0.5)),
+            TimeCoordPair::new(25, ImageCoor::new(-1.0, -1.0, 0.0)),
         );
         assert_eq!(
             snake.data[12],
-            TimeCoordPair::new(525, ImageCoor::new(1.0 / 9.0f32, 1.0, 0.5)),
+            TimeCoordPair::new(525, ImageCoor::new(-1.0 + (2.0 / 9.0f32), 1.0, 0.0)),
         );
         assert_eq!(
             snake.data[35],
-            TimeCoordPair::new(1550, ImageCoor::new(3.0 / 9.0f32, 8.0 / 9.0f32, 0.5)),
+            TimeCoordPair::new(1550, ImageCoor::new(-1.0 + 3.0 * (2.0 / 9.0f32), 1.0 - (2.0 / 9.0f32), 0.0)),
+        );
+        assert_eq!(
+            snake.data[snake.data.len() - 1],
+            TimeCoordPair::new(4750, ImageCoor::new(1.0, -1.0, 0.0))
         );
         assert_eq!(snake.data.len() + 1, snake.data.capacity());
     }
@@ -692,16 +702,21 @@ mod tests {
         let snake = TimeToCoord::from_acq_params(&config, 0);
         assert_eq!(
             snake.data[1],
-            TimeCoordPair::new(25, ImageCoor::new(0.0, 0.0, 0.5)),
+            TimeCoordPair::new(25, ImageCoor::new(-1.0, -1.0, 0.0)),
         );
         assert_eq!(
             snake.data[12],
-            TimeCoordPair::new(1275, ImageCoor::new(1.0 / 9.0f32, 0.0, 0.5)),
+            TimeCoordPair::new(1275, ImageCoor::new(-1.0 + (2.0 / 9.0f32), -1.0, 0.0)),
         );
         assert_eq!(
             snake.data[35],
-            TimeCoordPair::new(3800, ImageCoor::new(3.0 / 9.0f32, 1.0 / 9.0f32, 0.5)),
+            TimeCoordPair::new(3800, ImageCoor::new(-1.0 + 3.0 * (2.0 / 9.0f32), -1.0 + (2.0 / 9.0f32), 0.0)),
         );
+        assert_eq!(
+            snake.data[snake.data.len() - 1],
+            TimeCoordPair::new(11500, ImageCoor::new(1.0, 1.0, 0.0))
+        );
+        assert_eq!(snake.data.len() + 1, snake.data.capacity());
         assert_eq!(snake.data.len() + 1, snake.data.capacity());
     }
 

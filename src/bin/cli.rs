@@ -1,5 +1,5 @@
 use std::env;
-use std::fs::{read_to_string, File};
+use std::fs::read_to_string;
 use std::path::PathBuf;
 use std::ffi::OsStr;
 
@@ -37,7 +37,7 @@ fn validate_and_parse_args(args: &[String]) -> Result<PathBuf, ConfigParsingErro
 
 /// Runs rPySight from the CLI
 fn main() -> Result<()> {
-    setup_logger();
+    setup_logger(Some(PathBuf::from("target/rpysight.log")));
     info!("Logger initialized successfully, starting rPySight from the CLI");
     let args: Vec<String> = env::args().collect();
     let config_path = validate_and_parse_args(&args[1..])?;

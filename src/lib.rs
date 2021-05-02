@@ -259,7 +259,11 @@ fn save_cfg(config_name: Option<PathBuf>, app_config: &AppConfig) -> anyhow::Res
 
 /// Setup the logger. We're not using color here because terminals are either
 /// slow in rendering them, or their simply not supported.
-pub fn setup_logger() {
+pub fn setup_logger(fname: Option<PathBuf>) {
+    let log_fname;
+    if let Some(f) = fname {
+        log_fname = f } else { log_fname = PathBuf::from("target/test_rpysight.log"); };
+
     fern::Dispatch::new()
         .format(move |out, message, record| {
             out.finish(format_args!(
@@ -270,8 +274,8 @@ pub fn setup_logger() {
                 message = message,
             ));
         })
-        .level(log::LevelFilter::Debug)
-        .chain(File::create("target/rpysight.log").unwrap())
+        .level(log::LevelFilter::Trace)
+        .chain(File::create(log_fname).unwrap())
         .apply()
         .unwrap();
 }

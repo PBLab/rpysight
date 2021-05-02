@@ -1,5 +1,5 @@
 extern crate log;
-use std::fs::read_to_string;
+use std::{fs::read_to_string, path::PathBuf};
 use std::fs::File;
 use std::sync::Arc;
 
@@ -10,7 +10,6 @@ use arrow::{csv::Reader, record_batch::RecordBatch};
 use log::*;
 use nalgebra::Point3;
 use ron::{ser::{to_writer_pretty, PrettyConfig}, de::from_reader};
-use simplelog::*;
 use kiss3d::window::Window;
 use kiss3d::event;
 use kiss3d::camera::Camera;
@@ -20,6 +19,7 @@ use serde::{Serialize, Deserialize};
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
 use librpysight::event_stream::{Event, EventStream};
 use librpysight::point_cloud_renderer::{ProcessedEvent, TimeTaggerIpcHandler, AppState, PointDisplay};
+use librpysight::setup_logger;
 use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
@@ -126,10 +126,7 @@ fn timecoordpair_vec_compare(va: &[TimeCoordPair], vb: &[TimeCoordPair]) -> bool
 /// Start a logger, generate a default config file (if given none) and generate
 /// a data stream from one of the CSV files.
 fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, File> {
-    let _ = TestLogger::init(
-        LevelFilter::Debug,
-        ConfigBuilder::default().set_time_to_local(true).build(),
-    );
+    setup_logger(Some(PathBuf::from("target/rpysight_test.log")));
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
     let mut app = AppState::new(None, csv_to_stream.to_string(), cfg);
