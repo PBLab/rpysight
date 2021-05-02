@@ -1,6 +1,6 @@
 extern crate kiss3d;
 
-use std::fs::File;
+use std::{fs::File, thread::JoinHandle};
 use std::io::Read;
 
 use anyhow::{Context, Result};
@@ -11,7 +11,8 @@ use kiss3d::point_renderer::PointRenderer;
 use kiss3d::post_processing::PostProcessingEffect;
 use kiss3d::renderer::Renderer;
 use kiss3d::window::{State, Window};
-use nalgebra::Point3;
+use kiss3d::text::Font;
+use nalgebra::{Point3, Point2};
 
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::rendering_helpers::{Picosecond, TimeToCoord};
@@ -35,13 +36,19 @@ pub trait TimeTaggerIpcHandler {
 /// Each event might arrive from different channels which require different
 /// handling, and this enum contains all possible actions we might want to do
 /// with these results.
+#[derive(Debug, Clone, Copy)]
 pub enum ProcessedEvent {
     /// Contains the coordinates in image space and the color
     Displayed(Point3<f32>, Point3<f32>),
     /// Nothing to do with this event
     NoOp,
-    /// Start drawing a new frame
-    NewFrame,
+    /// Start drawing a new frame due to a line signal that belongs to the
+    /// next frame (> num_rows)
+    LineNewFrame,
+    /// Start drawing a new frame due to a photon signal with a time after the
+    /// end of the current frame. Probably means that we didn't record all line
+    /// signals that arrived during the frame
+    PhotonNewFrame,
     /// Erroneuous event, usually for tests
     Error,
     /// First line encoutered and its timing
@@ -68,8 +75,9 @@ impl<T: PointDisplay + Renderer> DisplayChannel<T> {
         DisplayChannel { window, renderer: T::new() }
     }
 
-    pub fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond) {
-        self.renderer.display_point(p, c, time)
+    #[inline]
+    pub fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, _time: Picosecond) {
+        self.window.draw_point(&p, &c)
     }
 
     pub fn render(&mut self) {
@@ -141,13 +149,13 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             return ProcessedEvent::FirstLine(event.time);
         }
         let time = event.time;
-        info!("Elapsed time since last line: {}", time - self.last_line);
+        debug!("Elapsed time since last line: {}", time - self.last_line);
         self.last_line = time;
         if self.row_count == self.rows_per_frame {
             self.row_count = 0;
-            info!("Here are the lines: {:#?}", self.lines_vec);
+            debug!("Here are the lines: {:#?}", self.lines_vec);
             self.lines_vec.clear();
-            ProcessedEvent::NewFrame
+            ProcessedEvent::LineNewFrame
         } else {
             self.row_count += 1;
             self.lines_vec.push(time);
@@ -156,31 +164,44 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
     }
 
     pub fn populate_single_frame(&mut self, mut events_after_newframe: Option<Vec<Event>>) -> Option<Vec<Event>> {
-        'frame: loop {
+        if let Some(ref previous_events) = events_after_newframe {
+            debug!("Looking for leftover events");
             // Start with the leftover events from the previous frame
-            if let Some(ref previous_events) = events_after_newframe {
-                for event in previous_events.iter().by_ref() {
-                    match self.event_to_coordinate(*event) {
-                        ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
-                        ProcessedEvent::NoOp => continue,
-                        ProcessedEvent::NewFrame => {
-                            info!("New frame!");
-                            events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
-                            break;
-                        }
-                        ProcessedEvent::FirstLine(time) => {
-                            error!("First line already detected! {}", time);
-                            continue;
-                        }
-                        ProcessedEvent::Error => {
-                            error!("Received an erroneuous event: {:?}", event);
-                            continue;
-                        }
+            for event in previous_events.iter().by_ref() {
+                match self.event_to_coordinate(*event) {
+                    ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
+                    ProcessedEvent::NoOp => continue,
+                    ProcessedEvent::LineNewFrame => {
+                        info!("New frame due to line");
+                        let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
+                        self.time_to_coord.update_2d_data_for_next_frame();
+                        return new_events_after_newframe
+                    },
+                    ProcessedEvent::PhotonNewFrame => {
+                        let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
+                        self.time_to_coord.update_2d_data_for_next_frame();
+                        self.event_to_coordinate(*event);
+                        self.lines_vec.clear();
+                        self.row_count = 0;
+                        return new_events_after_newframe
+                    }
+                    ProcessedEvent::FirstLine(time) => {
+                        error!("First line already detected! {}", time);
+                        continue;
+                    }
+                    ProcessedEvent::Error => {
+                        error!("Received an erroneuous event: {:?}", event);
+                        continue;
                     }
                 }
             }
-            // New experiments will start out here, by loading the data and
-            // looking for the first line signal
+        }
+        // New experiments will start out here, by loading the data and
+        // looking for the first line signal
+        // debug!("Last line: {}", self.last_line);
+        debug!("Starting a 'frame loop");
+        'frame: loop {
+            debug!("Last line: {}", self.last_line);
             let batch = match self.data_stream.as_mut().unwrap().next() {
                 Some(batch) => batch.expect("Couldn't extract batch from stream"),
                 None => continue,
@@ -191,22 +212,34 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             };
             let mut event_stream = event_stream.into_iter();
             if self.last_line == 0 {
+                debug!("First line has not been found yet");
                 match event_stream.position(|event| self.find_first_line(&event)) {
                     Some(_) => { },  // .position() advances the iterator for us
                     None => continue,  // we need more data since this batch has no first line
                 };
             }
-            // match self.check_relevance_of_batch(&event_stream) {
-            //     true => {}
-            //     false => continue,
-            // };
+            match self.check_relevance_of_batch(&event_stream.stream) {
+                true => {}
+                false => continue,
+            };
+            info!("Starting iteration on this stream");
             for event in event_stream.by_ref() {
                 match self.event_to_coordinate(event) {
                     ProcessedEvent::Displayed(p, c) => self.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
-                    ProcessedEvent::NewFrame => {
-                        info!("New frame!");
+                    ProcessedEvent::PhotonNewFrame => {
                         events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
+                        info!("We're in a photonewframe sit!");
+                        self.time_to_coord.update_2d_data_for_next_frame();
+                        self.event_to_coordinate(event);
+                        self.lines_vec.clear();
+                        self.row_count = 0;
+                        break 'frame;
+                    }, 
+                    ProcessedEvent::LineNewFrame => {
+                        info!("New frame due to line");
+                        events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
+                        self.time_to_coord.update_2d_data_for_next_frame();
                         break 'frame;
                     }
                     ProcessedEvent::FirstLine(time) => {
@@ -220,14 +253,31 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
                 }
             }
         }
+        debug!("Returning the leftover events ({:?} of them)", &events_after_newframe);
         events_after_newframe
     }
 
-    /// Main
-    pub fn start_acq_loop(&mut self) -> Result<()> {
+    pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
         self.acquire_stream_filehandle()?;
         let mut events_after_newframe = None;
-        'acquisition: loop {
+        for _ in 0..steps {
+            debug!("Starting step");
+            events_after_newframe = self.populate_single_frame(events_after_newframe);
+            debug!("Calling render");
+            // self.channel_merge.window.draw_text("DFDFDFDFDF", &Point2::<f32>::new(0.5, 0.5), 60.0, &Font::default(), &Point3::new(1.0, 1.0, 1.0));
+            // self.channel_merge.window.draw_point(&Point3::<f32>::new(0.5, 0.5, 0.5), &Point3::<f32>::new(1.0, 1.0, 1.0));
+            self.channel_merge.render();
+        };
+        info!("Acq loop done");
+        Ok(())
+    }
+
+    /// Main
+    pub fn start_inf_acq_loop(&mut self) -> Result<()> {
+        self.acquire_stream_filehandle()?;
+        let mut events_after_newframe = None;
+        while !self.channel_merge.get_window().should_close() {
+            debug!("Starting population");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             // self.channel1.render();
             // self.channel2.render();
@@ -235,6 +285,7 @@ impl<T: PointDisplay + Renderer> AppState<T, File> {
             // self.channel4.render();
             self.channel_merge.render();
         };
+        Ok(())
     }
 
     /// Verifies that the current event stream lies within the boundaries of
@@ -319,6 +370,7 @@ impl<T: PointDisplay + Renderer> TimeTaggerIpcHandler for AppState<T, File> {
         }
     }
 
+    /// Generates an EventStream instance from the loaded record batch
     #[inline]
     fn get_event_stream<'b>(&mut self, batch: &'b RecordBatch) -> Option<EventStream<'b>> {
         info!("Received {} rows", batch.num_rows());

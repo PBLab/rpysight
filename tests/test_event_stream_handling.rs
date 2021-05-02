@@ -92,6 +92,7 @@ fn test_file_to_stream() {
             None,
             None,
         );
+        info!("Reader initialized, writing data");
         stream_writer.write(&r.next().unwrap().unwrap()).unwrap();
     }
 }
@@ -133,6 +134,11 @@ fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, F
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
     let mut app = AppState::new(None, csv_to_stream.to_string(), cfg);
     app.acquire_stream_filehandle().unwrap();
+    app.channel_merge.window.hide();
+    app.channel1.window.hide();
+    app.channel2.window.hide();
+    app.channel3.window.hide();
+    app.channel4.window.hide();
     app
 }
 
@@ -168,100 +174,68 @@ fn stepwise_short_bidir_single_frame() {
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
     app.populate_single_frame(None);
-    app.channel_merge.render();
     // to_writer_pretty(File::create("tests/data/short_batch_bidir_valid.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
     let original: PointLogger =
         from_reader(File::open("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
-    assert!(timecoordpair_vec_compare(
-        &app.channel_merge.renderer.rendered_events_loc,
-        &original.rendered_events_loc,
-    ));
-    assert!(timecoordpair_vec_compare(
-        &app.channel_merge.renderer.rendered_events_color,
-        &original.rendered_events_color,
-    ));
+    assert_eq!(app.channel_merge.renderer, original);
 }
 
-// #[test]
-// fn stepwise_short_unidir_single_frame() {
-//     let cfg: AppConfig = AppConfigBuilder::default()
-//         .with_scan_period(Period::from_freq(100_000.0))
-//         .with_columns(10)
-//         .with_rows(10)
-//         .with_planes(1)
-//         .with_line_ch(9)
-//         .with_bidir(Bidirectionality::Unidir)
-//         .build();
-//     let (mut window, mut app) = setup(SHORT_BATCH_STREAM, Some(cfg));
-//     window.render_with_state(&mut app);
-//     // to_writer_pretty(File::create("tests/data/short_batch_unidir_valid.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
-//     let original: PointLogger =
-//         from_reader(File::open("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();
-//     assert!(timecoordpair_vec_compare(
-//         &app.renderer.rendered_events_loc,
-//         &original.rendered_events_loc,
-//     ));
-//     assert!(timecoordpair_vec_compare(
-//         &app.renderer.rendered_events_color,
-//         &original.rendered_events_color,
-//     ));
-// }
+#[test]
+fn stepwise_short_unidir_single_frame() {
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_scan_period(Period::from_freq(100_000.0))
+        .with_columns(10)
+        .with_rows(10)
+        .with_planes(1)
+        .with_line_ch(9)
+        .with_bidir(Bidirectionality::Unidir)
+        .build();
+    let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
+    app.populate_single_frame(None);
+    // to_writer_pretty(File::create("tests/data/short_batch_unidir_valid.ron").unwrap(), &app.channel_merge.renderer, PrettyConfig::new()).unwrap();
+    let original: PointLogger =
+        from_reader(File::open("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();
+    assert_eq!(app.channel_merge.renderer, original);
+}
 
-// #[test]
-// fn stepwise_short_two_frames_bidir() {
-//     let cfg: AppConfig = AppConfigBuilder::default()
-//         .with_scan_period(Period::from_freq(100_000.0))
-//         .with_columns(10)
-//         .with_rows(10)
-//         .with_planes(1)
-//         .with_line_ch(9)
-//         .with_bidir(Bidirectionality::Bidir)
-//         .with_frame_dead_time(10_000_000)
-//         .build();
-//     let (mut window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
-//     window.render_with_state(&mut app);
-//     // to_writer_pretty(File::create("tests/data/short_batch_unidir_valid.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
-//     let original: Vec<TimeCoordPair> =
-//         from_reader(File::open("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
-//     info!("{:#?}", &app.renderer.rendered_events_loc);
-//     assert!(timecoordpair_vec_compare(
-//         &app.renderer.rendered_events_loc,
-//         // &original.rendered_events_loc,
-//         &original,
-//     ));
-//     // assert!(timecoordpair_vec_compare(
-//     //     &app.renderer.rendered_events_color,
-//     //     &original.rendered_events_color,
-//     // ));
-// }
+#[test]
+fn stepwise_short_two_frames_bidir() {
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_scan_period(Period::from_freq(100_000.0))
+        .with_columns(10)
+        .with_rows(10)
+        .with_planes(1)
+        .with_line_ch(9)
+        .with_bidir(Bidirectionality::Bidir)
+        .with_frame_dead_time(10_000_000)
+        .build();
+    let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
+    app.start_acq_loop_for(4).unwrap();
+    // to_writer_pretty(File::create("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap(), &app.channel_merge.renderer, PrettyConfig::new()).unwrap();
+    let original: PointLogger = 
+        from_reader(File::open("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
+    assert_eq!(app.channel_merge.renderer, original);
+}
 
-// #[test]
-// fn stepwise_short_two_frames_unidir() {
-//     let cfg: AppConfig = AppConfigBuilder::default()
-//         .with_scan_period(Period::from_freq(100_000.0))
-//         .with_columns(10)
-//         .with_rows(10)
-//         .with_planes(1)
-//         .with_bidir(Bidirectionality::Unidir)
-//         .with_frame_dead_time(10_000_000)
-//         .build();
-//     let (window, mut app) = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
-//     // app.step();
-//     // let original_invalid: Vec<TimeCoordPair> =
-//     //     from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_invalid.ron").unwrap())
-//     //         .unwrap();
-//     // let original_valid: Vec<TimeCoordPair> =
-//     //     from_str(&read_to_string("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap())
-//     //         .unwrap();
-//     // assert!(timecoordpair_vec_compare(
-//     //     &app.invalid_events,
-//     //     &original_invalid
-//     // ));
-//     // assert!(timecoordpair_vec_compare(
-//     //     &app.valid_events,
-//     //     &original_valid
-//     // ));
-// }
+#[test]
+fn stepwise_short_two_frames_unidir() {
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_scan_period(Period::from_freq(100_000.0))
+        .with_columns(10)
+        .with_rows(10)
+        .with_planes(1)
+        .with_bidir(Bidirectionality::Unidir)
+        .with_frame_dead_time(10_000_000)
+        .with_line_ch(9)
+        .build();
+    let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
+    app.start_acq_loop_for(3).unwrap();
+    // to_writer_pretty(File::create("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap(), &app.channel_merge.renderer, PrettyConfig::new()).unwrap();
+    let original: PointLogger =
+        from_reader(File::open("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap())
+            .unwrap();
+    assert_eq!(app.channel_merge.renderer, original)
+}
 
 // // #[test]
 // // fn stepwise_short_two_frames_offset_bidir() {
@@ -322,19 +296,19 @@ fn stepwise_short_bidir_single_frame() {
 //     // ));
 // // }
 
-// #[test]
-// fn offset_with_lines() {
-//     let cfg: AppConfig = AppConfigBuilder::default()
-//         .with_planes(1)
-//         .with_rows(2)
-//         .with_columns(2)
-//         .with_pmt1_ch(-3)
-//         .with_pmt2_ch(-8)
-//         .with_line_ch(1)
-//         .build();
-//     let (mut window, mut app) = setup(WITH_LINES_STREAM, Some(cfg));
-//     window.render_with_state(&mut app);
-//     // to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
-//     let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines.ron").unwrap()).unwrap();  
-//     assert_eq!(original, app.renderer);
-// }
+#[test]
+fn offset_with_lines() {
+    let cfg: AppConfig = AppConfigBuilder::default()
+        .with_planes(1)
+        .with_rows(2)
+        .with_columns(2)
+        .with_pmt1_ch(-3)
+        .with_pmt2_ch(-8)
+        .with_line_ch(1)
+        .build();
+    let mut app = setup(WITH_LINES_STREAM, Some(cfg));
+    app.start_acq_loop_for(2).unwrap();
+    // to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
+    let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines.ron").unwrap()).unwrap();  
+    assert_eq!(original, app.channel_merge.renderer);
+}
