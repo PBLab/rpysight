@@ -19,7 +19,6 @@ use serde::{Serialize, Deserialize};
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
 use librpysight::event_stream::{Event, EventStream};
 use librpysight::point_cloud_renderer::{ProcessedEvent, TimeTaggerIpcHandler, AppState, PointDisplay, Channels, ChannelNames};
-use librpysight::setup_logger;
 use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
@@ -131,10 +130,28 @@ fn generate_mock_channels() -> Channels<PointLogger> {
     }
     Channels::new(plvec)
 }
+
+pub fn setup_logger() {
+    fern::Dispatch::new()
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "{date} [{target}] [{level}] {message}",
+                date = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.9f"),
+                target = record.target(),
+                level = record.level(),
+                message = message,
+            ));
+        })
+        .level(log::LevelFilter::Trace)
+        .chain(std::io::stdout())
+        .apply()
+        .unwrap();
+}
+
 /// Start a logger, generate a default config file (if given none) and generate
 /// a data stream from one of the CSV files.
 fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, File> {
-    setup_logger(Some(PathBuf::from("target/rpysight_test.log")));
+    setup_logger();
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
     let channels = generate_mock_channels();
@@ -176,8 +193,8 @@ fn stepwise_short_bidir_single_frame() {
         .with_line_ch(9)
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
-    app.populate_single_frame(None);
-    // to_writer_pretty(File::create("tests/data/short_batch_bidir_valid.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
+    app.start_acq_loop_for(10).unwrap();
+    // to_writer_pretty(File::create("tests/data/short_batch_bidir_valid.ron").unwrap(), &app.channels[ChannelNames::ChannelMerge], PrettyConfig::new()).unwrap();
     let original: PointLogger =
         from_reader(File::open("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
     assert_eq!(app.channels[ChannelNames::ChannelMerge], original);
@@ -194,8 +211,8 @@ fn stepwise_short_unidir_single_frame() {
         .with_bidir(Bidirectionality::Unidir)
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
-    app.populate_single_frame(None);
-    // to_writer_pretty(File::create("tests/data/short_batch_unidir_valid.ron").unwrap(), &app.channel_merge.renderer, PrettyConfig::new()).unwrap();
+    app.start_acq_loop_for(10).unwrap();
+    // to_writer_pretty(File::create("tests/data/short_batch_unidir_valid.ron").unwrap(), &app.channels[ChannelNames::ChannelMerge], PrettyConfig::new()).unwrap();
     let original: PointLogger =
         from_reader(File::open("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();
     assert_eq!(app.channels[ChannelNames::ChannelMerge], original);
@@ -214,7 +231,7 @@ fn stepwise_short_two_frames_bidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
     app.start_acq_loop_for(4).unwrap();
-    // to_writer_pretty(File::create("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap(), &app.channel_merge.renderer, PrettyConfig::new()).unwrap();
+    // to_writer_pretty(File::create("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap(), &app.channels[ChannelNames::ChannelMerge], PrettyConfig::new()).unwrap();
     let original: PointLogger = 
         from_reader(File::open("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
     assert_eq!(app.channels[ChannelNames::ChannelMerge], original);
@@ -233,7 +250,7 @@ fn stepwise_short_two_frames_unidir() {
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
     app.start_acq_loop_for(3).unwrap();
-    // to_writer_pretty(File::create("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap(), &app.channel_merge.renderer, PrettyConfig::new()).unwrap();
+    // to_writer_pretty(File::create("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap(), &app.channels[ChannelNames::ChannelMerge], PrettyConfig::new()).unwrap();
     let original: PointLogger =
         from_reader(File::open("tests/data/short_two_frames_batch_unidir_valid.ron").unwrap())
             .unwrap();
@@ -311,7 +328,7 @@ fn offset_with_lines() {
         .build();
     let mut app = setup(WITH_LINES_STREAM, Some(cfg));
     app.start_acq_loop_for(20).unwrap();
-    // to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.renderer, PrettyConfig::new()).unwrap();
+    // to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.channels[ChannelNames::ChannelMerge], PrettyConfig::new()).unwrap();
     let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines.ron").unwrap()).unwrap();  
     assert_eq!(original, app.channels[ChannelNames::ChannelMerge]);
 }

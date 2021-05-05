@@ -7,7 +7,6 @@ use std::ops::{Index, IndexMut};
 use anyhow::{Context, Result};
 use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch};
 use kiss3d::window::{State, Window};
-use kiss3d::text::Font;
 use nalgebra::{Point3, Point2};
 
 use crate::configuration::{AppConfig, DataType, Inputs};
@@ -70,12 +69,12 @@ pub struct Channels<T: PointDisplay> {
 impl<T: PointDisplay> Channels<T> {
     pub fn new(mut channels: Vec<T>) -> Self {
         assert!(channels.len() == 5);
-        Self { 
-            channel1: channels.remove(0), 
-            channel2: channels.remove(0), 
-            channel3: channels.remove(0), 
-            channel4: channels.remove(0), 
-            channel_merge: channels.remove(0), 
+        Self {
+            channel1: channels.remove(0),
+            channel2: channels.remove(0),
+            channel3: channels.remove(0),
+            channel4: channels.remove(0),
+            channel_merge: channels.remove(0),
         }
     }
 
@@ -135,7 +134,7 @@ impl PointDisplay for DisplayChannel {
         self.window.draw_point(&p, &c)
     }
 
-    fn render(&mut self) { 
+    fn render(&mut self) {
         self.window.render();
     }
 
@@ -229,7 +228,7 @@ impl<T: PointDisplay> AppState<T, File> {
                     ProcessedEvent::Displayed(p, c) => self.channels.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
                     ProcessedEvent::LineNewFrame => {
-                        info!("New frame due to line");
+                        info!("New frame due to line while parsing events from previous iter");
                         let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
                         self.time_to_coord.update_2d_data_for_next_frame();
                         return new_events_after_newframe
@@ -237,9 +236,9 @@ impl<T: PointDisplay> AppState<T, File> {
                     ProcessedEvent::PhotonNewFrame => {
                         let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
                         self.time_to_coord.update_2d_data_for_next_frame();
-                        self.event_to_coordinate(*event);
                         self.lines_vec.clear();
                         self.row_count = 0;
+                        self.event_to_coordinate(*event);
                         return new_events_after_newframe
                     }
                     ProcessedEvent::FirstLine(time) => {
@@ -288,11 +287,11 @@ impl<T: PointDisplay> AppState<T, File> {
                         events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
                         info!("We're in a photonewframe sit!");
                         self.time_to_coord.update_2d_data_for_next_frame();
-                        self.event_to_coordinate(event);
                         self.lines_vec.clear();
                         self.row_count = 0;
+                        self.event_to_coordinate(event);
                         break 'frame;
-                    }, 
+                    },
                     ProcessedEvent::LineNewFrame => {
                         info!("New frame due to line");
                         events_after_newframe = Some(event_stream.collect::<Vec<Event>>());

@@ -1,5 +1,6 @@
 /target
 Cargo.lock
+/.pytest_cache
 .vscode/
 *.pyc
 __tt_data_stream.dat
