@@ -202,11 +202,12 @@ impl<T: PointDisplay> AppState<T, File> {
             return ProcessedEvent::FirstLine(event.time);
         }
         let time = event.time;
+        // Look for the next line signal
         if self.line_count == self.rows_per_frame {
             self.line_count = 0;
             debug!("Here are the lines: {:#?}", self.lines_vec);
             self.lines_vec.clear();
-            ProcessedEvent::LineNewFrame
+            ProcessedEvent::FirstLine(time)
         } else {
             self.line_count += 1;
             self.lines_vec.push(time);
@@ -276,15 +277,7 @@ impl<T: PointDisplay> AppState<T, File> {
                 match self.event_to_coordinate(event) {
                     ProcessedEvent::Displayed(p, c) => self.channels.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
-                    ProcessedEvent::PhotonNewFrame => {
-                        events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
-                        info!("We're in a photonewframe sit! (too bad, we had {} till now)", self.line_count);
-                        self.time_to_coord.update_2d_data_for_next_frame(event.time);
-                        self.lines_vec.clear();
-                        self.line_count = 0;
-                        self.event_to_coordinate(event);
-                        break 'frame;
-                    },
+                    ProcessedEvent::PhotonNewFrame => { self.line_count = 0; break 'frame },
                     ProcessedEvent::LineNewFrame => {
                         info!("New frame due to line");
                         events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
@@ -306,8 +299,20 @@ impl<T: PointDisplay> AppState<T, File> {
         events_after_newframe
     }
 
-    fn look_for_next_frames_line<'a>(&self, event_stream: EventStreamIter<'a>) {
+    fn look_for_next_frames_line<'a>(&self, event_stream: EventStreamIter<'a>) -> EventStreamIter<'a> {
+        // events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
+        // info!("We're in a photonewframe sit! (too bad, we had {} lines till now)", self.line_count);
+        // match event_stream.position(|event| self.find_first_line(event)) {
+        //     Some(event) => {},
+        //     None => {event_stream };
+        // }
+        // self.time_to_coord.update_2d_data_for_next_frame(event.time);
+        // self.lines_vec.clear();
+        // self.line_count = 0;
+        // self.event_to_coordinate(event);
+        // events_af
         todo!()
+        
     }
 
     /// Verifies that the current event stream lies within the boundaries of
@@ -336,12 +341,17 @@ impl<T: PointDisplay> AppState<T, File> {
         }
     }
 
+    /// Main loop of the app. Following a bit of a setup, during each frame
+    /// loop we advance the photon stream iterator until the first line event,
+    /// and then we iterate over all of the photons of that frame, until we
+    /// detect the last of the photons or a new frame signal.
     pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
         self.acquire_stream_filehandle()?;
         self.time_to_coord = TimeToCoord::from_acq_params(&self.appconfig, 0);
         let mut events_after_newframe = None;
         for _ in 0..steps {
             debug!("Starting population");
+            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Calling render");
             self.channels.channel_merge.render();
@@ -349,17 +359,37 @@ impl<T: PointDisplay> AppState<T, File> {
         info!("Acq loop done");
         Ok(())
     }
+
+    fn advance_till_first_frame_line(&mut self, event_stream: Option<Vec<Event>>) -> Option<Vec<Event>> {
+        if let Some(ref previos_events) = event_stream {
+            let first_line = previos_events.iter().by_ref().find_map(|event| {
+                match self.inputs[event.channel] {
+                    DataType::Line => Some(event.time),
+                    _ => None,
+                }
+            });
+            self.lines_vec.clear();
+            self.line_count = 1;
+            self.time_to_coord.update_2d_data_for_next_frame(first_line.unwrap());
+            return event_stream
+        }
+        todo!()
+    }
 }
 
 impl AppState<DisplayChannel, File> {
-    /// Main
+    /// Main loop of the app. Following a bit of a setup, during each frame
+    /// loop we advance the photon stream iterator until the first line event,
+    /// and then we iterate over all of the photons of that frame, until we
+    /// detect the last of the photons or a new frame signal.
     pub fn start_inf_acq_loop(&mut self) -> Result<()> {
         self.acquire_stream_filehandle()?;
         self.time_to_coord = TimeToCoord::from_acq_params(&self.appconfig, 0);
         let mut events_after_newframe = None;
         while !self.channels.channel_merge.get_window().should_close() {
+            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
             events_after_newframe = self.populate_single_frame(events_after_newframe);
-            debug!("Calling render");
+            debug!("Starting render");
             // self.channel1.render();
             // self.channel2.render();
             // self.channel3.render();
