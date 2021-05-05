@@ -75,6 +75,8 @@ pub enum DataType {
     Line,
     TagLens,
     Laser,
+    /// A connected output which is unneeded in this experiment
+    Unwanted,
     Invalid,
 }
 
@@ -99,9 +101,7 @@ impl Inputs {
         let mut data = [DataType::Invalid; 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1];
         let mut set = std::collections::HashSet::<i32>::new();
         let mut used_channels = 0;
-        // Loop over a pair of input and the corresponding data type, but only
-        // register the inputs which are actually used, i.e. different than 0.
-        for (ch, dt) in vec![
+        let mut needed_channels = vec![
             config.pmt1_ch,
             config.pmt2_ch,
             config.pmt3_ch,
@@ -110,21 +110,28 @@ impl Inputs {
             config.line_ch,
             config.taglens_ch,
             config.laser_ch,
-        ]
-        .into_iter()
-        .zip(
-            vec![
-                DataType::Pmt1,
-                DataType::Pmt2,
-                DataType::Pmt3,
-                DataType::Pmt4,
-                DataType::Frame,
-                DataType::Line,
-                DataType::TagLens,
-                DataType::Laser,
-            ]
-            .into_iter(),
-        ) {
+        ];
+        let mut datatypes = vec![
+            DataType::Pmt1,
+            DataType::Pmt2,
+            DataType::Pmt3,
+            DataType::Pmt4,
+            DataType::Frame,
+            DataType::Line,
+            DataType::TagLens,
+            DataType::Laser,
+        ];
+
+        let num_unwanted_channels = config.ignored_channels.len();
+        let mut ignored_channels = vec![DataType::Unwanted; num_unwanted_channels];
+        needed_channels.append(&mut config.ignored_channels.clone());
+        datatypes.append(&mut ignored_channels);
+        assert!(needed_channels.len() == datatypes.len());
+        // Loop over a pair of input and the corresponding data type, but only
+        // register the inputs which are actually used, i.e. different than 0.
+        for (ch, dt) in needed_channels.into_iter()
+        .zip(datatypes).into_iter()
+        {
             if ch != 0 {
                 set.insert(ch);
                 data[(MAX_TIMETAGGER_INPUTS + ch) as usize] = dt;
@@ -162,6 +169,7 @@ impl Index<i32> for Inputs {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppConfig {
     pub(crate) filename: String,
+    pub(crate) ignored_channels: Vec<i32>,
     pub(crate) rows: u32,
     pub(crate) columns: u32,
     pub(crate) planes: u32,
@@ -251,6 +259,7 @@ impl AppConfig {
                 user_input.get_tag_channel(),
             ))
             .with_replay_existing(user_input.get_replay_existing())
+            .with_ignored_channels(convert_ignored_to_vec(user_input.get_ignored_channels()))
             .build())
     }
 
@@ -269,6 +278,15 @@ impl AppConfig {
             period: self.calc_frame_duration(),
         }
         .to_hz()
+    }
+}
+
+/// Converts a comma-separated list of numbers into channels
+fn convert_ignored_to_vec(ignored_str: &str) -> Vec<i32> {
+    if ignored_str.len() == 0 {
+        vec![]
+    } else {
+        ignored_str.trim_end_matches(",").replace(" ", "").split(",").map(|ch| ch.parse::<i32>().unwrap()).collect()
     }
 }
 
@@ -310,6 +328,7 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> 
         ChannelNumber::Channel16 => 16,
         ChannelNumber::Channel17 => 17,
         ChannelNumber::Channel18 => 18,
+        ChannelNumber::Ignore => 0,
         ChannelNumber::Disconnected => 0,
     }
 }
@@ -318,6 +337,7 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> 
 pub struct AppConfigBuilder {
     filename: String,
     point_color: Point3<f32>,
+    ignored_channels: Vec<i32>,
     rows: u32,
     columns: u32,
     planes: u32,
@@ -344,6 +364,7 @@ impl AppConfigBuilder {
         AppConfigBuilder {
             filename: "target/test.npy".to_string(),
             point_color: Point3::new(1.0f32, 1.0, 1.0),
+            ignored_channels: vec![],
             rows: 256,
             columns: 256,
             planes: 10,
@@ -368,6 +389,7 @@ impl AppConfigBuilder {
         AppConfig {
             filename: self.filename.clone(),
             point_color: self.point_color,
+            ignored_channels: self.ignored_channels.clone(),
             rows: self.rows,
             columns: self.columns,
             planes: self.planes,
@@ -497,6 +519,11 @@ impl AppConfigBuilder {
         self.replay_existing = replay_existing;
         self
     }
+
+    pub fn with_ignored_channels(&mut self, ignored_channels: Vec<i32>) -> &mut Self {
+        self.ignored_channels = ignored_channels;
+        self
+    }
 }
 
 #[cfg(test)]
@@ -525,6 +552,7 @@ mod tests {
             .with_line_ch(2)
             .with_taglens_ch(3)
             .with_replay_existing(false)
+            .with_ignored_channels(vec![])
             .clone()
     }
 
@@ -679,5 +707,29 @@ mod tests {
         let result =
             convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Rising));
         assert_eq!(result, 3);
+    }
+
+    #[test]
+    fn ignored_to_vec_standard() {
+        let test = "1,2, -3, -4";
+        let ret = convert_ignored_to_vec(test);
+        assert_eq!(ret, vec![1i32, 2, -3, -4]);
+    }
+
+    #[test]
+    fn ignored_to_vec_single() {
+        let test1 = "1";
+        let test2 = "1,";
+        let ret1 = convert_ignored_to_vec(test1);
+        let ret2 = convert_ignored_to_vec(test2);
+        assert_eq!(ret1, vec![1i32]);
+        assert_eq!(ret2, vec![1i32]);
+    }
+
+    #[test]
+    fn ignored_to_vec_empty() {
+        let test = "";
+        let ret = convert_ignored_to_vec(test);
+        assert_eq!(ret, Vec::<i32>::new());
     }
 }

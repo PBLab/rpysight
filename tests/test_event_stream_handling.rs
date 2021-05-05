@@ -1,25 +1,18 @@
 extern crate log;
-use std::{fs::read_to_string, path::PathBuf};
 use std::fs::File;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
-use arrow::{csv::Reader, record_batch::RecordBatch};
+use arrow::csv::Reader;
 use log::*;
 use nalgebra::Point3;
-use ron::{ser::{to_writer_pretty, PrettyConfig}, de::from_reader};
-use kiss3d::window::Window;
-use kiss3d::event;
-use kiss3d::camera::Camera;
-use kiss3d::renderer::Renderer;
+use ron::de::from_reader;
 use serde::{Serialize, Deserialize};
 
-use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Inputs, Period};
-use librpysight::event_stream::{Event, EventStream};
-use librpysight::point_cloud_renderer::{ProcessedEvent, TimeTaggerIpcHandler, AppState, PointDisplay, Channels, ChannelNames};
-use librpysight::rendering_helpers::{Picosecond, TimeCoordPair, TimeToCoord};
+use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Period};
+use librpysight::point_cloud_renderer::{AppState, PointDisplay, Channels, ChannelNames};
+use librpysight::rendering_helpers::{Picosecond, TimeCoordPair};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
 const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
@@ -95,32 +88,6 @@ fn test_file_to_stream() {
         info!("Reader initialized, writing data");
         stream_writer.write(&r.next().unwrap().unwrap()).unwrap();
     }
-}
-
-fn read_as_stream(fname: &str) -> StreamReader<File> {
-    StreamReader::try_new(File::open(fname).unwrap()).unwrap()
-}
-
-/// From https://stackoverflow.com/questions/40767815/how-do-i-check-whether-a-vector-is-equal-to-another-vector-that-contains-nan-and/40767977#40767977
-fn eq_with_nan_eq(a: f32, b: f32) -> bool {
-    (a.is_nan() && b.is_nan()) || (a == b)
-}
-
-/// From https://stackoverflow.com/questions/40767815/how-do-i-check-whether-a-vector-is-equal-to-another-vector-that-contains-nan-and/40767977#40767977
-fn eq_timecoordpair_with_nan_eq(a: TimeCoordPair, b: TimeCoordPair) -> bool {
-    (a.coord
-        .iter()
-        .zip(b.coord.iter())
-        .all(|(a, b)| eq_with_nan_eq(*a, *b)))
-        && (a.end_time == b.end_time)
-}
-
-/// From https://stackoverflow.com/questions/40767815/how-do-i-check-whether-a-vector-is-equal-to-another-vector-that-contains-nan-and/40767977#40767977
-fn timecoordpair_vec_compare(va: &[TimeCoordPair], vb: &[TimeCoordPair]) -> bool {
-    (va.len() == vb.len()) &&  // zip stops at the shortest
-     va.iter()
-       .zip(vb)
-       .all(|(a,b)| eq_timecoordpair_with_nan_eq(*a,*b))
 }
 
 fn generate_mock_channels() -> Channels<PointLogger> {

@@ -460,7 +460,7 @@ impl TimeToCoord {
     /// as binary search, hashmap or an interval tree.
     pub fn tag_to_coord_linear(&mut self, time: i64, ch: usize) -> ProcessedEvent {
         if time > self.max_frame_time {
-            info!(
+            debug!(
                 "Photon arrived after end of Frame! Our time: {}, Max time: {}",
                 time, self.max_frame_time
             );
@@ -503,7 +503,7 @@ impl TimeToCoord {
     /// simply trust in the data being not faulty.
     pub fn update_2d_data_for_next_frame(&mut self) {
         self.last_accessed_idx = 0;
-        debug!(
+        info!(
             "Populating next frame's data (it will start at {} because voxel delta ps is {}",
             self.next_frame_starts_at, self.voxel_delta_ps.frame
         );
@@ -516,7 +516,7 @@ impl TimeToCoord {
             self.max_frame_time + self.voxel_delta_ps.frame + self.voxel_delta_ps.row;
         self.last_taglens_time = 0;
         self.earliest_frame_time = self.data[0].end_time - self.voxel_delta_ps.column;
-        debug!("Done populating next frame, summary:\ntotal delta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
+        info!("Done populating next frame, summary:\ntotal delta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
     }
 
     /// Handles a new TAG lens start-of-cycle event

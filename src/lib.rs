@@ -19,8 +19,6 @@ extern crate lazy_static;
 use anyhow::Result;
 use directories::ProjectDirs;
 use iced::Settings;
-use kiss3d::{point_renderer::PointRenderer, renderer::Renderer};
-use kiss3d::window::Window;
 use nalgebra::Point3;
 use point_cloud_renderer::DisplayChannel;
 use pyo3::prelude::*;
@@ -28,7 +26,7 @@ use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder};
 use crate::gui::{ChannelNumber, EdgeDetected};
-use crate::point_cloud_renderer::{Channels, AppState, TimeTaggerIpcHandler};
+use crate::point_cloud_renderer::{Channels, AppState};
 
 const TT_DATA_STREAM: &str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";

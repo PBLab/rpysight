@@ -6,13 +6,13 @@ use std::ops::{Index, IndexMut};
 
 use anyhow::{Context, Result};
 use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch};
-use kiss3d::window::{State, Window};
-use nalgebra::{Point3, Point2};
+use kiss3d::window::Window;
+use nalgebra::Point3;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::rendering_helpers::{Picosecond, TimeToCoord};
 use crate::GLOBAL_OFFSET;
-use crate::event_stream::{EventStreamIter, Event, EventStream};
+use crate::event_stream::{Event, EventStream};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -408,6 +408,7 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
             DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
             DataType::Laser => self.time_to_coord.new_laser_event(event.time),
             DataType::Frame => ProcessedEvent::NoOp,
+            DataType::Unwanted => ProcessedEvent::NoOp,
             DataType::Invalid => {
                 warn!("Unsupported event: {:?}", event);
                 ProcessedEvent::NoOp

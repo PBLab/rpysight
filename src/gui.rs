@@ -1,5 +1,7 @@
 use std::path::PathBuf;
+use std::fmt::Write;
 
+use serde::{Serialize, Deserialize};
 use iced::{
     button, pick_list, text_input, Align, Application, Button, Checkbox, Clipboard, Column,
     Command, Container, Element, Image, Length, PickList, Row, Text, TextInput,
@@ -60,6 +62,8 @@ pub struct MainAppGui {
     taglens_edge_list: pick_list::State<EdgeDetected>,
     taglens_edge_selected: EdgeDetected,
     replay_existing: bool,
+    ignored_channels_input: text_input::State,
+    ignored_channels_value: String,
     run_button: button::State,
 }
 
@@ -135,6 +139,10 @@ impl MainAppGui {
     pub(crate) fn get_replay_existing(&self) -> bool {
         self.replay_existing
     }
+
+    pub(crate) fn get_ignored_channels(&self) -> &str {
+        &self.ignored_channels_value
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -165,11 +173,12 @@ pub enum Message {
     TagLensChanged(ChannelNumber),
     TagLensEdgeChanged(EdgeDetected),
     ReplayExistingChanged(bool),
+    IgnoredChannelsChanged(String),
     ButtonPressed,
     StartedAcquistion(()),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ChannelNumber {
     Channel1,
     Channel2,
@@ -189,6 +198,8 @@ pub enum ChannelNumber {
     Channel16,
     Channel17,
     Channel18,
+    /// This channel has an input but we wish to currently discard it
+    Ignore,
     Disconnected,
 }
 
@@ -199,6 +210,7 @@ impl std::fmt::Display for ChannelNumber {
             "{}",
             match self {
                 ChannelNumber::Disconnected => "Disconnected",
+                ChannelNumber::Ignore => "Ignore",
                 ChannelNumber::Channel1 => "Channel 1",
                 ChannelNumber::Channel2 => "Channel 2",
                 ChannelNumber::Channel3 => "Channel 3",
@@ -223,7 +235,7 @@ impl std::fmt::Display for ChannelNumber {
 }
 
 impl ChannelNumber {
-    const ALL: [ChannelNumber; 19] = [
+    const ALL: [ChannelNumber; 20] = [
         ChannelNumber::Disconnected,
         ChannelNumber::Channel1,
         ChannelNumber::Channel2,
@@ -243,6 +255,7 @@ impl ChannelNumber {
         ChannelNumber::Channel16,
         ChannelNumber::Channel17,
         ChannelNumber::Channel18,
+        ChannelNumber::Ignore,
     ];
 }
 
@@ -281,6 +294,12 @@ impl std::fmt::Display for EdgeDetected {
     }
 }
 
+fn vec_to_comma_sep_string(a: &[i32]) -> String {
+    let mut f = a.iter().fold(String::new(),|mut s,&n| {write!(s,"{},",n).ok(); s});
+    f.pop();
+    f
+}
+
 /// Converts the given picoseconds value to a miliseconds one.
 ///
 /// Used in the GUI, when converting the interal representation of the frame
@@ -311,6 +330,7 @@ impl Application for MainAppGui {
             fill_fraction_value: prev_config.fill_fraction.to_string(),
             frame_dead_time_value: ps_to_ms(prev_config.frame_dead_time).to_string(),
             replay_existing: prev_config.replay_existing,
+            ignored_channels_value: vec_to_comma_sep_string(&prev_config.ignored_channels),
             ..Default::default()
         };
         let pmt1 = channel_value_to_pair(prev_config.pmt1_ch);
@@ -451,6 +471,10 @@ impl Application for MainAppGui {
                 self.replay_existing = replay_existing;
                 Command::none()
             }
+            Message::IgnoredChannelsChanged(ignored_str) => {
+                self.ignored_channels_value = ignored_str;
+                Command::none()
+            }
             Message::ButtonPressed => Command::perform(
                 start_acquisition(PathBuf::from(DEFAULT_CONFIG_FNAME), AppConfig::from_user_input(self).expect("")),
                 Message::StartedAcquistion,
@@ -587,6 +611,21 @@ impl Application for MainAppGui {
             .align_items(Align::Center)
             .push(deadtime_label)
             .push(deadtime);
+
+        let ignored = TextInput::new(
+            &mut self.ignored_channels_input,
+            "Channels to ignore ('1, -4, ...')",
+            &self.ignored_channels_value,
+            Message::IgnoredChannelsChanged,
+        )
+        .padding(10)
+        .size(20);
+        let ignored_label = Text::new("Ignored channels");
+        let ignored_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(ignored_label)
+            .push(ignored);
 
         let pmt1 = PickList::new(
             &mut self.pmt1_pick_list,
@@ -789,6 +828,7 @@ impl Application for MainAppGui {
                     .push(taglens_input)
                     .push(taglens_edge),
             )
+            .push(ignored_row)
             .push(run_app);
 
         Container::new(content)
@@ -797,5 +837,25 @@ impl Application for MainAppGui {
             .center_x()
             .center_y()
             .into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vec_to_string_full() {
+        let v = vec![1i32, -2];
+        let f = vec_to_comma_sep_string(&v);
+        assert_eq!(f, "1,-2".to_string());
+    }
+
+    #[test]
+    fn vec_to_string_empty() {
+        let v = vec![];
+        let f = vec_to_comma_sep_string(&v);
+        assert_eq!(f, "".to_string());
+
     }
 }
