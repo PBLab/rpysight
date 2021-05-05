@@ -163,9 +163,6 @@ pub struct TimeToCoord {
     /// The end time for the frame. Useful to quickly check
     /// whether a time tag belongs in the next frame.
     max_frame_time: Picosecond,
-    /// Starting time of the next frame, including the dead
-    /// time between frames. An offset, if you will.
-    next_frame_starts_at: Picosecond,
     /// Deltas in ps of consecutive pixels, lines, etc.
     voxel_delta_ps: VoxelDelta<Picosecond>,
     /// Deltas in image space of consecutive pixels, lines, etc.
@@ -357,7 +354,6 @@ impl TimeToCoord {
             last_accessed_idx: 0,
             last_taglens_time: 0,
             max_frame_time,
-            next_frame_starts_at: max_frame_time + voxel_delta_ps.frame + voxel_delta_ps.row,
             voxel_delta_ps: *voxel_delta_ps,
             voxel_delta_im: *voxel_delta_im,
             earliest_frame_time: offset,
@@ -426,7 +422,6 @@ impl TimeToCoord {
             last_accessed_idx: 0,
             last_taglens_time: 0,
             max_frame_time,
-            next_frame_starts_at: offset + frame_duration + voxel_delta_ps.frame,
             voxel_delta_ps: *voxel_delta_ps,
             voxel_delta_im: *voxel_delta_im,
             earliest_frame_time: offset,
@@ -501,22 +496,15 @@ impl TimeToCoord {
     /// currently updates the exisitng data based on a guesstimation regarding
     /// data quality, i.e. we don't do any error checking what-so-ever, we
     /// simply trust in the data being not faulty.
-    pub fn update_2d_data_for_next_frame(&mut self) {
+    pub fn update_2d_data_for_next_frame(&mut self, offset: Picosecond) {
         self.last_accessed_idx = 0;
-        info!(
-            "Populating next frame's data (it will start at {} because voxel delta ps is {}",
-            self.next_frame_starts_at, self.voxel_delta_ps.frame
-        );
-        let delta_between_frames = self.frame_duration + self.voxel_delta_ps.frame;
         for pair in self.data.iter_mut() {
-            pair.end_time += delta_between_frames;
+            pair.end_time += offset;
         }
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
-        self.next_frame_starts_at =
-            self.max_frame_time + self.voxel_delta_ps.frame + self.voxel_delta_ps.row;
         self.last_taglens_time = 0;
         self.earliest_frame_time = self.data[0].end_time - self.voxel_delta_ps.column;
-        info!("Done populating next frame, summary:\ntotal delta: {}\nmax_frame_time: {}\nnext_frame_at: {}\nearliest_frame: {}\nframe_duration: {}", delta_between_frames, self.max_frame_time, self.next_frame_starts_at, self.earliest_frame_time, self.frame_duration);
+        info!("Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}\nframe_duration: {}", self.max_frame_time,self.earliest_frame_time, self.frame_duration);
     }
 
     /// Handles a new TAG lens start-of-cycle event
