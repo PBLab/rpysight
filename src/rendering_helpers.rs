@@ -496,14 +496,15 @@ impl TimeToCoord {
     /// currently updates the exisitng data based on a guesstimation regarding
     /// data quality, i.e. we don't do any error checking what-so-ever, we
     /// simply trust in the data being not faulty.
-    pub fn update_2d_data_for_next_frame(&mut self, offset: Picosecond) {
+    pub fn update_2d_data_for_next_frame(&mut self, next_frame_at: Picosecond) {
         self.last_accessed_idx = 0;
+        let offset = next_frame_at - self.earliest_frame_time;
         for pair in self.data.iter_mut() {
             pair.end_time += offset;
         }
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
         self.last_taglens_time = 0;
-        self.earliest_frame_time = self.data[0].end_time - self.voxel_delta_ps.column;
+        self.earliest_frame_time = next_frame_at;
         info!("Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}\nframe_duration: {}", self.max_frame_time,self.earliest_frame_time, self.frame_duration);
     }
 
