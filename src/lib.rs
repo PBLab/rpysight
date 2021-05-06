@@ -234,7 +234,6 @@ pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
     app.start_inf_acq_loop().expect("Some error during acq");
-    // app.start_acq_loop_for(1000).expect("Some error during acq");
 }
 
 /// Saves the current configuration to disk.
