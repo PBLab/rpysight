@@ -252,11 +252,7 @@ impl<T: PointDisplay> AppState<T, File> {
         // looking for the first line signal
         debug!("Starting a 'frame loop");
         'frame: loop {
-            let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => batch.expect("Couldn't extract batch from stream"),
-                None => break 'frame,
-            };
-            let event_stream = match self.get_event_stream(&batch) {
+            let event_stream = match self.load_stream() {
                 Some(stream) => stream,
                 None => continue,
             };
@@ -360,20 +356,64 @@ impl<T: PointDisplay> AppState<T, File> {
         Ok(())
     }
 
+    /// Returns the event stream only from the first event after the first line
+    /// of the frame.
+    ///
+    /// When it finds the first line it also updates the internal state of this
+    /// object with this knowledge.
     fn advance_till_first_frame_line(&mut self, event_stream: Option<Vec<Event>>) -> Option<Vec<Event>> {
         if let Some(ref previos_events) = event_stream {
+            info!("Looking for the first line in the previous event stream");
             let first_line = previos_events.iter().by_ref().find_map(|event| {
                 match self.inputs[event.channel] {
                     DataType::Line => Some(event.time),
                     _ => None,
                 }
             });
-            self.lines_vec.clear();
-            self.line_count = 1;
-            self.time_to_coord.update_2d_data_for_next_frame(first_line.unwrap());
-            return event_stream
+            if first_line.is_some() {
+                self.lines_vec.clear();
+                self.line_count = 1;
+                self.time_to_coord.update_2d_data_for_next_frame(first_line.unwrap());
+                return event_stream
+            };
         }
-        todo!()
+        // We'll look for the first line indefinitely
+        loop {
+            info!("Looking for the first line in a newly acquired stream");
+            let event_stream = match self.load_stream() {
+                Some(stream) => stream,
+                None => continue,
+            };
+            let first_line = event_stream.iter().by_ref().find_map(|event| {
+                match self.inputs[event.channel] {
+                    DataType::Line => Some(event.time),
+                    _ => None,
+                }
+            });
+            if first_line.is_some() {
+                self.lines_vec.clear();
+                self.line_count = 1;
+                self.time_to_coord.update_2d_data_for_next_frame(first_line.unwrap());
+                return Some(event_stream.iter().collect::<Vec<Event>>())
+            }
+        }
+    }
+
+    /// Read the data stream from disk.
+    ///
+    /// Hooks up to the IPC data stream, reads it (as a RecordBatch) and
+    /// converts it to an EventStream. If there's no data waiting we'll
+    /// continue trying later.
+    fn load_stream(&mut self) -> Option<EventStream> {
+        let batch = match self.data_stream.as_mut().unwrap().next() {
+            Some(batch) => batch.expect("Couldn't extract batch from stream"),
+            None => return None,
+        };
+        let event_stream = match self.get_event_stream(&batch) {
+            Some(stream) => stream,
+            None => return None,
+        };
+        Some(event_stream) 
     }
 }
 
