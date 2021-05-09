@@ -182,8 +182,9 @@ def run_tagger(cfg: str):
     # channels = [1, 2]
     # tagger.setTestSignal(channels, True)
     tag = RealTimeRendering(tagger, channels, config['filename'])
-    _ = TimeTagger.FileWriter(tagger, add_fname_suffix(config['filename']), [CHAN_START, CHAN_STOP])
-    tag.startFor(int(10e12))
+    stream_fname = add_fname_suffix(config['filename'])
+    _ = TimeTagger.FileWriter(tagger, stream_fname, [CHAN_START, CHAN_STOP])
+    # tag.startFor(int(10e12))
     tag.waitUntilFinished()
 
 
@@ -192,6 +193,6 @@ def replay_existing(cfg: str):
     config = toml.loads(cfg)
     tagger = TimeTagger.createTimeTaggerVirtual()
     _ = RealTimeRendering(tagger, None, None)
-    tagger.replay(config['filename'])
+    tagger.replay(config['filename'], queue=False)
     tagger.waitForCompletion(timeout=-1)
 
