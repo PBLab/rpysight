@@ -289,9 +289,10 @@ impl TimeToCoord {
     /// This vector is essentially identical to a flattened version of all
     /// pixels of the image, with two main differences: The first, it takes
     /// into account the bidirectionality of the scanner, i.e. odd rows are
-    /// 'concatenated' in reverse. The second, per frame it has an extra "row"
-    /// and an extra column that should contain photons arriving between
-    /// frames and while the scanner was rotating, respectively.
+    /// 'concatenated' in reverse and are given a phase shift. The second, per
+    /// frame it has an extra "row" and an extra column that should contain 
+    /// photons arriving between frames and while the scanner was rotating,
+    /// respectively.
     ///
     /// What this function does is traverse all cells of the vector and
     /// populate them with the mapping ps -> coordinate. It's also aware of the
@@ -322,6 +323,7 @@ impl TimeToCoord {
         let nan = column_deltas_imagespace_rev.remove(0);
         column_deltas_imagespace_rev.push(nan);
         let column_deltas_imagespace_rev = DVector::from_vec(column_deltas_imagespace_rev);
+        let column_deltas_ps_bidir = &column_deltas_ps.add_scalar(-2000000);  // Line shift
         let mut row_coord: f32;
         for row in (0..config.rows).step_by(2) {
             // Start with the unidir row
@@ -339,7 +341,7 @@ impl TimeToCoord {
             TimeToCoord::push_pair_unidir(
                 &mut snake,
                 &column_deltas_imagespace_rev,
-                &column_deltas_ps,
+                &column_deltas_ps_bidir,
                 row_coord,
                 line_offset,
             );
