@@ -376,6 +376,9 @@ impl AppState<DisplayChannel, File> {
         self.acquire_stream_filehandle()?;
         self.time_to_coord = TimeToCoord::from_acq_params(&self.appconfig, 0);
         let mut events_after_newframe = None;
+        let mut frame_num = 0u8;
+        let mut single_img: Vec<u8> = Vec::with_capacity(1000);
+        let mut all_images: Vec<u8> = Vec::with_capacity(10000);
         while !self.channels.channel_merge.get_window().should_close() {
             events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
             events_after_newframe = self.populate_single_frame(events_after_newframe);
@@ -385,6 +388,10 @@ impl AppState<DisplayChannel, File> {
             // self.channel3.render();
             // self.channel4.render();
             self.channels.channel_merge.render();
+            if frame_num == 9 {
+                let img = self.channels.channel_merge.get_window().snap(&mut single_img);
+                frame_num = 0;
+            } else { frame_num += 1; };
         };
         Ok(())
     }
