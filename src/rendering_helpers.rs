@@ -187,7 +187,11 @@ impl TimeToCoord {
     pub fn from_acq_params(config: &AppConfig, offset: Picosecond) -> TimeToCoord {
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
         let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
-        let snake = TimeToCoord::build_snake(&config);
+        let mut snake = TimeToCoord::build_snake(&config);
+        snake.push(TimeCoordPair::new(
+            offset,
+            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
+        ));
         if config.planes == 1 {
             let (mut column_deltas_ps, column_deltas_imagespace) =
                 TimeToCoord::prep_snake_2d_metadata(
@@ -216,11 +220,17 @@ impl TimeToCoord {
                 ),
             }
         } else {
+            let (mut column_deltas_ps, column_deltas_imagespace) =
+                TimeToCoord::prep_snake_3d_metadata(
+                    config.columns as usize,
+                    &voxel_delta_ps,
+                    &voxel_delta_im,
+                );
             match config.bidir {
                 Bidirectionality::Bidir => {
-                    TimeToCoord::generate_snake_3d(&config, &voxel_delta_ps, &voxel_delta_im)
+                    TimeToCoord::generate_snake_3d_bidir(&config, &voxel_delta_ps, &voxel_delta_im)
                 }
-                Bidirectionality::Unidir => {
+                Bidirectionality::Unidir => TimeToCoord::generate_snake_3d_bidir(&config, &voxel_delta_ps, &voxel_delta_im)
                     todo!()
                 }
             }
@@ -258,6 +268,10 @@ impl TimeToCoord {
             column_deltas_imagespace.add_scalar(-1.0).insert_rows(num_columns, 1, f32::NAN);
         info!("2d snake metadata prepped");
         (column_deltas_ps, column_deltas_imagespace)
+    }
+
+    fn prep_snake_3d_metadata(num_columns: usize, voxel_delta_ps: &VoxelDelta<Picosecond>, voxel_delta_im: &VoxelDelta<f32>) -> (DVector<Picosecond>, DVector<f32>) {
+        todo!
     }
 
     /// Create an empty snake to be later populated by the 'generate' methods
@@ -308,10 +322,6 @@ impl TimeToCoord {
         offset: Picosecond,
     ) -> TimeToCoord {
         // Add the cell capturing all photons arriving between frames
-        snake.push(TimeCoordPair::new(
-            offset,
-            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
-        ));
         let deadtime_during_rotation = column_deltas_ps[column_deltas_ps.len() - 1];
         let mut line_offset: Picosecond = offset;
         let mut column_deltas_imagespace_rev: Vec<f32> = (&column_deltas_imagespace
@@ -397,10 +407,6 @@ impl TimeToCoord {
         offset: Picosecond,
     ) -> TimeToCoord {
         // Add the cell capturing all photons arriving between frames
-        snake.push(TimeCoordPair::new(
-            offset,
-            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
-        ));
         let line_len = column_deltas_ps.len();
         let offset_per_row = column_deltas_ps[line_len - 1];
         let mut line_offset: Picosecond = offset;
@@ -431,7 +437,15 @@ impl TimeToCoord {
         }
     }
 
-    fn generate_snake_3d(
+    fn generate_snake_3d_bidir(
+        _config: &AppConfig,
+        _voxel_delta_ps: &VoxelDelta<Picosecond>,
+        _voxel_delta_im: &VoxelDelta<f32>,
+    ) -> TimeToCoord {
+        todo!()
+    }
+
+    fn generate_snake_3d_unidir(
         _config: &AppConfig,
         _voxel_delta_ps: &VoxelDelta<Picosecond>,
         _voxel_delta_im: &VoxelDelta<f32>,
