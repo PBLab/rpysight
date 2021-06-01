@@ -192,13 +192,13 @@ impl TimeToCoord {
             offset,
             ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
         ));
+        let (mut column_deltas_ps, column_deltas_imagespace) =
+            TimeToCoord::construct_snakes_of_single_row(
+                config.columns as usize,
+                &voxel_delta_ps,
+                &voxel_delta_im,
+            );
         if config.planes == 1 {
-            let (mut column_deltas_ps, column_deltas_imagespace) =
-                TimeToCoord::prep_snake_2d_metadata(
-                    config.columns as usize,
-                    &voxel_delta_ps,
-                    &voxel_delta_im,
-                );
             match config.bidir {
                 Bidirectionality::Bidir => TimeToCoord::generate_snake_2d_bidir_from_metadata(
                     &config,
@@ -220,30 +220,26 @@ impl TimeToCoord {
                 ),
             }
         } else {
-            let (mut column_deltas_ps, column_deltas_imagespace) =
-                TimeToCoord::prep_snake_3d_metadata(
-                    config.columns as usize,
-                    &voxel_delta_ps,
-                    &voxel_delta_im,
-                );
+            let (mut plane_deltas_ps, plane_deltas_imagespace) = TimeToCoord::construct_snakes_of_single_plane(config.planes as usize, &voxel_delta_ps, &voxel_delta_im);
             match config.bidir {
                 Bidirectionality::Bidir => {
-                    TimeToCoord::generate_snake_3d_bidir(&config, &voxel_delta_ps, &voxel_delta_im)
+                    TimeToCoord::generate_snake_3d_bidir(&config, &voxel_delta_ps, &voxel_delta_im, &mut plane_deltas_ps, &plane_deltas_imagespace)
                 }
-                Bidirectionality::Unidir => TimeToCoord::generate_snake_3d_bidir(&config, &voxel_delta_ps, &voxel_delta_im)
+                Bidirectionality::Unidir => TimeToCoord::generate_snake_3d_bidir(&config, &voxel_delta_ps, &voxel_delta_im, &mut plane_deltas_ps, &plane_deltas_imagespace)
                     todo!()
                 }
             }
         }
     }
 
-    /// Aggregate and calculate metadata for generating the 1D vector of event
-    /// arrival times.
+    /// Generate the per-row snake vectors.
     ///
-    /// To make such a snake we have to get the correct image dimensions and
-    /// then populate the 'subsnakes' that will be used as a basis for the
-    /// final snake.
-    fn prep_snake_2d_metadata(
+    /// Each row of the final snake is similar to its predecessor, with the
+    /// values of the end time fields incremented by this row's offset. This
+    /// method generates this general vector - once for the ps data and one for
+    /// the pixel data - and sends it to be copied multiple times with slight
+    /// changes later on.
+    fn construct_snakes_of_single_row(
         num_columns: usize,
         voxel_delta_ps: &VoxelDelta<Picosecond>,
         voxel_delta_im: &VoxelDelta<f32>,
@@ -271,7 +267,7 @@ impl TimeToCoord {
     }
 
     fn prep_snake_3d_metadata(num_columns: usize, voxel_delta_ps: &VoxelDelta<Picosecond>, voxel_delta_im: &VoxelDelta<f32>) -> (DVector<Picosecond>, DVector<f32>) {
-        todo!
+        let column_deltas_ps = DVector::<Picosecond>::from_fn(num_columns
     }
 
     /// Create an empty snake to be later populated by the 'generate' methods
@@ -401,7 +397,7 @@ impl TimeToCoord {
         config: &AppConfig,
         voxel_delta_ps: &VoxelDelta<Picosecond>,
         voxel_delta_im: &VoxelDelta<f32>,
-        mut snake: Vec<TimeCoordPair>,
+        snake: Vec<TimeCoordPair>,
         column_deltas_ps: &mut DVector<Picosecond>,
         column_deltas_imagespace: &DVector<f32>,
         offset: Picosecond,
@@ -438,17 +434,29 @@ impl TimeToCoord {
     }
 
     fn generate_snake_3d_bidir(
-        _config: &AppConfig,
-        _voxel_delta_ps: &VoxelDelta<Picosecond>,
-        _voxel_delta_im: &VoxelDelta<f32>,
+        config: &AppConfig,
+        voxel_delta_ps: &VoxelDelta<Picosecond>,
+        voxel_delta_im: &VoxelDelta<f32>,
+        snake: Vec<TimeToCoord>,
+        column_deltas_ps: &mut DVector<Picosecond>,
+        column_deltas_im: &DVector<f32>,
+        plane_deltas_ps: &mut DVector<Picosecond>,
+        plane_deltas_im: &DVector<f32>,
+        offset: Picosecond,
     ) -> TimeToCoord {
         todo!()
     }
 
     fn generate_snake_3d_unidir(
-        _config: &AppConfig,
-        _voxel_delta_ps: &VoxelDelta<Picosecond>,
-        _voxel_delta_im: &VoxelDelta<f32>,
+        config: &AppConfig,
+        voxel_delta_ps: &VoxelDelta<Picosecond>,
+        voxel_delta_im: &VoxelDelta<f32>,
+        snake: Vec<TimeToCoord>,
+        column_deltas_ps: &mut DVector<Picosecond>,
+        column_deltas_im: &DVector<f32>,
+        plane_deltas_ps: &mut DVector<Picosecond>,
+        plane_deltas_im: &DVector<f32>,
+        offset: Picosecond,
     ) -> TimeToCoord {
         todo!()
     }
