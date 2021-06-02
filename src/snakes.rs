@@ -117,6 +117,132 @@ impl TimeCoordPair {
     }
 }
 
+/// Behavior related to the 1D snake which contains the allocated photon data.
+pub trait Snake {
+    /// The snake's cells data type - probably a TimeCoordPair
+    type DataStore;
+    
+    /// Returns the value assigned to the snake's capacity
+    ///
+    /// For 2D imaging it's num_rows * (num_columns + 1), and for 3D we add
+    /// in the number of planes.
+    ///
+    /// These numbers take into account a cell before each frame which captures
+    /// photons arriving between frames, and a cell we remove from the last row
+    /// which is not needed and a cell that is added so that we don't over-
+    /// allocate.
+    fn calc_snake_length(config: &AppConfig) -> usize;
+
+    /// Create an empty snake to be later populated by the 'generate' methods
+    fn allocate_snake(&self, config: &AppConfig) -> Vec<Self::DataStore> {
+        let capacity = Self::calc_snake_length(config);
+        Vec::<Self::DataStore>::with_capacity(capacity)
+    }
+
+    /// Generate the per-row snake vectors for the Picosecond part.
+    ///
+    /// Each row of the final snake is similar to its predecessor, with the
+    /// values of the end time fields incremented by this row's offset. This
+    /// method generates this general vector - once for the ps data and one for
+    /// the pixel data - and sends it to be copied multiple times with slight
+    /// changes later on.
+    fn construct_row_ps_snake(&self, num_columns: usize, voxel_delta_ps: &VoxelDelta<Picosecond>) -> DVector<Picosecond> {
+        // We add to the naive capacity 1 due to the cell containing all events
+        // arriving in between frames. The number of columns for the capacity
+        // calculation includes a fake column containing the photons arriving
+        // during mirror rotation. Their coordinate will contain a NaN value,
+        // which means that it will not be rendered.
+        let column_deltas_ps = DVector::<Picosecond>::from_fn(num_columns, |i, _| {
+            (i as Picosecond) * voxel_delta_ps.column + voxel_delta_ps.column
+        });
+        // Manually add the cell corresponding to events arriving during mirror
+        // rotation
+        let end_of_rotation_value = column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
+        let column_deltas_ps = column_deltas_ps.insert_rows(num_columns, 1, end_of_rotation_value);
+        column_deltas_ps
+    }
+
+    /// Generate the per-row snake vectors for the imagespace part.
+    ///
+    /// Each row of the final snake is similar to its predecessor, with the
+    /// values of the end time fields incremented by this row's offset. This
+    /// method generates this general vector - once for the ps data and one for
+    /// the pixel data - and sends it to be copied multiple times with slight
+    /// changes later on.
+    fn construct_row_im_snake(&self, num_columns: usize, voxel_delta_im: &VoxelDelta<f32>) -> DVector<f32> {
+        let column_deltas_imagespace =
+            DVector::<f32>::from_fn(num_columns, |i, _| ((i as f32) * voxel_delta_im.column));
+        // The events during mirror rotation will be discarded - The NaN takes
+        // care of that
+        let column_deltas_imagespace =
+            column_deltas_imagespace.add_scalar(-1.0).insert_rows(num_columns, 1, f32::NAN);
+        column_deltas_imagespace
+    }
+
+    /// Generate an imagespace row snake for the bidirectional rows.
+    ///
+    /// The odd rows should have the order of the cells in their snakes
+    /// reversed.
+    fn reverse_row_imagespace(&self, column_deltas_imagespace: &DVector<f32>) -> DVector<f32> {
+        let mut column_deltas_imagespace_rev: Vec<f32> = (column_deltas_imagespace
+            .iter()
+            .rev()
+            .copied()
+            .collect::<Vec<f32>>())
+            .clone();
+        let nan = column_deltas_imagespace_rev.remove(0);
+        column_deltas_imagespace_rev.push(nan);
+        DVector::from_vec(column_deltas_imagespace_rev)
+    }
+
+    /// Generate a row Picosecond snake for the bidirectional rows.
+    ///
+    /// The odd rows should have the order of the cells in their snakes
+    /// reversed.
+    fn reverse_row_picosecond(&self, column_deltas_ps: &DVector<Picosecond>, line_shift: Picosecond) -> DVector<Picosecond> {
+        column_deltas_ps.add_scalar(line_shift)
+    }
+
+    /// Update the existing data to accommodate the new frame.
+    ///
+    /// This function is triggered from the 'tag_to_coord' method once an event
+    /// with a time tag later than the last possible voxel is detected. It
+    /// currently updates the exisitng data based on a guesstimation regarding
+    /// data quality, i.e. we don't do any error checking what-so-ever, we
+    /// simply trust in the data being not faulty.
+    fn update_snake_for_next_frame(&mut self, next_frame_at: Picosecond);
+    
+    /// Handle a time tag by finding its corresponding coordinate in image
+    /// space using linear search.
+    ///
+    /// The arriving time tag should have a coordinate associated with it. To
+    /// find it we traverse the boundary vector (snake) until we find the
+    /// coordinate that has an end time longer than the specified time. If the
+    /// tag has a time longer than the end of the current frame this function
+    /// is also in charge of calling the 'update' method to generate a new
+    /// snake for the next frame.
+    ///
+    /// This implementation is based on linear search because it's assumed that
+    /// during peak event rates most pixels (snake cells) will be populated by
+    /// at least one event, which means that this search will be stopped after
+    /// a single step, or perhaps two. This should, in theory, be faster than
+    /// other options for this algorithm (which are currently unexplored), such
+    /// as binary search, hashmap or an interval tree.
+    fn time_to_coord_linear(&mut self, time: i64, ch: usize) -> ProcessedEvent;
+
+    /// Handles a new TAG lens start-of-cycle event
+    fn new_taglens_period(&self, _time: i64) -> ProcessedEvent {
+        ProcessedEvent::NoOp
+    }
+
+    fn new_laser_event(&self, _time: i64) -> ProcessedEvent {
+        ProcessedEvent::NoOp
+    }
+
+    fn dump(&self, _time: i64) -> ProcessedEvent {
+        ProcessedEvent::NoOp
+    }
+}
 /// Data and logic for finding the image-space coordinates for the given
 /// time tags.
 ///
@@ -152,6 +278,29 @@ impl TimeCoordPair {
 /// suitable time -> coordinate conversion we should save some lookup time.
 #[derive(Debug)]
 pub struct TwoDimensionalSnake {
+    /// A vector of end times with their corresponding image-space
+    /// coordinates.
+    data: Vec<TimeCoordPair>,
+    /// The index in data that was last used to retrieve a
+    /// coordinates. We keep it to look for the next matching end time only from
+    /// that value onward.
+    last_accessed_idx: usize,
+    last_taglens_time: Picosecond,
+    /// The end time for the frame. Useful to quickly check
+    /// whether a time tag belongs in the next frame.
+    max_frame_time: Picosecond,
+    /// Deltas in ps of consecutive pixels, lines, etc.
+    voxel_delta_ps: VoxelDelta<Picosecond>,
+    /// Deltas in image space of consecutive pixels, lines, etc.
+    voxel_delta_im: VoxelDelta<f32>,
+    /// The earliest time of the first voxel
+    pub earliest_frame_time: Picosecond,
+    /// The time it takes the software to finish a full frame, not including
+    /// dead time between frames
+    frame_duration: Picosecond,
+}
+
+pub struct ThreeDimensionalSnake {
     /// A vector of end times with their corresponding image-space
     /// coordinates.
     data: Vec<TimeCoordPair>,
@@ -455,168 +604,12 @@ impl TwoDimensionalSnake {
             frame_duration,
         }
     }
-
-    fn generate_snake_3d_bidir(
-        config: &AppConfig,
-        voxel_delta_ps: &VoxelDelta<Picosecond>,
-        voxel_delta_im: &VoxelDelta<f32>,
-        snake: Vec<TimeCoordPair>,
-        column_deltas_ps: &mut DVector<Picosecond>,
-        column_deltas_im: &DVector<f32>,
-        plane_deltas_ps: &mut DVector<Picosecond>,
-        plane_deltas_im: &DVector<f32>,
-        offset: Picosecond,
-    ) -> TwoDimensionalSnake {
-        // I want to refactor this part to have a TwoDimensionalSnake
-        // and a ThreeDimensionalSnake, both implementing the Snake trait. Then
-        // I'll need to make AppState generic over this new trait. Each of
-        // these two structs will need to have a separate impl for bidir and
-        // unidir data, but this might be solvable at the trait level. Finally
-        // I'll need to add and change many tests...
-        todo!()
-    }
-
-    fn generate_snake_3d_unidir(
-        config: &AppConfig,
-        voxel_delta_ps: &VoxelDelta<Picosecond>,
-        voxel_delta_im: &VoxelDelta<f32>,
-        snake: Vec<TimeCoordPair>,
-        column_deltas_ps: &mut DVector<Picosecond>,
-        column_deltas_im: &DVector<f32>,
-        plane_deltas_ps: &mut DVector<Picosecond>,
-        plane_deltas_im: &DVector<f32>,
-        offset: Picosecond,
-    ) -> TwoDimensionalSnake {
-        todo!()
-    }
-
-
-    /// Handles a new TAG lens start-of-cycle event
-    pub fn new_taglens_period(&self, _time: i64) -> ProcessedEvent {
-        ProcessedEvent::NoOp
-    }
-
-    pub fn new_laser_event(&self, _time: i64) -> ProcessedEvent {
-        ProcessedEvent::NoOp
-    }
-
-    pub fn dump(&self, _time: i64) -> ProcessedEvent {
-        ProcessedEvent::NoOp
-    }
 }
 
-pub trait Snake {
-    /// The snake's data type - probably a TimeCoordPair
-    type DataStore;
-    
-    /// Returns the value assigned to the snake's capacity
-    ///
-    /// For 2D imaging it's num_rows * (num_columns + 1), and for 3D we add
-    /// in the number of planes.
-    ///
-    /// These numbers take into account a cell before each frame which captures
-    /// photons arriving between frames, and a cell we remove from the last row
-    /// which is not needed and a cell that is added so that we don't over-
-    /// allocate.
-    fn calc_snake_length(config: &AppConfig) -> usize;
+impl Snake for ThreeDimensionalSnake {
 
-    /// Create an empty snake to be later populated by the 'generate' methods
-    fn allocate_snake(&self, config: &AppConfig) -> Vec<Self::DataStore> {
-        let capacity = Self::calc_snake_length(config);
-        Vec::<Self::DataStore>::with_capacity(capacity)
-    }
-
-    /// Generate the per-row snake vectors for the Picosecond part.
-    ///
-    /// Each row of the final snake is similar to its predecessor, with the
-    /// values of the end time fields incremented by this row's offset. This
-    /// method generates this general vector - once for the ps data and one for
-    /// the pixel data - and sends it to be copied multiple times with slight
-    /// changes later on.
-    fn construct_row_ps_snake(&self, num_columns: usize, voxel_delta_ps: &VoxelDelta<Picosecond>) -> DVector<Picosecond> {
-        // We add to the naive capacity 1 due to the cell containing all events
-        // arriving in between frames. The number of columns for the capacity
-        // calculation includes a fake column containing the photons arriving
-        // during mirror rotation. Their coordinate will contain a NaN value,
-        // which means that it will not be rendered.
-        let column_deltas_ps = DVector::<Picosecond>::from_fn(num_columns, |i, _| {
-            (i as Picosecond) * voxel_delta_ps.column + voxel_delta_ps.column
-        });
-        // Manually add the cell corresponding to events arriving during mirror
-        // rotation
-        let end_of_rotation_value = column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
-        let column_deltas_ps = column_deltas_ps.insert_rows(num_columns, 1, end_of_rotation_value);
-        column_deltas_ps
-    }
-
-    /// Generate the per-row snake vectors for the imagespace part.
-    ///
-    /// Each row of the final snake is similar to its predecessor, with the
-    /// values of the end time fields incremented by this row's offset. This
-    /// method generates this general vector - once for the ps data and one for
-    /// the pixel data - and sends it to be copied multiple times with slight
-    /// changes later on.
-    fn construct_row_im_snake(&self, num_columns: usize, voxel_delta_im: &VoxelDelta<f32>) -> DVector<f32> {
-        let column_deltas_imagespace =
-            DVector::<f32>::from_fn(num_columns, |i, _| ((i as f32) * voxel_delta_im.column));
-        // The events during mirror rotation will be discarded - The NaN takes
-        // care of that
-        let column_deltas_imagespace =
-            column_deltas_imagespace.add_scalar(-1.0).insert_rows(num_columns, 1, f32::NAN);
-        column_deltas_imagespace
-    }
-
-    /// Generate an imagespace row snake for the bidirectional rows.
-    ///
-    /// The odd rows should have the order of the cells in their snakes
-    /// reversed.
-    fn reverse_row_imagespace(&self, column_deltas_imagespace: &DVector<f32>) -> DVector<f32> {
-        let mut column_deltas_imagespace_rev: Vec<f32> = (column_deltas_imagespace
-            .iter()
-            .rev()
-            .copied()
-            .collect::<Vec<f32>>())
-            .clone();
-        let nan = column_deltas_imagespace_rev.remove(0);
-        column_deltas_imagespace_rev.push(nan);
-        DVector::from_vec(column_deltas_imagespace_rev)
-    }
-
-    /// Generate a row Picosecond snake for the bidirectional rows.
-    ///
-    /// The odd rows should have the order of the cells in their snakes
-    /// reversed.
-    fn reverse_row_picosecond(&self, column_deltas_ps: &DVector<Picosecond>, line_shift: Picosecond) -> DVector<Picosecond> {
-        column_deltas_ps.add_scalar(line_shift)
-    }
-
-    /// Update the existing data to accommodate the new frame.
-    ///
-    /// This function is triggered from the 'tag_to_coord' method once an event
-    /// with a time tag later than the last possible voxel is detected. It
-    /// currently updates the exisitng data based on a guesstimation regarding
-    /// data quality, i.e. we don't do any error checking what-so-ever, we
-    /// simply trust in the data being not faulty.
-    fn update_snake_for_next_frame(&mut self, next_frame_at: Picosecond);
-    
-    /// Handle a time tag by finding its corresponding coordinate in image
-    /// space using linear search.
-    ///
-    /// The arriving time tag should have a coordinate associated with it. To
-    /// find it we traverse the boundary vector (snake) until we find the
-    /// coordinate that has an end time longer than the specified time. If the
-    /// tag has a time longer than the end of the current frame this function
-    /// is also in charge of calling the 'update' method to generate a new
-    /// snake for the next frame.
-    ///
-    /// This implementation is based on linear search because it's assumed that
-    /// during peak event rates most pixels (snake cells) will be populated by
-    /// at least one event, which means that this search will be stopped after
-    /// a single step, or perhaps two. This should, in theory, be faster than
-    /// other options for this algorithm (which are currently unexplored), such
-    /// as binary search, hashmap or an interval tree.
-    fn time_to_coord_linear(&mut self, time: i64, ch: usize) -> ProcessedEvent;
 }
+
 
 #[cfg(test)]
 mod tests {

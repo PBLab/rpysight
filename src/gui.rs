@@ -8,7 +8,7 @@ use iced::{
 };
 
 use crate::{DEFAULT_CONFIG_FNAME, channel_value_to_pair, start_acquisition};
-use crate::{configuration::AppConfig, rendering_helpers::Picosecond};
+use crate::{configuration::AppConfig, snakes::Picosecond};
 
 #[derive(Default)]
 pub struct MainAppGui {

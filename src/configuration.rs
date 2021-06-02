@@ -7,7 +7,7 @@ use nalgebra::Point3;
 use serde::{Deserialize, Serialize};
 
 use crate::gui::{ChannelNumber, EdgeDetected, MainAppGui};
-use crate::rendering_helpers::Picosecond;
+use crate::snakes::Picosecond;
 use crate::UserInputError;
 
 /// Picosecond and Hz aware period

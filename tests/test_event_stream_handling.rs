@@ -12,7 +12,7 @@ use serde::{Serialize, Deserialize};
 
 use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Period};
 use librpysight::point_cloud_renderer::{AppState, PointDisplay, Channels, ChannelNames};
-use librpysight::rendering_helpers::{Picosecond, TimeCoordPair};
+use librpysight::snakes::{Picosecond, TimeCoordPair};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
 const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
