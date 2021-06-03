@@ -139,6 +139,14 @@ pub trait Snake {
         Vec::<Self::DataStore>::with_capacity(capacity)
     }
 
+    fn earliest_frame_time(&self) -> Picosecond;
+
+    /// Main initialization method of this object.
+    ///
+    /// The D parameter is used to define the dimensionality of the rendered
+    /// volume - 2D or 3D.
+    fn from_acq_params<const D: u8>(config: &AppConfig, offset: Picosecond) -> Self;
+
     /// Generate the per-row snake vectors for the Picosecond part.
     ///
     /// Each row of the final snake is similar to its predecessor, with the
@@ -294,7 +302,7 @@ pub struct TwoDimensionalSnake {
     /// Deltas in image space of consecutive pixels, lines, etc.
     voxel_delta_im: VoxelDelta<f32>,
     /// The earliest time of the first voxel
-    pub earliest_frame_time: Picosecond,
+    earliest_frame_time: Picosecond,
     /// The time it takes the software to finish a full frame, not including
     /// dead time between frames
     frame_duration: Picosecond,
@@ -317,102 +325,10 @@ pub struct ThreeDimensionalSnake {
     /// Deltas in image space of consecutive pixels, lines, etc.
     voxel_delta_im: VoxelDelta<f32>,
     /// The earliest time of the first voxel
-    pub earliest_frame_time: Picosecond,
+    earliest_frame_time: Picosecond,
     /// The time it takes the software to finish a full frame, not including
     /// dead time between frames
     frame_duration: Picosecond,
-}
-
-impl Snake for TwoDimensionalSnake {
-    type DataStore = TimeCoordPair;
-
-    /// Returns the value assigned to the snake's capacity
-    ///
-    /// For 2D imaging it's num_rows * (num_columns + 1), and for 3D we add
-    /// in the number of planes.
-    ///
-    /// These numbers take into account a cell before each frame which captures
-    /// photons arriving between frames, and a cell we remove from the last row
-    /// which is not needed and a cell that is added so that we don't over-
-    /// allocate..
-    fn calc_snake_length(config: &AppConfig) -> usize {
-        let baseline_count = ((config.columns + 1) * config.rows) as usize;
-        match config.planes {
-            0 | 1 => baseline_count + 1,
-            _ => baseline_count * config.planes as usize + 1,
-        }
-    }
-
-    /// Handle a time tag by finding its corresponding coordinate in image
-    /// space using linear search.
-    ///
-    /// The arriving time tag should have a coordinate associated with it. To
-    /// find it we traverse the boundary vector (snake) until we find the
-    /// coordinate that has an end time longer than the specified time. If the
-    /// tag has a time longer than the end of the current frame this function
-    /// is also in charge of calling the 'update' method to generate a new
-    /// snake for the next frame.
-    ///
-    /// This implementation is based on linear search because it's assumed that
-    /// during peak event rates most pixels (snake cells) will be populated by
-    /// at least one event, which means that this search will be stopped after
-    /// a single step, or perhaps two. This should, in theory, be faster than
-    /// other options for this algorithm (which are currently unexplored), such
-    /// as binary search, hashmap or an interval tree.
-    fn time_to_coord_linear(&mut self, time: i64, ch: usize) -> ProcessedEvent {
-        if time > self.max_frame_time {
-            debug!(
-                "Photon arrived after end of Frame! Our time: {}, Max time: {}",
-                time, self.max_frame_time
-            );
-            return ProcessedEvent::PhotonNewFrame
-        }
-        let mut additional_steps_taken = 0usize;
-        let mut coord = None;
-        for pair in &self.data[self.last_accessed_idx..] {
-            if time <= pair.end_time {
-                trace!(
-                    "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}; Channel: {}",
-                    pair, time, additional_steps_taken, ch
-                );
-                self.last_accessed_idx += additional_steps_taken;
-                coord = Some(pair.coord);
-                break;
-            }
-            additional_steps_taken += 1;
-        }
-        // Makes sure that we indeed captured some cell. This can be avoided in
-        // principle but I'm still not confident enough in this implementation.
-        if let Some(coord) = coord {
-            ProcessedEvent::Displayed(coord, DISPLAY_COLORS[ch])
-        } else {
-            error!(
-                "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
-                &self.data[self.last_accessed_idx..],
-                additional_steps_taken
-            );
-            panic!("Coordinate remained unpopulated for some reason. Investigate!")
-        }
-    }
-
-    /// Update the existing data to accommodate the new frame.
-    ///
-    /// This function is triggered from the 'tag_to_coord' method once an event
-    /// with a time tag later than the last possible voxel is detected. It
-    /// currently updates the exisitng data based on a guesstimation regarding
-    /// data quality, i.e. we don't do any error checking what-so-ever, we
-    /// simply trust in the data being not faulty.
-    fn update_snake_for_next_frame(&mut self, next_frame_at: Picosecond) {
-        self.last_accessed_idx = 0;
-        let offset = next_frame_at - self.earliest_frame_time;
-        for pair in self.data.iter_mut() {
-            pair.end_time += offset;
-        }
-        self.max_frame_time = self.data[self.data.len() - 1].end_time;
-        self.last_taglens_time = 0;
-        self.earliest_frame_time = next_frame_at;
-        info!("Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}\nframe_duration: {}", self.max_frame_time,self.earliest_frame_time, self.frame_duration);
-    }
 }
 
 impl TwoDimensionalSnake {
@@ -439,41 +355,6 @@ impl TwoDimensionalSnake {
             max_frame_time: 0,
             earliest_frame_time: 0,
             frame_duration: 0
-        }
-    }
-
-    /// Initialize the time -> coordinate mapping assuming that we're starting
-    /// the imaging at time `offset` of the experiment.
-    ///
-    /// The function matches on the scanning directionality of the experiment
-    /// and calls the proper methods accordingly.
-    ///
-    /// Once the mapping vector is initialized, subsequent frames only have to
-    /// update the "end_time" field in each cell according to the current frame
-    /// offset.
-    pub fn from_acq_params(config: &AppConfig, offset: Picosecond) -> TwoDimensionalSnake {
-        let twod_snake = TwoDimensionalSnake::naive_init(config);
-        let mut snake = twod_snake.allocate_snake(&config);
-        snake.push(TimeCoordPair::new(
-            offset,
-            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
-        ));
-        let num_columns = config.columns as usize;
-        let mut column_deltas_ps = twod_snake.construct_row_ps_snake(num_columns, &twod_snake.voxel_delta_ps);
-        let column_deltas_imagespace = twod_snake.construct_row_im_snake(num_columns, &twod_snake.voxel_delta_im);
-        match config.bidir {
-            Bidirectionality::Bidir => twod_snake.update_naive_with_parameters_bidir(
-                &config,
-                &mut column_deltas_ps,
-                &column_deltas_imagespace,
-                offset,
-            ),
-            Bidirectionality::Unidir => twod_snake.update_naive_with_parameters_unidir(
-                &config,
-                &mut column_deltas_ps,
-                &column_deltas_imagespace,
-                offset,
-            ),
         }
     }
 
@@ -606,7 +487,142 @@ impl TwoDimensionalSnake {
     }
 }
 
+impl Snake for TwoDimensionalSnake {
+    type DataStore = TimeCoordPair;
+    
+    fn earliest_frame_time(&self) -> Picosecond {
+        self.earliest_frame_time
+    }
+
+    /// Initialize the time -> coordinate mapping assuming that we're starting
+    /// the imaging at time `offset` of the experiment.
+    ///
+    /// The function matches on the scanning directionality of the experiment
+    /// and calls the proper methods accordingly.
+    ///
+    /// Once the mapping vector is initialized, subsequent frames only have to
+    /// update the "end_time" field in each cell according to the current frame
+    /// offset.
+    fn from_acq_params<const D: u8>(config: &AppConfig, offset: Picosecond) -> TwoDimensionalSnake {
+        let twod_snake = TwoDimensionalSnake::naive_init(config);
+        let mut snake = twod_snake.allocate_snake(&config);
+        snake.push(TimeCoordPair::new(
+            offset,
+            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
+        ));
+        let num_columns = config.columns as usize;
+        let mut column_deltas_ps = twod_snake.construct_row_ps_snake(num_columns, &twod_snake.voxel_delta_ps);
+        let column_deltas_imagespace = twod_snake.construct_row_im_snake(num_columns, &twod_snake.voxel_delta_im);
+        match config.bidir {
+            Bidirectionality::Bidir => twod_snake.update_naive_with_parameters_bidir(
+                &config,
+                &mut column_deltas_ps,
+                &column_deltas_imagespace,
+                offset,
+            ),
+            Bidirectionality::Unidir => twod_snake.update_naive_with_parameters_unidir(
+                &config,
+                &mut column_deltas_ps,
+                &column_deltas_imagespace,
+                offset,
+            ),
+        }
+    }
+
+
+    /// Returns the value assigned to the snake's capacity
+    ///
+    /// For 2D imaging it's num_rows * (num_columns + 1), and for 3D we add
+    /// in the number of planes.
+    ///
+    /// These numbers take into account a cell before each frame which captures
+    /// photons arriving between frames, and a cell we remove from the last row
+    /// which is not needed and a cell that is added so that we don't over-
+    /// allocate..
+    fn calc_snake_length(config: &AppConfig) -> usize {
+        let baseline_count = ((config.columns + 1) * config.rows) as usize;
+        match config.planes {
+            0 | 1 => baseline_count + 1,
+            _ => baseline_count * config.planes as usize + 1,
+        }
+    }
+
+    /// Handle a time tag by finding its corresponding coordinate in image
+    /// space using linear search.
+    ///
+    /// The arriving time tag should have a coordinate associated with it. To
+    /// find it we traverse the boundary vector (snake) until we find the
+    /// coordinate that has an end time longer than the specified time. If the
+    /// tag has a time longer than the end of the current frame this function
+    /// is also in charge of calling the 'update' method to generate a new
+    /// snake for the next frame.
+    ///
+    /// This implementation is based on linear search because it's assumed that
+    /// during peak event rates most pixels (snake cells) will be populated by
+    /// at least one event, which means that this search will be stopped after
+    /// a single step, or perhaps two. This should, in theory, be faster than
+    /// other options for this algorithm (which are currently unexplored), such
+    /// as binary search, hashmap or an interval tree.
+    fn time_to_coord_linear(&mut self, time: i64, ch: usize) -> ProcessedEvent {
+        if time > self.max_frame_time {
+            debug!(
+                "Photon arrived after end of Frame! Our time: {}, Max time: {}",
+                time, self.max_frame_time
+            );
+            return ProcessedEvent::PhotonNewFrame
+        }
+        let mut additional_steps_taken = 0usize;
+        let mut coord = None;
+        for pair in &self.data[self.last_accessed_idx..] {
+            if time <= pair.end_time {
+                trace!(
+                    "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}; Channel: {}",
+                    pair, time, additional_steps_taken, ch
+                );
+                self.last_accessed_idx += additional_steps_taken;
+                coord = Some(pair.coord);
+                break;
+            }
+            additional_steps_taken += 1;
+        }
+        // Makes sure that we indeed captured some cell. This can be avoided in
+        // principle but I'm still not confident enough in this implementation.
+        if let Some(coord) = coord {
+            ProcessedEvent::Displayed(coord, DISPLAY_COLORS[ch])
+        } else {
+            error!(
+                "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
+                &self.data[self.last_accessed_idx..],
+                additional_steps_taken
+            );
+            panic!("Coordinate remained unpopulated for some reason. Investigate!")
+        }
+    }
+
+    /// Update the existing data to accommodate the new frame.
+    ///
+    /// This function is triggered from the 'tag_to_coord' method once an event
+    /// with a time tag later than the last possible voxel is detected. It
+    /// currently updates the exisitng data based on a guesstimation regarding
+    /// data quality, i.e. we don't do any error checking what-so-ever, we
+    /// simply trust in the data being not faulty.
+    fn update_snake_for_next_frame(&mut self, next_frame_at: Picosecond) {
+        self.last_accessed_idx = 0;
+        let offset = next_frame_at - self.earliest_frame_time;
+        for pair in self.data.iter_mut() {
+            pair.end_time += offset;
+        }
+        self.max_frame_time = self.data[self.data.len() - 1].end_time;
+        self.last_taglens_time = 0;
+        self.earliest_frame_time = next_frame_at;
+        info!("Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}\nframe_duration: {}", self.max_frame_time,self.earliest_frame_time, self.frame_duration);
+    }
+}
+
 impl Snake for ThreeDimensionalSnake {
+    fn earliest_frame_time(&self) -> Picosecond {
+        self.earliest_frame_time
+    }
 
 }
 

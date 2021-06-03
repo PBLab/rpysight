@@ -175,8 +175,8 @@ impl<T: PointDisplay, S: Snake> AppState<T, File, S> {
         appconfig: AppConfig,
     ) -> Self {
         let snake = match appconfig.planes {
-            0 | 1 => TwoDimensionalSnake::from_acq_params(&appconfig, GLOBAL_OFFSET),
-            2..=u32::MAX => ThreeDimensionalSnake::from_acq_params(&appconfig, GLOBAL_OFFSET),
+            0 | 1 => S::from_acq_params::<2>(&appconfig, GLOBAL_OFFSET),
+            2..=u32::MAX => S::from_acq_params::<3>(&appconfig, GLOBAL_OFFSET),
         };
         AppState {
             channels,
@@ -287,8 +287,8 @@ impl<T: PointDisplay, S: Snake> AppState<T, File, S> {
     /// the current frame we're trying to render.
     fn check_relevance_of_batch(&self, event_stream: &EventStream) -> bool {
         if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
-            if event.time <= self.snake.earliest_frame_time {
-                debug!("The last event in the batch arrived before the first in the frame: received event: {}, earliest in frame: {}", event.time ,self.snake.earliest_frame_time);
+            if event.time <= self.snake.earliest_frame_time() {
+                debug!("The last event in the batch arrived before the first in the frame: received event: {}, earliest in frame: {}", event.time ,self.snake.earliest_frame_time());
                 false
             } else {
                 true
@@ -306,8 +306,8 @@ impl<T: PointDisplay, S: Snake> AppState<T, File, S> {
     pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
         self.acquire_stream_filehandle()?;
         match self.appconfig.planes {
-            0 | 1 => { self.snake = TwoDimensionalSnake::from_acq_params(&self.appconfig, 0); },
-            2..=u32::MAX => { self.snake = ThreeDimensionalSnake::from_acq_params(&self.appconfig, 0); },
+            0 | 1 => { self.snake = S::from_acq_params::<2>(&self.appconfig, 0); },
+            2..=u32::MAX => { self.snake = S::from_acq_params::<3>(&self.appconfig, 0); },
         };
         let mut events_after_newframe = None;
         for _ in 0..steps {
@@ -382,8 +382,8 @@ impl<S: Snake> AppState<DisplayChannel, File, S> {
     pub fn start_inf_acq_loop(&mut self) -> Result<()> {
         self.acquire_stream_filehandle()?;
         match self.appconfig.planes {
-            0 | 1 => { self.snake = TwoDimensionalSnake::from_acq_params(&self.appconfig, 0); },
-            2..=u32::MAX => { self.snake = ThreeDimensionalSnake::from_acq_params(&self.appconfig, 0); },
+            0 | 1 => { self.snake = S::from_acq_params::<2>(&self.appconfig, 0); },
+            2..=u32::MAX => { self.snake = S::from_acq_params::<3>(&self.appconfig, 0); },
         };
         let mut events_after_newframe = None;
         while !self.channels.channel_merge.get_window().should_close() {
