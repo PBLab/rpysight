@@ -174,10 +174,7 @@ impl<T: PointDisplay, S: Snake> AppState<T, File, S> {
         data_stream_fh: String,
         appconfig: AppConfig,
     ) -> Self {
-        let snake = match appconfig.planes {
-            0 | 1 => S::from_acq_params::<2>(&appconfig, GLOBAL_OFFSET),
-            2..=u32::MAX => S::from_acq_params::<3>(&appconfig, GLOBAL_OFFSET),
-        };
+        let snake = AppState::choose_snake_variant(&appconfig);
         AppState {
             channels,
             data_stream_fh,

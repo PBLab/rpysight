@@ -118,6 +118,9 @@ impl TimeCoordPair {
 }
 
 /// Behavior related to the 1D snake which contains the allocated photon data.
+///
+/// The snake may be a 2D- or 3D-based snake, and thus it's generic over the
+/// number of dimensions N
 pub trait Snake {
     /// The snake's cells data type - probably a TimeCoordPair
     type DataStore;
@@ -139,13 +142,20 @@ pub trait Snake {
         Vec::<Self::DataStore>::with_capacity(capacity)
     }
 
-    fn earliest_frame_time(&self) -> Picosecond;
+    fn earliest_frame_time(&self) -> Picosecond {
+        self.earliest_frame_time
+    }
 
-    /// Main initialization method of this object.
+    /// Initialize the time -> coordinate mapping assuming that we're starting
+    /// the imaging at time `offset` of the experiment.
     ///
-    /// The D parameter is used to define the dimensionality of the rendered
-    /// volume - 2D or 3D.
-    fn from_acq_params<const D: u8>(config: &AppConfig, offset: Picosecond) -> Self;
+    /// The function matches on the scanning directionality of the experiment
+    /// and calls the proper methods accordingly.
+    ///
+    /// Once the mapping vector is initialized, subsequent frames only have to
+    /// update the "end_time" field in each cell according to the current frame
+    /// offset.
+    fn from_acq_params(config: &AppConfig, offset: Picosecond) -> Self;
 
     /// Generate the per-row snake vectors for the Picosecond part.
     ///
@@ -293,7 +303,6 @@ pub struct TwoDimensionalSnake {
     /// coordinates. We keep it to look for the next matching end time only from
     /// that value onward.
     last_accessed_idx: usize,
-    last_taglens_time: Picosecond,
     /// The end time for the frame. Useful to quickly check
     /// whether a time tag belongs in the next frame.
     max_frame_time: Picosecond,
@@ -351,7 +360,6 @@ impl TwoDimensionalSnake {
             voxel_delta_ps,
             voxel_delta_im,
             last_accessed_idx: 0,
-            last_taglens_time: 0,
             max_frame_time: 0,
             earliest_frame_time: 0,
             frame_duration: 0
@@ -415,7 +423,6 @@ impl TwoDimensionalSnake {
         TwoDimensionalSnake {
             data: self.data,
             last_accessed_idx: 0,
-            last_taglens_time: 0,
             max_frame_time,
             voxel_delta_ps: self.voxel_delta_ps,
             voxel_delta_im: self.voxel_delta_im,
@@ -477,7 +484,6 @@ impl TwoDimensionalSnake {
         TwoDimensionalSnake {
             data: self.data,
             last_accessed_idx: 0,
-            last_taglens_time: 0,
             max_frame_time,
             voxel_delta_ps: self.voxel_delta_ps,
             voxel_delta_im: self.voxel_delta_im,
@@ -487,23 +493,105 @@ impl TwoDimensionalSnake {
     }
 }
 
+impl ThreeDimensionalSnake {
+    /// Initialize this struct with naive default parameters.
+    ///
+    /// Since initializing this struct is a complex task this function provides
+    /// a simple implementation just so we could have the struct at our
+    /// disposal. It helps, for example, that once it's initialized we can use
+    /// methods from the Snake trait to refine the values of the field of this
+    /// struct.
+    ///
+    /// This method is intentionally kept private since the proper way to
+    /// initialize this object is using the "from_acq_params" function.
+    fn naive_init(config: &AppConfig) -> Self {
+        let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
+        let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
+
+        Self {
+            data: Vec::new(),
+            voxel_delta_ps,
+            voxel_delta_im,
+            last_accessed_idx: 0,
+            last_taglens_time: 0,
+            max_frame_time: 0,
+            earliest_frame_time: 0,
+            frame_duration: 0
+        }
+    }
+
+    /// Constructs the 1D vector mapping the time of arrival to image-space
+    /// coordinates.
+    ///
+    /// This vector is essentially identical to a flattened version of all
+    /// pixels of the image, with two main differences: The first, it takes
+    /// into account the bidirectionality of the scanner, i.e. odd rows are
+    /// 'concatenated' in reverse and are given a phase shift. The second, per
+    /// frame it has an extra "row" and an extra column that should contain 
+    /// photons arriving between frames and while the scanner was rotating,
+    /// respectively.
+    ///
+    /// What this function does is traverse all cells of the vector and
+    /// populate them with the mapping ps -> coordinate. It's also aware of the
+    /// side column in each row which is 'garbage' and populated with a NaN
+    /// value here to not be rendered.
+    fn update_naive_with_parameters_bidir(
+        mut self,
+        config: &AppConfig,
+        column_deltas_ps: &mut DVector<Picosecond>,
+        column_deltas_imagespace: &DVector<f32>,
+        offset: Picosecond,
+    ) -> Self {
+        // Add the cell capturing all photons arriving between frames
+        let deadtime_during_rotation = column_deltas_ps[column_deltas_ps.len() - 1];
+        let mut line_offset: Picosecond = offset;
+        let column_deltas_imagespace_rev = self.reverse_row_imagespace(column_deltas_imagespace);
+        let column_deltas_ps_bidir = self.reverse_row_picosecond(column_deltas_ps, -2000000);
+        let mut row_coord: f32;
+        for row in (0..config.rows).step_by(2) {
+            // Start with the unidir row
+            row_coord = ((row as f32) * self.voxel_delta_im.row) - 1.0;
+            ThreeDimensionalSnake::push_pair_unidir(
+                &mut self.data,
+                &column_deltas_imagespace,
+                &column_deltas_ps,
+                row_coord,
+                line_offset,
+            );
+            line_offset += deadtime_during_rotation;
+            // Now the bidir row
+            row_coord = (((row + 1) as f32) * self.voxel_delta_im.row) - 1.0;
+            ThreeDimensionalSnake::push_pair_unidir(
+                &mut self.data,
+                &column_deltas_imagespace_rev,
+                &column_deltas_ps_bidir,
+                row_coord,
+                line_offset,
+            );
+            line_offset += deadtime_during_rotation;
+        }
+        let _ = self.data.pop(); // Last element is the mirror rotation for the
+                             // last row, which is unneeded.
+        let max_frame_time = self.data[self.data.len() - 1].end_time;
+        info!("2D bidir Snake built");
+        TwoDimensionalSnake {
+            data: self.data,
+            last_accessed_idx: 0,
+            last_taglens_time: 0,
+            max_frame_time,
+            voxel_delta_ps: self.voxel_delta_ps,
+            voxel_delta_im: self.voxel_delta_im,
+            earliest_frame_time: offset,
+            frame_duration: config.calc_frame_duration(),
+        }
+    }
+
+}
+
 impl Snake for TwoDimensionalSnake {
     type DataStore = TimeCoordPair;
     
-    fn earliest_frame_time(&self) -> Picosecond {
-        self.earliest_frame_time
-    }
-
-    /// Initialize the time -> coordinate mapping assuming that we're starting
-    /// the imaging at time `offset` of the experiment.
-    ///
-    /// The function matches on the scanning directionality of the experiment
-    /// and calls the proper methods accordingly.
-    ///
-    /// Once the mapping vector is initialized, subsequent frames only have to
-    /// update the "end_time" field in each cell according to the current frame
-    /// offset.
-    fn from_acq_params<const D: u8>(config: &AppConfig, offset: Picosecond) -> TwoDimensionalSnake {
+    fn from_acq_params(config: &AppConfig, offset: Picosecond) -> TwoDimensionalSnake {
         let twod_snake = TwoDimensionalSnake::naive_init(config);
         let mut snake = twod_snake.allocate_snake(&config);
         snake.push(TimeCoordPair::new(
@@ -619,13 +707,90 @@ impl Snake for TwoDimensionalSnake {
     }
 }
 
+/// A three-dimensional volume rendered in a snake
 impl Snake for ThreeDimensionalSnake {
-    fn earliest_frame_time(&self) -> Picosecond {
-        self.earliest_frame_time
+
+    type DataStore = TimeCoordPair;
+
+    fn from_acq_params(config: &AppConfig, offset: Picosecond) -> ThreeDimensionalSnake {
+        let threed_snake = ThreeDimensionalSnake::naive_init(config);
+        let mut snake = threed_snake.allocate_snake(&config);
+        snake.push(TimeCoordPair::new(
+            offset,
+            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
+        ));
+        let num_columns = config.columns as usize;
+        let mut column_deltas_ps = twod_snake.construct_row_ps_snake(num_columns, &twod_snake.voxel_delta_ps);
+        let column_deltas_imagespace = twod_snake.construct_row_im_snake(num_columns, &twod_snake.voxel_delta_im);
+        todo!()
+        // match config.bidir {
+        //     Bidirectionality::Bidir => twod_snake.update_naive_with_parameters_bidir(
+        //         &config,
+        //         &mut column_deltas_ps,
+        //         &column_deltas_imagespace,
+        //         offset,
+        //     ),
+        //     Bidirectionality::Unidir => twod_snake.update_naive_with_parameters_unidir(
+        //         &config,
+        //         &mut column_deltas_ps,
+        //         &column_deltas_imagespace,
+        //         offset,
+        //     ),
+        // }
     }
 
-}
+    fn calc_snake_length(config: &AppConfig) -> usize {
+        todo!()
+    }
 
+    fn time_to_coord_linear(&mut self, time: i64, ch: usize) -> ProcessedEvent {
+        if time > self.max_frame_time {
+            debug!(
+                "Photon arrived after end of Frame! Our time: {}, Max time: {}",
+                time, self.max_frame_time
+            );
+            return ProcessedEvent::PhotonNewFrame
+        }
+        let mut additional_steps_taken = 0usize;
+        let mut coord = None;
+        for pair in &self.data[self.last_accessed_idx..] {
+            if time <= pair.end_time {
+                trace!(
+                    "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}; Channel: {}",
+                    pair, time, additional_steps_taken, ch
+                );
+                self.last_accessed_idx += additional_steps_taken;
+                coord = Some(pair.coord);
+                break;
+            }
+            additional_steps_taken += 1;
+        }
+        // Makes sure that we indeed captured some cell. This can be avoided in
+        // principle but I'm still not confident enough in this implementation.
+        if let Some(coord) = coord {
+            ProcessedEvent::Displayed(coord, DISPLAY_COLORS[ch])
+        } else {
+            error!(
+                "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
+                &self.data[self.last_accessed_idx..],
+                additional_steps_taken
+            );
+            panic!("Coordinate remained unpopulated for some reason. Investigate!")
+        }
+    }
+
+    fn update_snake_for_next_frame(&mut self, next_frame_at: Picosecond) {
+        self.last_accessed_idx = 0;
+        let offset = next_frame_at - self.earliest_frame_time;
+        for pair in self.data.iter_mut() {
+            pair.end_time += offset;
+        }
+        self.max_frame_time = self.data[self.data.len() - 1].end_time;
+        self.last_taglens_time = 0;
+        self.earliest_frame_time = next_frame_at;
+        info!("Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}\nframe_duration: {}", self.max_frame_time,self.earliest_frame_time, self.frame_duration);
+    }
+}
 
 #[cfg(test)]
 mod tests {
