@@ -142,9 +142,7 @@ pub trait Snake {
         Vec::<Self::DataStore>::with_capacity(capacity)
     }
 
-    fn earliest_frame_time(&self) -> Picosecond {
-        self.earliest_frame_time
-    }
+    fn get_earliest_frame_time(&self) -> Picosecond;
 
     /// Initialize the time -> coordinate mapping assuming that we're starting
     /// the imaging at time `offset` of the experiment.
@@ -574,7 +572,7 @@ impl ThreeDimensionalSnake {
                              // last row, which is unneeded.
         let max_frame_time = self.data[self.data.len() - 1].end_time;
         info!("2D bidir Snake built");
-        TwoDimensionalSnake {
+        ThreeDimensionalSnake {
             data: self.data,
             last_accessed_idx: 0,
             last_taglens_time: 0,
@@ -617,6 +615,9 @@ impl Snake for TwoDimensionalSnake {
         }
     }
 
+    fn get_earliest_frame_time(&self) -> Picosecond {
+        self.earliest_frame_time
+    }
 
     /// Returns the value assigned to the snake's capacity
     ///
@@ -790,6 +791,10 @@ impl Snake for ThreeDimensionalSnake {
         self.earliest_frame_time = next_frame_at;
         info!("Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}\nframe_duration: {}", self.max_frame_time,self.earliest_frame_time, self.frame_duration);
     }
+
+    fn get_earliest_frame_time(&self) -> Picosecond {
+        self.earliest_frame_time
+    }
 }
 
 #[cfg(test)]
@@ -843,6 +848,14 @@ mod tests {
             .with_line_ch(2)
             .with_taglens_ch(0)
             .clone()
+    }
+
+    fn naive_init_2d(config: &AppConfig) -> TwoDimensionalSnake {
+        TwoDimensionalSnake::naive_init(config)
+    }
+
+    fn naive_init_3d(config: &AppConfig) -> ThreeDimensionalSnake {
+        ThreeDimensionalSnake::naive_init(config)
     }
 
     #[test]
@@ -994,53 +1007,59 @@ mod tests {
     // TODO: SECOND FRAMES' OFFSET?
     #[test]
     fn snake_2d_metadata_bidir() {
-        let config = setup_image_scanning_config().build();
-        let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
-        let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
-        let (column_deltas_ps, column_deltas_im) = TwoDimensionalSnake::prep_snake_2d_metadata(
+        let config = setup_image_scanning_config().with_bidir(true).build();
+        let twod_snake = naive_init_2d(&config);
+        let column_deltas_ps = twod_snake.construct_row_ps_snake(
             config.columns as usize,
-            &voxel_delta_ps,
-            &voxel_delta_im,
+            &twod_snake.voxel_delta_ps,
+        );
+        let column_deltas_im = twod_snake.construct_row_im_snake(
+            config.columns as usize,
+            &twod_snake.voxel_delta_im,
         );
         assert_eq!(column_deltas_ps.len(), 11);
         assert_eq!(column_deltas_im.len(), 11);
         let last_idx = column_deltas_im.len() - 1;
         assert_eq!(
             column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1],
-            voxel_delta_ps.row
+            twod_snake.voxel_delta_ps.row
         );
     }
 
     #[test]
     fn snake_2d_metadata_unidir() {
         let config = setup_image_scanning_config().with_bidir(false).build();
-        let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
-        let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
-        let column_deltas_ps = TwoDimensionalSnake::construct_row_ps_snake(
+        let twod_snake = naive_init_2d(&config);
+        let column_deltas_ps = twod_snake.construct_row_ps_snake(
             config.columns as usize,
-            &voxel_delta_ps,
+            &twod_snake.voxel_delta_ps,
         );
-        let column_deltas_im = TwoDimensionalSnake::construct_row_im_snake(config.columns as usize, &voxel_delta_im);
+        let column_deltas_im = twod_snake.construct_row_im_snake(
+            config.columns as usize,
+            &twod_snake.voxel_delta_im,
+        );
         assert_eq!(column_deltas_ps.len(), 11);
         assert_eq!(column_deltas_im.len(), 11);
         let last_idx = column_deltas_im.len() - 1;
         assert_eq!(
             column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1],
-            voxel_delta_ps.row
+            twod_snake.voxel_delta_ps.row
         );
     }
 
     #[test]
     fn build_snake_2d() {
         let config = setup_image_scanning_config().build();
-        let snake = TwoDimensionalSnake::allocate_snake(&config);
+        let twod_snake = naive_init_2d(&config);
+        let snake = twod_snake.allocate_snake(&config);
         assert_eq!(snake.capacity(), 111);
     }
 
     #[test]
     fn build_snake_3d() {
         let config = setup_image_scanning_config().with_planes(10).build();
-        let snake = TwoDimensionalSnake::allocate_snake(&config);
+        let twod_snake = naive_init_2d(&config);
+        let snake = twod_snake.allocate_snake(&config);
         assert_eq!(snake.capacity(), 1101);
     }
 }
