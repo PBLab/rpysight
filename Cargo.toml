@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 kiss3d = "0.30"
-nalgebra = { version = "0.25", features = ["serde-serialize"] }
+nalgebra = { version = "0.27", features = ["serde-serialize"] }
 pyo3 = { version = "0.13", features = ["extension-module"] }
 arrow = "4.0.0"
 thiserror = "1.0"
