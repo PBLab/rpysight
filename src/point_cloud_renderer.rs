@@ -7,10 +7,10 @@ use std::ops::{Index, IndexMut};
 use anyhow::{Context, Result};
 use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch};
 use kiss3d::window::Window;
-use nalgebra::Point3;
+use kiss3d::nalgebra::Point3;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
-use crate::snakes::{Picosecond, TwoDimensionalSnake, ThreeDimensionalSnake, Snake};
+use crate::snakes::{Picosecond, Snake, ThreeDimensionalSnake, TimeCoordPair, TwoDimensionalSnake};
 use crate::GLOBAL_OFFSET;
 use crate::event_stream::{Event, EventStream};
 
@@ -155,11 +155,11 @@ impl DisplayChannel {
 
 /// Main struct that holds the renderers and the needed data streams for
 /// them
-pub struct AppState<T: PointDisplay, R: Read, S: Snake> {
+pub struct AppState<T: PointDisplay, R: Read> {
     pub channels: Channels<T>,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
-    snake: S,
+    snake: Box<dyn Snake>,
     inputs: Inputs,
     appconfig: AppConfig,
     rows_per_frame: u32,
@@ -167,14 +167,14 @@ pub struct AppState<T: PointDisplay, R: Read, S: Snake> {
     lines_vec: Vec<Picosecond>,
 }
 
-impl<T: PointDisplay, S: Snake> AppState<T, File, S> {
+impl<T: PointDisplay> AppState<T, File> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(
         channels: Channels<T>,
         data_stream_fh: String,
         appconfig: AppConfig,
     ) -> Self {
-        let snake = AppState::choose_snake_variant(&appconfig);
+        let snake = AppState::<T, File>::choose_snake_variant(&appconfig);
         AppState {
             channels,
             data_stream_fh,
@@ -185,6 +185,13 @@ impl<T: PointDisplay, S: Snake> AppState<T, File, S> {
             rows_per_frame: appconfig.rows,
             line_count: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
+        }
+    }
+
+    fn choose_snake_variant(config: &AppConfig) -> Box<dyn Snake + 'static> {
+        match config.planes {
+            0 | 1 => Box::new(TwoDimensionalSnake::from_acq_params(config, 0)),
+            2..=u32::MAX => Box::new(ThreeDimensionalSnake::from_acq_params(config, 0)),
         }
     }
 
@@ -284,8 +291,8 @@ impl<T: PointDisplay, S: Snake> AppState<T, File, S> {
     /// the current frame we're trying to render.
     fn check_relevance_of_batch(&self, event_stream: &EventStream) -> bool {
         if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
-            if event.time <= self.snake.earliest_frame_time() {
-                debug!("The last event in the batch arrived before the first in the frame: received event: {}, earliest in frame: {}", event.time ,self.snake.earliest_frame_time());
+            if event.time <= self.snake.get_earliest_frame_time() {
+                debug!("The last event in the batch arrived before the first in the frame: received event: {}, earliest in frame: {}", event.time ,self.snake.get_earliest_frame_time());
                 false
             } else {
                 true
@@ -302,10 +309,6 @@ impl<T: PointDisplay, S: Snake> AppState<T, File, S> {
     /// detect the last of the photons or a new frame signal.
     pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
         self.acquire_stream_filehandle()?;
-        match self.appconfig.planes {
-            0 | 1 => { self.snake = S::from_acq_params::<2>(&self.appconfig, 0); },
-            2..=u32::MAX => { self.snake = S::from_acq_params::<3>(&self.appconfig, 0); },
-        };
         let mut events_after_newframe = None;
         for _ in 0..steps {
             debug!("Starting population");
@@ -371,17 +374,13 @@ impl<T: PointDisplay, S: Snake> AppState<T, File, S> {
     }
 }
 
-impl<S: Snake> AppState<DisplayChannel, File, S> {
+impl AppState<DisplayChannel, File> {
     /// Main loop of the app. Following a bit of a setup, during each frame
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
     /// detect the last of the photons or a new frame signal.
     pub fn start_inf_acq_loop(&mut self) -> Result<()> {
         self.acquire_stream_filehandle()?;
-        match self.appconfig.planes {
-            0 | 1 => { self.snake = S::from_acq_params::<2>(&self.appconfig, 0); },
-            2..=u32::MAX => { self.snake = S::from_acq_params::<3>(&self.appconfig, 0); },
-        };
         let mut events_after_newframe = None;
         while !self.channels.channel_merge.get_window().should_close() {
             events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
@@ -397,7 +396,7 @@ impl<S: Snake> AppState<DisplayChannel, File, S> {
     }
 }
 
-impl<T: PointDisplay, S: Snake> TimeTaggerIpcHandler for AppState<T, File, S> {
+impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     fn acquire_stream_filehandle(&mut self) -> Result<()> {
         let stream =

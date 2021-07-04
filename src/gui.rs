@@ -475,8 +475,10 @@ impl Application for MainAppGui {
                 self.ignored_channels_value = ignored_str;
                 Command::none()
             }
-            Message::ButtonPressed => Command::perform(
-                start_acquisition(PathBuf::from(DEFAULT_CONFIG_FNAME), AppConfig::from_user_input(self).expect("")),
+            Message::ButtonPressed => Command::perform({
+                let cfg = AppConfig::from_user_input(self).expect("");
+                    start_acquisition(PathBuf::from(DEFAULT_CONFIG_FNAME), cfg)
+                },
                 Message::StartedAcquistion,
             ),
             Message::StartedAcquistion(()) => Command::none(),

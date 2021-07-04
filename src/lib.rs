@@ -26,8 +26,8 @@ use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder};
 use crate::gui::{ChannelNumber, EdgeDetected};
-use crate::point_cloud_renderer::{Channels, AppState, TwoDimensionalSnake, ThreeDimensionalSnake};
-use crate::snakes::{Snake, ThreeDimensionalSnake};
+use crate::point_cloud_renderer::{Channels, AppState};
+use crate::snakes::{Snake, TwoDimensionalSnake, ThreeDimensionalSnake};
 
 const TT_DATA_STREAM: &str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
@@ -221,18 +221,16 @@ fn generate_windows(fr: u64) -> Channels<DisplayChannel> {
 
 }
 
-/// Initializes things on the Python side and starts the acquisition.
+/// Initializes things on the Python side and starts the acquisition of a 2D
+/// volume.
 ///
 /// This method is called once the user clicks the "Run Application" button or
 /// from the CLI.
-pub async fn start_acquisition<S: Snake>(config_name: PathBuf, cfg: AppConfig) {
+pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok();  // errors are logged and quite irrelevant
     let fr = (&cfg).frame_rate().round() as u64;
     let channels = generate_windows(fr);
-    let mut app = match &cfg.planes {
-        0 | 1 => AppState::<DisplayChannel, File, TwoDimensionalSnake>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone()),
-        2..=u32::MAX => AppState::<DisplayChannel, File, ThreeDimensionalSnake>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone()),
-    };
+    let mut app = AppState::<DisplayChannel, File>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
