@@ -108,6 +108,7 @@ impl VoxelDelta<Picosecond> {
             VoxelDelta::calc_time_between_columns(config),
             VoxelDelta::calc_time_between_planes(config),
         ];
+        println!("{:?}", interim);
         let vals = interim.iter().min();
         *vals.unwrap()
     }
@@ -1213,14 +1214,14 @@ mod tests {
     fn voxel_delta_min_2d() {
         let config = setup_image_scanning_config().with_planes(1).build();
         let min = VoxelDelta::min(&config);
-        assert_eq!(min, 10);
+        assert_eq!(min, 25);
     }
 
     #[test]
     fn voxel_delta_min_3d() {
-        let config = setup_image_scanning_config().with_planes(10).build();
+        let config = setup_image_scanning_config().with_planes(90000).with_scan_period(Period::from_freq(100)).build();
         let min = VoxelDelta::min(&config);
-        assert_eq!(min, 3);
+        assert_eq!(min, 29);
     }
 
     #[test]
