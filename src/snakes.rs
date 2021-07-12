@@ -414,7 +414,7 @@ impl TwoDimensionalSnake {
         let deadtime_during_rotation = column_deltas_ps[column_deltas_ps.len() - 1];
         let mut line_offset: Picosecond = offset;
         let column_deltas_imagespace_rev = self.reverse_row_imagespace(column_deltas_imagespace);
-        let column_deltas_ps_bidir = self.reverse_row_picosecond(column_deltas_ps, -2000000);
+        let column_deltas_ps_bidir = self.reverse_row_picosecond(column_deltas_ps, config.line_shift);
         let mut row_coord: f32;
         for row in (0..config.rows).step_by(2) {
             // Start with the unidir row
@@ -703,9 +703,9 @@ impl ThreeDimensionalSnake {
 
 impl Snake for TwoDimensionalSnake {
     fn from_acq_params(config: &AppConfig, offset: Picosecond) -> TwoDimensionalSnake {
-        let twod_snake = TwoDimensionalSnake::naive_init(config);
-        let mut snake = twod_snake.allocate_snake(&config);
-        snake.push(TimeCoordPair::new(
+        let mut twod_snake = TwoDimensionalSnake::naive_init(config);
+        twod_snake.data = twod_snake.allocate_snake(&config);
+        twod_snake.data.push(TimeCoordPair::new(
             offset,
             ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
         ));
@@ -825,9 +825,9 @@ impl Snake for TwoDimensionalSnake {
 /// A three-dimensional volume rendered in a snake
 impl Snake for ThreeDimensionalSnake {
     fn from_acq_params(config: &AppConfig, offset: Picosecond) -> ThreeDimensionalSnake {
-        let threed_snake = ThreeDimensionalSnake::naive_init(config);
-        let mut snake = threed_snake.allocate_snake(&config);
-        snake.push(TimeCoordPair::new(
+        let mut threed_snake = ThreeDimensionalSnake::naive_init(config);
+        threed_snake.data = threed_snake.allocate_snake(&config);
+        threed_snake.data.push(TimeCoordPair::new(
             offset,
             ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
         ));
@@ -970,6 +970,7 @@ mod tests {
             .with_frame_ch(0)
             .with_line_ch(2)
             .with_taglens_ch(3)
+            .with_line_shift(0)
             .clone()
     }
 
@@ -992,6 +993,7 @@ mod tests {
             .with_frame_ch(0)
             .with_line_ch(2)
             .with_taglens_ch(0)
+            .with_line_shift(0)
             .clone()
     }
 
@@ -1092,6 +1094,7 @@ mod tests {
             .with_bidir(Bidirectionality::Bidir)
             .build();
         let snake = TwoDimensionalSnake::from_acq_params(&config, 0);
+        println!("{:?}", snake.data[..14].to_vec());
         assert_eq!(
             snake.data[1],
             TimeCoordPair::new(25, ImageCoor::new(-1.0, -1.0, 0.0)),

@@ -188,6 +188,7 @@ pub struct AppConfig {
     pub(crate) point_color: Point3<f32>,
     pub(crate) scan_period: Period,
     pub(crate) tag_period: Period,
+    pub(crate) line_shift: Picosecond,
 }
 
 impl AppConfig {
@@ -260,6 +261,7 @@ impl AppConfig {
             ))
             .with_replay_existing(user_input.get_replay_existing())
             .with_ignored_channels(convert_ignored_to_vec(user_input.get_ignored_channels()))
+            .with_line_shift(user_input.get_line_shift().parse::<Picosecond>().unwrap())
             .build())
     }
 
@@ -355,6 +357,7 @@ pub struct AppConfigBuilder {
     frame_ch: i32,
     line_ch: i32,
     taglens_ch: i32,
+    line_shift: Picosecond,
 }
 
 impl AppConfigBuilder {
@@ -382,6 +385,7 @@ impl AppConfigBuilder {
             frame_ch: 0,
             line_ch: -2,
             taglens_ch: 3,
+            line_shift: 0,
         }
     }
 
@@ -407,6 +411,7 @@ impl AppConfigBuilder {
             line_ch: self.line_ch,
             taglens_ch: self.taglens_ch,
             replay_existing: self.replay_existing,
+            line_shift: self.line_shift,
         }
     }
 
@@ -522,6 +527,11 @@ impl AppConfigBuilder {
 
     pub fn with_ignored_channels(&mut self, ignored_channels: Vec<i32>) -> &mut Self {
         self.ignored_channels = ignored_channels;
+        self
+    }
+
+    pub fn with_line_shift(&mut self, line_shift: Picosecond) -> &mut Self {
+        self.line_shift = line_shift;
         self
     }
 }
