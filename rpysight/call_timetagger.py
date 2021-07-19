@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Taken directly from Swabian's examples. Written on 132.66.42.158 (laser
 room computer) for realtime interaction with the TT. This somehow works
 without any PYTHONPATH manipulation - someone has already added the

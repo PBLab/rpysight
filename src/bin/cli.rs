@@ -1,17 +1,17 @@
 use std::env;
+use std::ffi::OsStr;
 use std::fs::read_to_string;
 use std::path::PathBuf;
-use std::ffi::OsStr;
 
 #[macro_use]
 extern crate log;
 
-use futures::executor::block_on;
 use anyhow::Result;
+use futures::executor::block_on;
 use thiserror::Error;
 
 use librpysight::configuration::AppConfig;
-use librpysight::{start_acquisition, setup_logger};
+use librpysight::{setup_logger, start_acquisition};
 
 #[derive(Debug, Error)]
 pub enum ConfigParsingError {
@@ -23,20 +23,66 @@ pub enum ConfigParsingError {
     MissingConfig,
 }
 
+pub struct ValidatedArgs {
+    pub path: PathBuf,
+}
+
+struct ArgsWithCorrectExtension {
+    pub path: PathBuf,
+}
+
+impl ArgsWithCorrectExtension {
+    pub fn parse(self) -> Result<ValidatedArgs, ConfigParsingError> {
+        if self.path.extension() != Some(OsStr::new("toml")) {
+            return Err(ConfigParsingError::WrongExtension(
+                "Wrong file given (expected TOML)".to_string(),
+            ));
+        } else {
+            Ok(ValidatedArgs { path: self.path })
+        }
+    }
+}
+
+struct ArgsThatExistOnDisk {
+    pub path: PathBuf,
+}
+
+impl ArgsThatExistOnDisk {
+    pub fn parse(self) -> Result<ArgsWithCorrectExtension, ConfigParsingError> {
+        if !self.path.exists() {
+            return Err(ConfigParsingError::FileNotFound(self.path));
+        } else {
+            Ok(ArgsWithCorrectExtension { path: self.path })
+        }
+    }
+}
+
+struct CorrectNumberOfArgs<'a> {
+    pub args: &'a [String],
+}
+
+impl<'a> CorrectNumberOfArgs<'a> {
+    pub fn parse(self) -> Result<ArgsThatExistOnDisk, ConfigParsingError> {
+        if self.args.len() != 1 {
+            return Err(ConfigParsingError::MissingConfig);
+        } else {
+            Ok(ArgsThatExistOnDisk {
+                path: PathBuf::from(&self.args[0]),
+            })
+        }
+    }
+}
 /// Asserts that the argument list to our software was given according to the
 /// specs
 fn validate_and_parse_args(args: &[String]) -> Result<PathBuf, ConfigParsingError> {
-    if !args.len() != 1 {
-        return Err(ConfigParsingError::MissingConfig)
-    }
-    let path = PathBuf::from(&args[0]);
-    if !path.exists() {
-        return Err(ConfigParsingError::FileNotFound(path))
-    }
-    if path.extension() != Some(OsStr::new("toml")) {
-        return Err(ConfigParsingError::WrongExtension("Wrong file given (expected TOML)".to_string()))
-    };
-    Ok(path)
+    let validated = CorrectNumberOfArgs { args }
+        .parse()
+        .and_then(|exist_on_disk| {
+            exist_on_disk
+                .parse()
+                .and_then(|correct_extension| correct_extension.parse())
+        })?;
+    Ok(validated.path)
 }
 
 /// Runs rPySight from the CLI
