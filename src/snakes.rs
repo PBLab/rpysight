@@ -3,6 +3,7 @@ use std::f32::consts::PI;
 
 use nalgebra::{Const, DVector, SVector};
 use serde::{Deserialize, Serialize};
+use itertools_num::linspace;
 
 use crate::configuration::{AppConfig, Bidirectionality};
 use crate::point_cloud_renderer::{ImageCoor, ProcessedEvent};
@@ -108,7 +109,6 @@ impl VoxelDelta<Picosecond> {
             VoxelDelta::calc_time_between_columns(config),
             VoxelDelta::calc_time_between_planes(config),
         ];
-        println!("{:?}", interim);
         let vals = interim.iter().min();
         *vals.unwrap()
     }
@@ -584,23 +584,18 @@ impl ThreeDimensionalSnake {
 
     fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<f32> {
         let step_size = 2.0f32 / (planes as f32);
-        let half_planes = planes / 2;
+        let half_planes = planes / 2 + 1;
         let mut phase_limits_0_to_1 =
-            DVector::<f32>::from_fn(half_planes, |i, _| (i as f32) * step_size);
+            DVector::<f32>::from_iterator(half_planes, linspace::<f32>(0.0, 1.0, half_planes));
         let mut phase_limits_1_to_m1 =
-            DVector::<f32>::from_fn(planes, |i, _| ((i + 1) as f32) * (-step_size))
-                .iter()
-                .rev()
-                .copied()
-                .collect::<Vec<f32>>();
-        let mut phase_limits_m1_to_0 = DVector::<f32>::from_fn(half_planes - 1, |i, _| {
-            ((i - 1) as f32) * step_size + step_size
-        });
-        let mut phase_limits_0_to_1 = phase_limits_0_to_1.as_mut_slice().to_vec();
-        phase_limits_0_to_1.append(&mut phase_limits_1_to_m1);
-        phase_limits_0_to_1.append(&mut phase_limits_m1_to_0.as_mut_slice().to_vec());
-        let phase_limits = DVector::<f32>::from_vec(phase_limits_0_to_1);
-        phase_limits
+            DVector::<f32>::from_iterator(planes - 1, linspace::<f32>(1.0 - step_size, -1.0 + step_size, planes - 1));
+        let mut phase_limits_m1_to_0 = DVector::<f32>::from_iterator(half_planes, linspace::<f32>(-1.0, 0.0 - step_size, half_planes - 1));
+        println!("{:?}", phase_limits_m1_to_0);
+        let mut all_phases = DVector::<f32>::repeat((half_planes + half_planes + planes - 2), 0.0f32);
+        all_phases.rows_mut(0, half_planes).set_column(0, &phase_limits_0_to_1);
+        all_phases.rows_mut(half_planes, planes).set_column(0, &phase_limits_1_to_m1);
+        all_phases.rows_mut(half_planes + planes, half_planes).set_column(0, &phase_limits_m1_to_0);
+        all_phases
     }
 
     fn create_planes_snake_ps(
@@ -1224,14 +1219,8 @@ mod tests {
         assert_eq!(min, 29);
     }
 
-    #[test]
-    fn create_sine_imagespace_single_plane() {
-        let config = setup_image_scanning_config().with_planes(1).build();
-        let snake = ThreeDimensionalSnake::naive_init(&config);
-        let sine = snake.create_planes_snake_imagespace(config.planes as usize);
-        assert_eq!(sine, DVector::from_vec(vec![0.0f32]));
-    }
-
+    // TODO: A test that verifies that only a 2D snake is formed when the
+    // number of input planes is 1.
     #[test]
     fn create_sine_imagespace_many_planes() {
         let config = setup_image_scanning_config().with_planes(10).build();
