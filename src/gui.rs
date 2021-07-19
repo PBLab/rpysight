@@ -777,11 +777,10 @@ impl Application for MainAppGui {
             .on_press(Message::ButtonPressed)
             .padding(10);
 
-        let content = Column::new()
+        let first_column = Column::new()
             .spacing(20)
             .padding(20)
             .max_width(600)
-            .push(Image::new("resources/logo.png"))
             .push(filename_row)
             .push(rows_row)
             .push(columns_row)
@@ -791,7 +790,12 @@ impl Application for MainAppGui {
             .push(fillfrac_row)
             .push(deadtime_row)
             .push(line_shift_row)
-            .push(bidir)
+            .push(bidir);
+
+        let second_column = Column::new()
+            .spacing(20)
+            .padding(20)
+            .max_width(600)
             .push(
                 Row::new()
                     .spacing(10)
@@ -856,7 +860,15 @@ impl Application for MainAppGui {
                     .push(taglens_input)
                     .push(taglens_edge),
             )
-            .push(ignored_row)
+            .push(ignored_row);
+
+        let content = Column::new()
+            .spacing(20)
+            .padding(20)
+            .max_width(1200)
+            .align_items(Align::Center)
+            .push(Image::new("resources/logo.png"))
+            .push(Row::new().push(first_column).push(second_column))
             .push(run_app);
 
         Container::new(content)

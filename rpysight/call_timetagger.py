@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Taken directly from Swabian's examples. Written on 132.66.42.158 (laser
 room computer) for realtime interaction with the TT. This somehow works
-without any PYTHONPATH manipulation - someone has already added the 
+without any PYTHONPATH manipulation - someone has already added the
 'driver\python' directory and it seems stable enough for this POC.
 
 By and large, the 'process' method is automatically called when each batch of
@@ -165,7 +165,7 @@ def add_fname_suffix(fname: str) -> str:
 def run_tagger(cfg: str):
     """Run a TimeTagger acquisition with the GUI's parameters.
 
-    This function starts an acquisition using parameters from the RPySight GUI.
+    This function starts an acquisition using parameters from the rPySight GUI.
     It should be called from that GUI since the parameter it receives arrives
     directly from Rust.
 
@@ -196,3 +196,7 @@ def replay_existing(cfg: str):
     tagger.replay(config['filename'], queue=False)
     tagger.waitForCompletion(timeout=-1)
 
+
+
+if __name__ == '__main__':
+    cfg = open()

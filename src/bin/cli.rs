@@ -19,12 +19,16 @@ pub enum ConfigParsingError {
     FileNotFound(PathBuf),
     #[error("Expected TOML extension (found {0})")]
     WrongExtension(String),
+    #[error("Missing configuration file, please provide one as an argument")]
+    MissingConfig,
 }
 
 /// Asserts that the argument list to our software was given according to the
 /// specs
 fn validate_and_parse_args(args: &[String]) -> Result<PathBuf, ConfigParsingError> {
-    assert_eq!(args.len(), 1);
+    if !args.len() != 1 {
+        return Err(ConfigParsingError::MissingConfig)
+    }
     let path = PathBuf::from(&args[0]);
     if !path.exists() {
         return Err(ConfigParsingError::FileNotFound(path))

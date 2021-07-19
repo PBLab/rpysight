@@ -552,7 +552,6 @@ mod tests {
             .with_frame_ch(0)
             .with_line_ch(2)
             .with_taglens_ch(3)
-            .with_line_shift(0)
             .clone()
     }
 
@@ -575,7 +574,6 @@ mod tests {
             .with_frame_ch(0)
             .with_line_ch(2)
             .with_taglens_ch(0)
-            .with_line_shift(0)
             .clone()
     }
 
