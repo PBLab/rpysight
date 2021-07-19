@@ -290,7 +290,7 @@ impl TimeToCoord {
     /// pixels of the image, with two main differences: The first, it takes
     /// into account the bidirectionality of the scanner, i.e. odd rows are
     /// 'concatenated' in reverse and are given a phase shift. The second, per
-    /// frame it has an extra "row" and an extra column that should contain 
+    /// frame it has an extra "row" and an extra column that should contain
     /// photons arriving between frames and while the scanner was rotating,
     /// respectively.
     ///
@@ -323,7 +323,7 @@ impl TimeToCoord {
         let nan = column_deltas_imagespace_rev.remove(0);
         column_deltas_imagespace_rev.push(nan);
         let column_deltas_imagespace_rev = DVector::from_vec(column_deltas_imagespace_rev);
-        let column_deltas_ps_bidir = &column_deltas_ps.add_scalar(-2000000);  // Line shift
+        let column_deltas_ps_bidir = &column_deltas_ps.add_scalar(config.line_shift);  // Line shift
         let mut row_coord: f32;
         for row in (0..config.rows).step_by(2) {
             // Start with the unidir row
@@ -552,6 +552,7 @@ mod tests {
             .with_frame_ch(0)
             .with_line_ch(2)
             .with_taglens_ch(3)
+            .with_line_shift(0)
             .clone()
     }
 
@@ -574,6 +575,7 @@ mod tests {
             .with_frame_ch(0)
             .with_line_ch(2)
             .with_taglens_ch(0)
+            .with_line_shift(0)
             .clone()
     }
 

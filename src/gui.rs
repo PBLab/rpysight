@@ -64,6 +64,8 @@ pub struct MainAppGui {
     replay_existing: bool,
     ignored_channels_input: text_input::State,
     ignored_channels_value: String,
+    line_shift_input: text_input::State,
+    line_shift_value: String,
     run_button: button::State,
 }
 
@@ -143,6 +145,10 @@ impl MainAppGui {
     pub(crate) fn get_ignored_channels(&self) -> &str {
         &self.ignored_channels_value
     }
+
+    pub(crate) fn get_line_shift(&self) -> &str {
+        &self.line_shift_value
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -174,6 +180,7 @@ pub enum Message {
     TagLensEdgeChanged(EdgeDetected),
     ReplayExistingChanged(bool),
     IgnoredChannelsChanged(String),
+    LineShiftChanged(String),
     ButtonPressed,
     StartedAcquistion(()),
 }
@@ -331,6 +338,7 @@ impl Application for MainAppGui {
             frame_dead_time_value: ps_to_ms(prev_config.frame_dead_time).to_string(),
             replay_existing: prev_config.replay_existing,
             ignored_channels_value: vec_to_comma_sep_string(&prev_config.ignored_channels),
+            line_shift_value: prev_config.line_shift.to_string(),
             ..Default::default()
         };
         let pmt1 = channel_value_to_pair(prev_config.pmt1_ch);
@@ -475,6 +483,10 @@ impl Application for MainAppGui {
                 self.ignored_channels_value = ignored_str;
                 Command::none()
             }
+            Message::LineShiftChanged(line_shift) => {
+                self.line_shift_value = line_shift;
+                Command::none()
+            }
             Message::ButtonPressed => Command::perform(
                 start_acquisition(PathBuf::from(DEFAULT_CONFIG_FNAME), AppConfig::from_user_input(self).expect("")),
                 Message::StartedAcquistion,
@@ -611,6 +623,21 @@ impl Application for MainAppGui {
             .align_items(Align::Center)
             .push(deadtime_label)
             .push(deadtime);
+
+        let line_shift = TextInput::new(
+            &mut self.line_shift_input,
+            "Line Shift [us]",
+            &self.line_shift_value,
+            Message::LineShiftChanged,
+        )
+        .padding(10)
+        .size(20);
+        let line_shift_label = Text::new("Line Shift [us]");
+        let line_shift_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(line_shift_label)
+            .push(line_shift);
 
         let ignored = TextInput::new(
             &mut self.ignored_channels_input,
@@ -763,6 +790,7 @@ impl Application for MainAppGui {
             .push(taglens_period_row)
             .push(fillfrac_row)
             .push(deadtime_row)
+            .push(line_shift_row)
             .push(bidir)
             .push(
                 Row::new()
