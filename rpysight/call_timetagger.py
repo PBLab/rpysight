@@ -183,7 +183,7 @@ def run_tagger(cfg: str):
     tag = RealTimeRendering(tagger, channels, config['filename'])
     stream_fname = add_fname_suffix(config['filename'])
     _ = TimeTagger.FileWriter(tagger, stream_fname, [CHAN_START, CHAN_STOP])
-    # tag.startFor(int(10e12))
+    tag.startFor(int(10e12))
     tag.waitUntilFinished()
 
 
@@ -196,6 +196,8 @@ def replay_existing(cfg: str):
     tagger.waitForCompletion(timeout=-1)
 
 
-
 if __name__ == '__main__':
-    cfg = open()
+    with open(r'C:\Users\remote\AppData\Roaming\PBLab\RPySight\config\default.toml', 'r') as f:
+        cfg = f.read()
+    run_tagger(cfg)
+

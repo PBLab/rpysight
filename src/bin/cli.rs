@@ -1,3 +1,5 @@
+// Remember to $Env:PYTHONHOME = "C:\Users\PBLab\.conda\envs\timetagger\"
+// because powershell is too dumb to remember.
 use std::env;
 use std::ffi::OsStr;
 use std::fs::read_to_string;
