@@ -65,18 +65,16 @@ impl From<Bidirectionality> for bool {
 
 /// Enumerates all possible data streams that can be handled by rPySight, like
 /// PMT data, line sync events and so on.
-///
-/// The associated value is the trigger level of that data type, in volts.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Copy)]
 pub enum DataType {
-    Pmt1(f32),
-    Pmt2(f32),
-    Pmt3(f32),
-    Pmt4(f32),
-    Frame(f32),
-    Line(f32),
-    TagLens(f32),
-    Laser(f32),
+    Pmt1,
+    Pmt2,
+    Pmt3,
+    Pmt4,
+    Frame,
+    Line,
+    TagLens,
+    Laser,
     /// A connected output which is unneeded in this experiment
     Unwanted,
     Invalid,
@@ -91,10 +89,16 @@ const MAX_TIMETAGGER_INPUTS: i32 = 18;
 /// A physical input port on the TimeTagger, having both a channel value
 /// (positive if the threshold is positive, else negative) and a threshold
 /// value that is set as the trigger of it.
-#[derive(Debug, Clone)]
-struct InputChannel {
-    channel: i32,
-    threshold: f32,
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InputChannel {
+    pub channel: i32,
+    pub threshold: f32,
+}
+
+impl InputChannel {
+    pub fn new(channel: i32, threshold: f32) -> Self {
+        InputChannel { channel, threshold }
+    }
 }
 
 /// A data structure which maps the input channel to the data type it relays.
@@ -123,14 +127,14 @@ impl Inputs {
             config.laser_ch,
         ];
         let mut datatypes = vec![
-            DataType::Pmt1(0.0),
-            DataType::Pmt2(0.0),
-            DataType::Pmt3(0.0),
-            DataType::Pmt4(0.0),
-            DataType::Frame(0.0),
-            DataType::Line(0.0),
-            DataType::TagLens(0.0),
-            DataType::Laser(0.0),
+            DataType::Pmt1,
+            DataType::Pmt2,
+            DataType::Pmt3,
+            DataType::Pmt4,
+            DataType::Frame,
+            DataType::Line,
+            DataType::TagLens,
+            DataType::Laser,
         ];
 
         let num_unwanted_channels = config.ignored_channels.len();
@@ -141,9 +145,9 @@ impl Inputs {
         // Loop over a pair of input and the corresponding data type, but only
         // register the inputs which are actually used, i.e. different than 0.
         for (ch, dt) in needed_channels.into_iter().zip(datatypes).into_iter() {
-            if ch != 0 {
-                set.insert(ch);
-                data[(MAX_TIMETAGGER_INPUTS + ch) as usize] = dt;
+            if ch.channel != 0 {
+                set.insert(ch.channel);
+                data[(MAX_TIMETAGGER_INPUTS + ch.channel) as usize] = dt;
                 used_channels += 1;
             }
         }
@@ -178,20 +182,20 @@ impl Index<i32> for Inputs {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppConfig {
     pub(crate) filename: String,
-    pub(crate) ignored_channels: Vec<i32>,
+    pub(crate) ignored_channels: Vec<InputChannel>,
     pub(crate) rows: u32,
     pub(crate) columns: u32,
     pub(crate) planes: u32,
     pub(crate) fill_fraction: f32, // (0..100)
     pub(crate) frame_dead_time: Picosecond,
-    pub(crate) pmt1_ch: i32,
-    pub(crate) pmt2_ch: i32,
-    pub(crate) pmt3_ch: i32,
-    pub(crate) pmt4_ch: i32,
-    pub(crate) laser_ch: i32,
-    pub(crate) frame_ch: i32,
-    pub(crate) line_ch: i32,
-    pub(crate) taglens_ch: i32,
+    pub(crate) pmt1_ch: InputChannel,
+    pub(crate) pmt2_ch: InputChannel,
+    pub(crate) pmt3_ch: InputChannel,
+    pub(crate) pmt4_ch: InputChannel,
+    pub(crate) laser_ch: InputChannel,
+    pub(crate) frame_ch: InputChannel,
+    pub(crate) line_ch: InputChannel,
+    pub(crate) taglens_ch: InputChannel,
     pub(crate) replay_existing: bool,
     pub(crate) line_shift: Picosecond,
     pub(crate) bidir: Bidirectionality,
@@ -293,17 +297,17 @@ impl AppConfig {
 }
 
 /// Converts a comma-separated list of numbers into channels
-fn convert_ignored_to_vec(ignored_str: &str) -> Vec<i32> {
+fn convert_ignored_to_vec(ignored_str: &str) -> Vec<InputChannel> {
     if ignored_str.len() == 0 {
-        vec![]
-    } else {
-        ignored_str
-            .trim_end_matches(",")
-            .replace(" ", "")
-            .split(",")
-            .map(|ch| ch.parse::<i32>().unwrap())
-            .collect()
-    }
+        return vec![];
+    };
+    ignored_str
+        .trim_end_matches(",")
+        .replace(" ", "")
+        .split(",")
+        .map(|ch| ch.parse::<i32>().unwrap())
+        .map(|ch| InputChannel::new(ch, 0.0))
+        .collect()
 }
 
 /// Converts a miliseconds number (a string) into its equivalent in ps.
@@ -317,43 +321,47 @@ fn string_ms_to_ps(ms_as_string: &str) -> anyhow::Result<Picosecond, ParseFloatE
 ///
 /// Each TT event has an associated channel that has a number (1-18) and can
 /// be either positive, if events are detected in the rising edge, or negative
-/// if they're detected on the falling edge. This function converts the user's
-/// choice into the internal representation detailed above. An empty channel is
-/// given the value 0.
-fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected)) -> i32 {
+/// if they're detected on the falling edge. Additionally each active channel
+/// has a threshold value.
+///
+/// This function converts the user's choice into the internal representation
+/// detailed above. An empty channel is given the value 0.
+fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected, f32)) -> InputChannel {
     let edge: i32 = match channel.1 {
         EdgeDetected::Rising => 1,
         EdgeDetected::Falling => -1,
     };
-    edge * match channel.0 {
-        ChannelNumber::Channel1 => 1,
-        ChannelNumber::Channel2 => 2,
-        ChannelNumber::Channel3 => 3,
-        ChannelNumber::Channel4 => 4,
-        ChannelNumber::Channel5 => 5,
-        ChannelNumber::Channel6 => 6,
-        ChannelNumber::Channel7 => 7,
-        ChannelNumber::Channel8 => 8,
-        ChannelNumber::Channel9 => 9,
-        ChannelNumber::Channel10 => 10,
-        ChannelNumber::Channel11 => 11,
-        ChannelNumber::Channel12 => 12,
-        ChannelNumber::Channel13 => 13,
-        ChannelNumber::Channel14 => 14,
-        ChannelNumber::Channel15 => 15,
-        ChannelNumber::Channel16 => 16,
-        ChannelNumber::Channel17 => 17,
-        ChannelNumber::Channel18 => 18,
-        ChannelNumber::Ignore => 0,
-        ChannelNumber::Disconnected => 0,
-    }
+    let ch = edge
+        * match channel.0 {
+            ChannelNumber::Channel1 => 1,
+            ChannelNumber::Channel2 => 2,
+            ChannelNumber::Channel3 => 3,
+            ChannelNumber::Channel4 => 4,
+            ChannelNumber::Channel5 => 5,
+            ChannelNumber::Channel6 => 6,
+            ChannelNumber::Channel7 => 7,
+            ChannelNumber::Channel8 => 8,
+            ChannelNumber::Channel9 => 9,
+            ChannelNumber::Channel10 => 10,
+            ChannelNumber::Channel11 => 11,
+            ChannelNumber::Channel12 => 12,
+            ChannelNumber::Channel13 => 13,
+            ChannelNumber::Channel14 => 14,
+            ChannelNumber::Channel15 => 15,
+            ChannelNumber::Channel16 => 16,
+            ChannelNumber::Channel17 => 17,
+            ChannelNumber::Channel18 => 18,
+            ChannelNumber::Ignore => 0,
+            ChannelNumber::Disconnected => 0,
+        };
+    InputChannel::new(ch, channel.2)
 }
 
 #[derive(Clone)]
 pub struct AppConfigBuilder {
     filename: String,
     point_color: Point3<f32>,
-    ignored_channels: Vec<i32>,
+    ignored_channels: Vec<InputChannel>,
     rows: u32,
     columns: u32,
     planes: u32,
@@ -363,14 +371,14 @@ pub struct AppConfigBuilder {
     fill_fraction: f32, // (0..100)
     frame_dead_time: Picosecond,
     replay_existing: bool,
-    pmt1_ch: i32,
-    pmt2_ch: i32,
-    pmt3_ch: i32,
-    pmt4_ch: i32,
-    laser_ch: i32,
-    frame_ch: i32,
-    line_ch: i32,
-    taglens_ch: i32,
+    pmt1_ch: InputChannel,
+    pmt2_ch: InputChannel,
+    pmt3_ch: InputChannel,
+    pmt4_ch: InputChannel,
+    laser_ch: InputChannel,
+    frame_ch: InputChannel,
+    line_ch: InputChannel,
+    taglens_ch: InputChannel,
     line_shift: Picosecond,
 }
 
@@ -391,14 +399,14 @@ impl AppConfigBuilder {
             replay_existing: false,
             fill_fraction: 71.0,
             frame_dead_time: 1_310_000_000,
-            pmt1_ch: 1,
-            pmt2_ch: 0,
-            pmt3_ch: 0,
-            pmt4_ch: 0,
-            laser_ch: 0,
-            frame_ch: 0,
-            line_ch: -2,
-            taglens_ch: 3,
+            pmt1_ch: InputChannel::new(1, 0.0),
+            pmt2_ch: InputChannel::new(0, 0.0),
+            pmt3_ch: InputChannel::new(0, 0.0),
+            pmt4_ch: InputChannel::new(0, 0.0),
+            laser_ch: InputChannel::new(0, 0.0),
+            frame_ch: InputChannel::new(0, 0.0),
+            line_ch: InputChannel::new(-2, 0.0),
+            taglens_ch: InputChannel::new(3, 0.0),
             line_shift: 0,
         }
     }
@@ -486,50 +494,50 @@ impl AppConfigBuilder {
         self
     }
 
-    pub fn with_pmt1_ch(&mut self, pmt1_ch: i32) -> &mut Self {
-        assert!(pmt1_ch.abs() <= MAX_TIMETAGGER_INPUTS);
+    pub fn with_pmt1_ch(&mut self, pmt1_ch: InputChannel) -> &mut Self {
+        assert!(pmt1_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt1_ch = pmt1_ch;
         self
     }
 
-    pub fn with_pmt2_ch(&mut self, pmt2_ch: i32) -> &mut Self {
-        assert!(pmt2_ch.abs() <= MAX_TIMETAGGER_INPUTS);
+    pub fn with_pmt2_ch(&mut self, pmt2_ch: InputChannel) -> &mut Self {
+        assert!(pmt2_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt2_ch = pmt2_ch;
         self
     }
 
-    pub fn with_pmt3_ch(&mut self, pmt3_ch: i32) -> &mut Self {
-        assert!(pmt3_ch.abs() <= MAX_TIMETAGGER_INPUTS);
+    pub fn with_pmt3_ch(&mut self, pmt3_ch: InputChannel) -> &mut Self {
+        assert!(pmt3_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt3_ch = pmt3_ch;
         self
     }
 
-    pub fn with_pmt4_ch(&mut self, pmt4_ch: i32) -> &mut Self {
-        assert!(pmt4_ch.abs() <= MAX_TIMETAGGER_INPUTS);
+    pub fn with_pmt4_ch(&mut self, pmt4_ch: InputChannel) -> &mut Self {
+        assert!(pmt4_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt4_ch = pmt4_ch;
         self
     }
 
-    pub fn with_laser_ch(&mut self, laser_ch: i32) -> &mut Self {
-        assert!(laser_ch.abs() <= MAX_TIMETAGGER_INPUTS);
+    pub fn with_laser_ch(&mut self, laser_ch: InputChannel) -> &mut Self {
+        assert!(laser_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.laser_ch = laser_ch;
         self
     }
 
-    pub fn with_frame_ch(&mut self, frame_ch: i32) -> &mut Self {
-        assert!(frame_ch.abs() <= MAX_TIMETAGGER_INPUTS);
+    pub fn with_frame_ch(&mut self, frame_ch: InputChannel) -> &mut Self {
+        assert!(frame_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.frame_ch = frame_ch;
         self
     }
 
-    pub fn with_line_ch(&mut self, line_ch: i32) -> &mut Self {
-        assert!(line_ch.abs() <= MAX_TIMETAGGER_INPUTS);
+    pub fn with_line_ch(&mut self, line_ch: InputChannel) -> &mut Self {
+        assert!(line_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.line_ch = line_ch;
         self
     }
 
-    pub fn with_taglens_ch(&mut self, taglens_ch: i32) -> &mut Self {
-        assert!(taglens_ch.abs() <= MAX_TIMETAGGER_INPUTS);
+    pub fn with_taglens_ch(&mut self, taglens_ch: InputChannel) -> &mut Self {
+        assert!(taglens_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.taglens_ch = taglens_ch;
         self
     }
@@ -539,7 +547,7 @@ impl AppConfigBuilder {
         self
     }
 
-    pub fn with_ignored_channels(&mut self, ignored_channels: Vec<i32>) -> &mut Self {
+    pub fn with_ignored_channels(&mut self, ignored_channels: Vec<InputChannel>) -> &mut Self {
         self.ignored_channels = ignored_channels;
         self
     }
@@ -567,14 +575,14 @@ mod tests {
             .with_bidir(Bidirectionality::Bidir)
             .with_fill_fraction(71.3)
             .with_frame_dead_time(8 * *Period::from_freq(7926.17))
-            .with_pmt1_ch(-1)
-            .with_pmt2_ch(0)
-            .with_pmt3_ch(0)
-            .with_pmt4_ch(0)
-            .with_laser_ch(0)
-            .with_frame_ch(0)
-            .with_line_ch(2)
-            .with_taglens_ch(3)
+            .with_pmt1_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(0, 0.0))
+            .with_pmt3_ch(InputChannel::new(0, 0.0))
+            .with_pmt4_ch(InputChannel::new(0, 0.0))
+            .with_laser_ch(InputChannel::new(0, 0.0))
+            .with_frame_ch(InputChannel::new(0, 0.0))
+            .with_line_ch(InputChannel::new(2, 0.0))
+            .with_taglens_ch(InputChannel::new(3, 0.0))
             .with_replay_existing(false)
             .with_ignored_channels(vec![])
             .clone()
@@ -583,73 +591,73 @@ mod tests {
     #[test]
     fn inputs_indexing_positive() {
         let config = setup_default_config()
-            .with_pmt1_ch(1)
-            .with_pmt2_ch(2)
-            .with_pmt3_ch(3)
-            .with_pmt4_ch(4)
-            .with_laser_ch(5)
-            .with_frame_ch(6)
-            .with_line_ch(7)
-            .with_taglens_ch(8)
+            .with_pmt1_ch(InputChannel::new(1, 0.0))
+            .with_pmt2_ch(InputChannel::new(2, 0.0))
+            .with_pmt3_ch(InputChannel::new(3, 0.0))
+            .with_pmt4_ch(InputChannel::new(4, 0.0))
+            .with_laser_ch(InputChannel::new(5, 0.0))
+            .with_frame_ch(InputChannel::new(6, 0.0))
+            .with_line_ch(InputChannel::new(7, 0.0))
+            .with_taglens_ch(InputChannel::new(8, 0.0))
             .build();
         let inputs = Inputs::from_config(&config);
-        assert_eq!(inputs[1], DataType::Pmt1);
+        assert_eq!(inputs[1], DataType::Pmt1(0.0));
     }
 
     #[test]
     fn inputs_indexing_positive_edge() {
         let config = setup_default_config()
-            .with_pmt1_ch(1)
-            .with_pmt2_ch(2)
-            .with_pmt3_ch(3)
-            .with_pmt4_ch(4)
-            .with_laser_ch(5)
-            .with_frame_ch(6)
-            .with_line_ch(7)
-            .with_taglens_ch(18)
+            .with_pmt1_ch(InputChannel::new(1, 0.0))
+            .with_pmt2_ch(InputChannel::new(2, 0.0))
+            .with_pmt3_ch(InputChannel::new(3, 0.0))
+            .with_pmt4_ch(InputChannel::new(4, 0.0))
+            .with_laser_ch(InputChannel::new(5, 0.0))
+            .with_frame_ch(InputChannel::new(6, 0.0))
+            .with_line_ch(InputChannel::new(7, 0.0))
+            .with_taglens_ch(InputChannel::new(18, 0.0))
             .build();
         let inputs = Inputs::from_config(&config);
-        assert_eq!(inputs[18], DataType::TagLens);
+        assert_eq!(inputs[18], DataType::TagLens(0.0));
     }
 
     #[test]
     fn inputs_indexing_negative() {
         let config = setup_default_config()
-            .with_pmt1_ch(-1)
-            .with_pmt2_ch(2)
-            .with_pmt3_ch(3)
-            .with_pmt4_ch(4)
-            .with_laser_ch(5)
-            .with_frame_ch(6)
-            .with_line_ch(7)
-            .with_taglens_ch(8)
+            .with_pmt1_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(2, 0.0))
+            .with_pmt3_ch(InputChannel::new(3, 0.0))
+            .with_pmt4_ch(InputChannel::new(4, 0.0))
+            .with_laser_ch(InputChannel::new(5, 0.0))
+            .with_frame_ch(InputChannel::new(6, 0.0))
+            .with_line_ch(InputChannel::new(7, 0.0))
+            .with_taglens_ch(InputChannel::new(8, 0.0))
             .build();
         let inputs = Inputs::from_config(&config);
-        assert_eq!(inputs[-1], DataType::Pmt1);
+        assert_eq!(inputs[-1], DataType::Pmt1(0.0));
     }
 
     #[test]
     fn inputs_indexing_negative_edge() {
         let config = setup_default_config()
-            .with_pmt1_ch(-1)
-            .with_pmt2_ch(2)
-            .with_pmt3_ch(3)
-            .with_pmt4_ch(4)
-            .with_laser_ch(5)
-            .with_frame_ch(6)
-            .with_line_ch(7)
-            .with_taglens_ch(-18)
+            .with_pmt1_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(2, 0.0))
+            .with_pmt3_ch(InputChannel::new(3, 0.0))
+            .with_pmt4_ch(InputChannel::new(4, 0.0))
+            .with_laser_ch(InputChannel::new(5, 0.0))
+            .with_frame_ch(InputChannel::new(6, 0.0))
+            .with_line_ch(InputChannel::new(7, 0.0))
+            .with_taglens_ch(InputChannel::new(-18, 0.0))
             .build();
         let inputs = Inputs::from_config(&config);
-        assert_eq!(inputs[-18], DataType::TagLens);
+        assert_eq!(inputs[-18], DataType::TagLens(0.0));
     }
 
     #[test]
     #[should_panic(expected = "One of the channels was a duplicate")]
     fn inputs_duplicate_channel() {
         let config = setup_default_config()
-            .with_pmt1_ch(-1)
-            .with_pmt2_ch(-1)
+            .with_pmt1_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(-1, 0.0))
             .build();
         let _ = Inputs::from_config(&config);
     }
@@ -657,14 +665,14 @@ mod tests {
     #[test]
     fn inputs_not_all_channels_are_used() {
         let config = setup_default_config()
-            .with_pmt1_ch(-1)
-            .with_pmt2_ch(2)
-            .with_pmt3_ch(3)
-            .with_pmt4_ch(4)
-            .with_laser_ch(0)
-            .with_frame_ch(0)
-            .with_line_ch(0)
-            .with_taglens_ch(0)
+            .with_pmt1_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(2, 0.0))
+            .with_pmt3_ch(InputChannel::new(3, 0.0))
+            .with_pmt4_ch(InputChannel::new(4, 0.0))
+            .with_laser_ch(InputChannel::new(0, 0.0))
+            .with_frame_ch(InputChannel::new(0, 0.0))
+            .with_line_ch(InputChannel::new(0, 0.0))
+            .with_taglens_ch(InputChannel::new(0, 0.0))
             .build();
         let _ = Inputs::from_config(&config);
     }
@@ -707,37 +715,52 @@ mod tests {
 
     #[test]
     fn channel_inp_to_num_disconneted_positive() {
-        let result =
-            convert_user_channel_input_to_num((ChannelNumber::Disconnected, EdgeDetected::Rising));
-        assert_eq!(result, 0);
+        let result = convert_user_channel_input_to_num((
+            ChannelNumber::Disconnected,
+            EdgeDetected::Rising,
+            0.0,
+        ));
+        assert_eq!(result, InputChannel::new(0, 0.0));
     }
 
     #[test]
     fn channel_inp_to_num_disconneted_negative() {
-        let result =
-            convert_user_channel_input_to_num((ChannelNumber::Disconnected, EdgeDetected::Falling));
-        assert_eq!(result, 0);
+        let result = convert_user_channel_input_to_num((
+            ChannelNumber::Disconnected,
+            EdgeDetected::Falling,
+            0.0,
+        ));
+        assert_eq!(result, InputChannel::new(0, 0.0));
     }
 
     #[test]
     fn channel_inp_to_num_standard_falling() {
-        let result =
-            convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Falling));
-        assert_eq!(result, -3);
+        let result = convert_user_channel_input_to_num((
+            ChannelNumber::Channel3,
+            EdgeDetected::Falling,
+            -1.0,
+        ));
+        assert_eq!(result, InputChannel::new(-3, -1.0));
     }
 
     #[test]
     fn channel_inp_to_num_standard_rising() {
         let result =
-            convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Rising));
-        assert_eq!(result, 3);
+            convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Rising, 1.0));
+        assert_eq!(result, InputChannel::new(3, 1.0));
     }
 
     #[test]
     fn ignored_to_vec_standard() {
         let test = "1,2, -3, -4";
         let ret = convert_ignored_to_vec(test);
-        assert_eq!(ret, vec![1i32, 2, -3, -4]);
+        assert_eq!(
+            ret,
+            vec![1i32, 2, -3, -4]
+                .iter()
+                .map(|ch| InputChannel::new(*ch, 0.0))
+                .collect::<Vec<InputChannel>>()
+        );
     }
 
     #[test]
@@ -746,14 +769,14 @@ mod tests {
         let test2 = "1,";
         let ret1 = convert_ignored_to_vec(test1);
         let ret2 = convert_ignored_to_vec(test2);
-        assert_eq!(ret1, vec![1i32]);
-        assert_eq!(ret2, vec![1i32]);
+        assert_eq!(ret1, vec![InputChannel::new(1, 0.0)]);
+        assert_eq!(ret2, vec![InputChannel::new(1, 0.0)]);
     }
 
     #[test]
     fn ignored_to_vec_empty() {
         let test = "";
         let ret = convert_ignored_to_vec(test);
-        assert_eq!(ret, Vec::<i32>::new());
+        assert_eq!(ret, Vec::<InputChannel>::new());
     }
 }

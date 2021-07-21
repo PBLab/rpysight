@@ -1,14 +1,17 @@
-use std::path::PathBuf;
 use std::fmt::Write;
+use std::path::PathBuf;
 
-use serde::{Serialize, Deserialize};
 use iced::{
     button, pick_list, text_input, Align, Application, Button, Checkbox, Clipboard, Column,
     Command, Container, Element, Image, Length, PickList, Row, Text, TextInput,
 };
+use serde::{Deserialize, Serialize};
 
-use crate::{DEFAULT_CONFIG_FNAME, channel_value_to_pair, start_acquisition};
-use crate::{configuration::AppConfig, rendering_helpers::Picosecond};
+use crate::{channel_value_to_pair, start_acquisition, DEFAULT_CONFIG_FNAME};
+use crate::{
+    configuration::{AppConfig, InputChannel},
+    rendering_helpers::Picosecond,
+};
 
 #[derive(Default)]
 pub struct MainAppGui {
@@ -33,34 +36,50 @@ pub struct MainAppGui {
     pmt1_selected: ChannelNumber,
     pmt1_edge_list: pick_list::State<EdgeDetected>,
     pmt1_edge_selected: EdgeDetected,
+    pmt1_threshold_input: text_input::State,
+    pmt1_threshold_value: String,
     pmt2_pick_list: pick_list::State<ChannelNumber>,
     pmt2_selected: ChannelNumber,
     pmt2_edge_list: pick_list::State<EdgeDetected>,
     pmt2_edge_selected: EdgeDetected,
+    pmt2_threshold_input: text_input::State,
+    pmt2_threshold_value: String,
     pmt3_pick_list: pick_list::State<ChannelNumber>,
     pmt3_selected: ChannelNumber,
     pmt3_edge_list: pick_list::State<EdgeDetected>,
     pmt3_edge_selected: EdgeDetected,
+    pmt3_threshold_input: text_input::State,
+    pmt3_threshold_value: String,
     pmt4_pick_list: pick_list::State<ChannelNumber>,
     pmt4_selected: ChannelNumber,
     pmt4_edge_list: pick_list::State<EdgeDetected>,
     pmt4_edge_selected: EdgeDetected,
+    pmt4_threshold_input: text_input::State,
+    pmt4_threshold_value: String,
     laser_pick_list: pick_list::State<ChannelNumber>,
     laser_selected: ChannelNumber,
     laser_edge_list: pick_list::State<EdgeDetected>,
     laser_edge_selected: EdgeDetected,
+    laser_threshold_input: text_input::State,
+    laser_threshold_value: String,
     frame_pick_list: pick_list::State<ChannelNumber>,
     frame_selected: ChannelNumber,
     frame_edge_list: pick_list::State<EdgeDetected>,
     frame_edge_selected: EdgeDetected,
+    frame_threshold_input: text_input::State,
+    frame_threshold_value: String,
     line_pick_list: pick_list::State<ChannelNumber>,
     line_selected: ChannelNumber,
     line_edge_list: pick_list::State<EdgeDetected>,
     line_edge_selected: EdgeDetected,
+    line_threshold_input: text_input::State,
+    line_threshold_value: String,
     taglens_pick_list: pick_list::State<ChannelNumber>,
     taglens_selected: ChannelNumber,
     taglens_edge_list: pick_list::State<EdgeDetected>,
     taglens_edge_selected: EdgeDetected,
+    taglens_threshold_input: text_input::State,
+    taglens_threshold_value: String,
     replay_existing: bool,
     ignored_channels_input: text_input::State,
     ignored_channels_value: String,
@@ -106,36 +125,68 @@ impl MainAppGui {
         &self.fill_fraction_value
     }
 
-    pub(crate) fn get_pmt1_channel(&self) -> (ChannelNumber, EdgeDetected) {
-        (self.pmt1_selected, self.pmt1_edge_selected)
+    pub(crate) fn get_pmt1_channel(&self) -> (ChannelNumber, EdgeDetected, f32) {
+        (
+            self.pmt1_selected,
+            self.pmt1_edge_selected,
+            self.pmt1_threshold_value.parse::<f32>().unwrap(),
+        )
     }
 
-    pub(crate) fn get_pmt2_channel(&self) -> (ChannelNumber, EdgeDetected) {
-        (self.pmt2_selected, self.pmt2_edge_selected)
+    pub(crate) fn get_pmt2_channel(&self) -> (ChannelNumber, EdgeDetected, f32) {
+        (
+            self.pmt2_selected,
+            self.pmt2_edge_selected,
+            self.pmt2_threshold_value.parse::<f32>().unwrap(),
+        )
     }
 
-    pub(crate) fn get_pmt3_channel(&self) -> (ChannelNumber, EdgeDetected) {
-        (self.pmt3_selected, self.pmt3_edge_selected)
+    pub(crate) fn get_pmt3_channel(&self) -> (ChannelNumber, EdgeDetected, f32) {
+        (
+            self.pmt3_selected,
+            self.pmt3_edge_selected,
+            self.pmt3_threshold_value.parse::<f32>().unwrap(),
+        )
     }
 
-    pub(crate) fn get_pmt4_channel(&self) -> (ChannelNumber, EdgeDetected) {
-        (self.pmt4_selected, self.pmt4_edge_selected)
+    pub(crate) fn get_pmt4_channel(&self) -> (ChannelNumber, EdgeDetected, f32) {
+        (
+            self.pmt4_selected,
+            self.pmt4_edge_selected,
+            self.pmt4_threshold_value.parse::<f32>().unwrap(),
+        )
     }
 
-    pub(crate) fn get_laser_channel(&self) -> (ChannelNumber, EdgeDetected) {
-        (self.laser_selected, self.laser_edge_selected)
+    pub(crate) fn get_laser_channel(&self) -> (ChannelNumber, EdgeDetected, f32) {
+        (
+            self.laser_selected,
+            self.laser_edge_selected,
+            self.laser_threshold_value.parse::<f32>().unwrap(),
+        )
     }
 
-    pub(crate) fn get_frame_channel(&self) -> (ChannelNumber, EdgeDetected) {
-        (self.frame_selected, self.frame_edge_selected)
+    pub(crate) fn get_frame_channel(&self) -> (ChannelNumber, EdgeDetected, f32) {
+        (
+            self.frame_selected,
+            self.frame_edge_selected,
+            self.frame_threshold_value.parse::<f32>().unwrap(),
+        )
     }
 
-    pub(crate) fn get_line_channel(&self) -> (ChannelNumber, EdgeDetected) {
-        (self.line_selected, self.line_edge_selected)
+    pub(crate) fn get_line_channel(&self) -> (ChannelNumber, EdgeDetected, f32) {
+        (
+            self.line_selected,
+            self.line_edge_selected,
+            self.line_threshold_value.parse::<f32>().unwrap(),
+        )
     }
 
-    pub(crate) fn get_tag_channel(&self) -> (ChannelNumber, EdgeDetected) {
-        (self.taglens_selected, self.taglens_edge_selected)
+    pub(crate) fn get_tag_channel(&self) -> (ChannelNumber, EdgeDetected, f32) {
+        (
+            self.taglens_selected,
+            self.taglens_edge_selected,
+            self.taglens_threshold_value.parse::<f32>().unwrap(),
+        )
     }
 
     pub(crate) fn get_replay_existing(&self) -> bool {
@@ -164,20 +215,28 @@ pub enum Message {
     FrameDeadTimeChanged(String),
     Pmt1Changed(ChannelNumber),
     Pmt1EdgeChanged(EdgeDetected),
+    Pmt1ThresholdChanged(String),
     Pmt2Changed(ChannelNumber),
     Pmt2EdgeChanged(EdgeDetected),
+    Pmt2ThresholdChanged(String),
     Pmt3Changed(ChannelNumber),
     Pmt3EdgeChanged(EdgeDetected),
+    Pmt3ThresholdChanged(String),
     Pmt4Changed(ChannelNumber),
     Pmt4EdgeChanged(EdgeDetected),
+    Pmt4ThresholdChanged(String),
     LaserChanged(ChannelNumber),
     LaserEdgeChanged(EdgeDetected),
+    LaserThresholdChanged(String),
     FrameChanged(ChannelNumber),
     FrameEdgeChanged(EdgeDetected),
+    FrameThresholdChanged(String),
     LineChanged(ChannelNumber),
     LineEdgeChanged(EdgeDetected),
+    LineThresholdChanged(String),
     TagLensChanged(ChannelNumber),
     TagLensEdgeChanged(EdgeDetected),
+    TagLensThresholdChanged(String),
     ReplayExistingChanged(bool),
     IgnoredChannelsChanged(String),
     LineShiftChanged(String),
@@ -301,8 +360,12 @@ impl std::fmt::Display for EdgeDetected {
     }
 }
 
-fn vec_to_comma_sep_string(a: &[i32]) -> String {
-    let mut f = a.iter().fold(String::new(),|mut s,&n| {write!(s,"{},",n).ok(); s});
+/// Separate the ignored channels into a string of comma-separated numbers
+fn vec_to_comma_sep_string(a: &[InputChannel]) -> String {
+    let mut f = a.iter().fold(String::new(), |mut s, &n| {
+        write!(s, "{},", n.channel).ok();
+        s
+    });
     f.pop();
     f
 }
@@ -344,33 +407,41 @@ impl Application for MainAppGui {
         let pmt1 = channel_value_to_pair(prev_config.pmt1_ch);
         app.pmt1_selected = pmt1.0;
         app.pmt1_edge_selected = pmt1.1;
+        app.pmt1_threshold_value = pmt1.2.to_string();
         let pmt2 = channel_value_to_pair(prev_config.pmt2_ch);
         app.pmt2_selected = pmt2.0;
         app.pmt2_edge_selected = pmt2.1;
+        app.pmt2_threshold_value = pmt2.2.to_string();
         let pmt3 = channel_value_to_pair(prev_config.pmt3_ch);
         app.pmt3_selected = pmt3.0;
         app.pmt3_edge_selected = pmt3.1;
+        app.pmt3_threshold_value = pmt3.2.to_string();
         let pmt4 = channel_value_to_pair(prev_config.pmt4_ch);
         app.pmt4_selected = pmt4.0;
         app.pmt4_edge_selected = pmt4.1;
+        app.pmt4_threshold_value = pmt4.2.to_string();
         let laser = channel_value_to_pair(prev_config.laser_ch);
         app.laser_selected = laser.0;
         app.laser_edge_selected = laser.1;
+        app.laser_threshold_value = laser.2.to_string();
         let frame = channel_value_to_pair(prev_config.frame_ch);
         app.frame_selected = frame.0;
         app.frame_edge_selected = frame.1;
+        app.frame_threshold_value = frame.2.to_string();
         let line = channel_value_to_pair(prev_config.line_ch);
         app.line_selected = line.0;
         app.line_edge_selected = line.1;
+        app.line_threshold_value = line.2.to_string();
         let taglens = channel_value_to_pair(prev_config.taglens_ch);
         app.taglens_selected = taglens.0;
         app.taglens_edge_selected = taglens.1;
+        app.taglens_threshold_value = taglens.2.to_string();
 
         (app, Command::none())
     }
 
     fn title(&self) -> String {
-        String::from("RPySight 0.1.0")
+        String::from("rPySight 0.1.0")
     }
 
     fn update(&mut self, message: Message, _clip: &mut Clipboard) -> Command<Self::Message> {
@@ -419,12 +490,20 @@ impl Application for MainAppGui {
                 self.pmt1_edge_selected = pmt1_edge;
                 Command::none()
             }
+            Message::Pmt1ThresholdChanged(pmt1_thresh) => {
+                self.pmt1_threshold_value = pmt1_thresh;
+                Command::none()
+            }
             Message::Pmt2Changed(pmt2) => {
                 self.pmt2_selected = pmt2;
                 Command::none()
             }
             Message::Pmt2EdgeChanged(pmt2_edge) => {
                 self.pmt2_edge_selected = pmt2_edge;
+                Command::none()
+            }
+            Message::Pmt2ThresholdChanged(pmt2_thresh) => {
+                self.pmt2_threshold_value = pmt2_thresh;
                 Command::none()
             }
             Message::Pmt3Changed(pmt3) => {
@@ -435,12 +514,20 @@ impl Application for MainAppGui {
                 self.pmt3_edge_selected = pmt3_edge;
                 Command::none()
             }
+            Message::Pmt3ThresholdChanged(pmt3_thresh) => {
+                self.pmt3_threshold_value = pmt3_thresh;
+                Command::none()
+            }
             Message::Pmt4Changed(pmt4) => {
                 self.pmt4_selected = pmt4;
                 Command::none()
             }
             Message::Pmt4EdgeChanged(pmt4_edge) => {
                 self.pmt4_edge_selected = pmt4_edge;
+                Command::none()
+            }
+            Message::Pmt4ThresholdChanged(pmt4_thresh) => {
+                self.pmt4_threshold_value = pmt4_thresh;
                 Command::none()
             }
             Message::LaserChanged(laser) => {
@@ -451,12 +538,20 @@ impl Application for MainAppGui {
                 self.laser_edge_selected = laser_edge;
                 Command::none()
             }
+            Message::LaserThresholdChanged(laser_thresh) => {
+                self.laser_threshold_value = laser_thresh;
+                Command::none()
+            }
             Message::FrameChanged(frame) => {
                 self.frame_selected = frame;
                 Command::none()
             }
             Message::FrameEdgeChanged(frame_edge) => {
                 self.frame_edge_selected = frame_edge;
+                Command::none()
+            }
+            Message::FrameThresholdChanged(frame_thresh) => {
+                self.frame_threshold_value = frame_thresh;
                 Command::none()
             }
             Message::LineChanged(line) => {
@@ -467,12 +562,20 @@ impl Application for MainAppGui {
                 self.line_edge_selected = line_edge;
                 Command::none()
             }
+            Message::LineThresholdChanged(line_thresh) => {
+                self.line_threshold_value = line_thresh;
+                Command::none()
+            }
             Message::TagLensChanged(taglens) => {
                 self.taglens_selected = taglens;
                 Command::none()
             }
             Message::TagLensEdgeChanged(taglens_edge) => {
                 self.taglens_edge_selected = taglens_edge;
+                Command::none()
+            }
+            Message::TagLensThresholdChanged(taglens_thresh) => {
+                self.taglens_threshold_value = taglens_thresh;
                 Command::none()
             }
             Message::ReplayExistingChanged(replay_existing) => {
@@ -488,7 +591,10 @@ impl Application for MainAppGui {
                 Command::none()
             }
             Message::ButtonPressed => Command::perform(
-                start_acquisition(PathBuf::from(DEFAULT_CONFIG_FNAME), AppConfig::from_user_input(self).expect("")),
+                start_acquisition(
+                    PathBuf::from(DEFAULT_CONFIG_FNAME),
+                    AppConfig::from_user_input(self).expect(""),
+                ),
                 Message::StartedAcquistion,
             ),
             Message::StartedAcquistion(()) => Command::none(),
@@ -668,6 +774,24 @@ impl Application for MainAppGui {
             Message::Pmt1EdgeChanged,
         );
 
+        let pmt1_thresh = TextInput::new(
+            &mut self.pmt1_threshold_input,
+            "PMT1 Threshold [V]",
+            &self.pmt1_threshold_value,
+            Message::Pmt1ThresholdChanged,
+        )
+        .padding(10)
+        .size(10);
+
+        let pmt1_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(Text::new("PMT 1"))
+            .push(pmt1)
+            .push(pmt1_edge)
+            .push(pmt1_thresh);
+
+        //TODO: Keep on convering thresh and rows
         let pmt2 = PickList::new(
             &mut self.pmt2_pick_list,
             &ChannelNumber::ALL[..],
@@ -681,6 +805,23 @@ impl Application for MainAppGui {
             Some(self.pmt2_edge_selected),
             Message::Pmt2EdgeChanged,
         );
+
+        let pmt2_thresh = TextInput::new(
+            &mut self.pmt2_threshold_input,
+            "PMT2 Threshold [V]",
+            &self.pmt2_threshold_value,
+            Message::Pmt2ThresholdChanged,
+        )
+        .padding(10)
+        .size(10);
+
+        let pmt2_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(Text::new("PMT 2"))
+            .push(pmt2)
+            .push(pmt2_edge)
+            .push(pmt2_thresh);
 
         let pmt3 = PickList::new(
             &mut self.pmt3_pick_list,
@@ -696,6 +837,23 @@ impl Application for MainAppGui {
             Message::Pmt3EdgeChanged,
         );
 
+        let pmt3_thresh = TextInput::new(
+            &mut self.pmt3_threshold_input,
+            "PMT3 Threshold [V]",
+            &self.pmt3_threshold_value,
+            Message::Pmt3ThresholdChanged,
+        )
+        .padding(10)
+        .size(10);
+
+        let pmt3_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(Text::new("PMT 3"))
+            .push(pmt3)
+            .push(pmt3_edge)
+            .push(pmt3_thresh);
+
         let pmt4 = PickList::new(
             &mut self.pmt4_pick_list,
             &ChannelNumber::ALL[..],
@@ -709,6 +867,23 @@ impl Application for MainAppGui {
             Some(self.pmt4_edge_selected),
             Message::Pmt4EdgeChanged,
         );
+
+        let pmt4_thresh = TextInput::new(
+            &mut self.pmt4_threshold_input,
+            "PMT4 Threshold [V]",
+            &self.pmt4_threshold_value,
+            Message::Pmt4ThresholdChanged,
+        )
+        .padding(10)
+        .size(10);
+
+        let pmt4_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(Text::new("PMT 4"))
+            .push(pmt4)
+            .push(pmt4_edge)
+            .push(pmt4_thresh);
 
         let laser = PickList::new(
             &mut self.laser_pick_list,
@@ -724,6 +899,23 @@ impl Application for MainAppGui {
             Message::LaserEdgeChanged,
         );
 
+        let laser_thresh = TextInput::new(
+            &mut self.laser_threshold_input,
+            "Laser Threshold [V]",
+            &self.laser_threshold_value,
+            Message::LaserThresholdChanged,
+        )
+        .padding(10)
+        .size(10);
+
+        let laser_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(Text::new("Laser"))
+            .push(laser)
+            .push(laser_edge)
+            .push(laser_thresh);
+
         let frame = PickList::new(
             &mut self.frame_pick_list,
             &ChannelNumber::ALL[..],
@@ -737,6 +929,23 @@ impl Application for MainAppGui {
             Some(self.frame_edge_selected),
             Message::FrameEdgeChanged,
         );
+
+        let frame_thresh = TextInput::new(
+            &mut self.frame_threshold_input,
+            "Frame Threshold [V]",
+            &self.frame_threshold_value,
+            Message::FrameThresholdChanged,
+        )
+        .padding(10)
+        .size(10);
+
+        let frame_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(Text::new("Frame"))
+            .push(frame)
+            .push(frame_edge)
+            .push(frame_thresh);
 
         let line = PickList::new(
             &mut self.line_pick_list,
@@ -752,6 +961,23 @@ impl Application for MainAppGui {
             Message::LineEdgeChanged,
         );
 
+        let line_thresh = TextInput::new(
+            &mut self.line_threshold_input,
+            "Line Threshold [V]",
+            &self.line_threshold_value,
+            Message::LineThresholdChanged,
+        )
+        .padding(10)
+        .size(10);
+
+        let line_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(Text::new("Line"))
+            .push(line)
+            .push(line_edge)
+            .push(line_thresh);
+
         let taglens_input = PickList::new(
             &mut self.taglens_pick_list,
             &ChannelNumber::ALL[..],
@@ -765,6 +991,23 @@ impl Application for MainAppGui {
             Some(self.taglens_edge_selected),
             Message::TagLensEdgeChanged,
         );
+
+        let taglens_thresh = TextInput::new(
+            &mut self.taglens_threshold_input,
+            "Tag Lens Threshold [V]",
+            &self.taglens_threshold_value,
+            Message::TagLensThresholdChanged,
+        )
+        .padding(10)
+        .size(10);
+
+        let taglens_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(Text::new("Tag Lens"))
+            .push(taglens_input)
+            .push(taglens_edge)
+            .push(taglens_thresh);
 
         let bidir = Checkbox::new(
             self.bidirectional,
@@ -796,70 +1039,14 @@ impl Application for MainAppGui {
             .spacing(20)
             .padding(20)
             .max_width(600)
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_items(Align::Center)
-                    .push(Text::new("PMT 1"))
-                    .push(pmt1)
-                    .push(pmt1_edge),
-            )
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_items(Align::Center)
-                    .push(Text::new("PMT 2"))
-                    .push(pmt2)
-                    .push(pmt2_edge),
-            )
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_items(Align::Center)
-                    .push(Text::new("PMT 3"))
-                    .push(pmt3)
-                    .push(pmt3_edge),
-            )
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_items(Align::Center)
-                    .push(Text::new("PMT 4"))
-                    .push(pmt4)
-                    .push(pmt4_edge),
-            )
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_items(Align::Center)
-                    .push(Text::new("Laser Trigger"))
-                    .push(laser)
-                    .push(laser_edge),
-            )
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_items(Align::Center)
-                    .push(Text::new("Frame Trigger"))
-                    .push(frame)
-                    .push(frame_edge),
-            )
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_items(Align::Center)
-                    .push(Text::new("Line Trigger"))
-                    .push(line)
-                    .push(line_edge),
-            )
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_items(Align::Center)
-                    .push(Text::new("TAG Lens Trigger"))
-                    .push(taglens_input)
-                    .push(taglens_edge),
-            )
+            .push(pmt1_row)
+            .push(pmt2_row)
+            .push(pmt3_row)
+            .push(pmt4_row)
+            .push(laser_row)
+            .push(frame_row)
+            .push(line_row)
+            .push(taglens_row)
             .push(ignored_row);
 
         let content = Column::new()
@@ -886,7 +1073,7 @@ mod tests {
 
     #[test]
     fn vec_to_string_full() {
-        let v = vec![1i32, -2];
+        let v = vec![InputChannel::new(1, 0.0), InputChannel::new(-2, 0.0)];
         let f = vec_to_comma_sep_string(&v);
         assert_eq!(f, "1,-2".to_string());
     }
@@ -896,6 +1083,5 @@ mod tests {
         let v = vec![];
         let f = vec_to_comma_sep_string(&v);
         assert_eq!(f, "".to_string());
-
     }
 }

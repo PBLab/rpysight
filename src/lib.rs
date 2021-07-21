@@ -1,10 +1,10 @@
 //! Real time parsing and rendering of data coming from a TimeTagger.
 
 pub mod configuration;
+pub mod event_stream;
 pub mod gui;
 pub mod point_cloud_renderer;
 pub mod rendering_helpers;
-pub mod event_stream;
 
 use std::path::PathBuf;
 use std::{
@@ -24,9 +24,9 @@ use point_cloud_renderer::DisplayChannel;
 use pyo3::prelude::*;
 use thiserror::Error;
 
-use crate::configuration::{AppConfig, AppConfigBuilder};
+use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
 use crate::gui::{ChannelNumber, EdgeDetected};
-use crate::point_cloud_renderer::{Channels, AppState};
+use crate::point_cloud_renderer::{AppState, Channels};
 
 const TT_DATA_STREAM: &str = "__tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
@@ -58,13 +58,15 @@ pub fn reload_cfg_or_use_default(config_name: Option<PathBuf>) -> AppConfig {
             .unwrap_or_else(|_| AppConfigBuilder::default().build())
     }
 }
-        
+
 /// Generates a PathBuf with the location of the default configuration path.
 ///
 /// This function doesn't assert that it exists, it simply returns it.
 pub(crate) fn get_config_path(config_name: Option<PathBuf>) -> PathBuf {
     let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab", "RPySight") {
-        proj_dirs.config_dir().join(config_name.unwrap_or(PathBuf::from(DEFAULT_CONFIG_FNAME)))
+        proj_dirs
+            .config_dir()
+            .join(config_name.unwrap_or(PathBuf::from(DEFAULT_CONFIG_FNAME)))
     } else {
         // Unreachable since config_dir() doesn't fail or returns None
         unreachable!()
@@ -177,8 +179,8 @@ impl From<std::num::ParseFloatError> for UserInputError {
 ///
 /// The TimeTagger uses the sign of the number to signal the edge, and the
 /// value obviously corresponds to the channel number.
-fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
-    let ch_no_edge = ch.abs();
+fn channel_value_to_pair(ch: InputChannel) -> (ChannelNumber, EdgeDetected, f32) {
+    let ch_no_edge = ch.channel.abs();
     let chnum = match ch_no_edge {
         0 => ChannelNumber::Disconnected,
         1 => ChannelNumber::Channel1,
@@ -201,23 +203,27 @@ fn channel_value_to_pair(ch: i32) -> (ChannelNumber, EdgeDetected) {
         18 => ChannelNumber::Channel18,
         _ => panic!("Invalid channel detected!"),
     };
-    let edge = match ch.signum() {
+    let edge = match ch.channel.signum() {
         0 | 1 => EdgeDetected::Rising,
         -1 => EdgeDetected::Falling,
         _ => unreachable!(),
     };
-    (chnum, edge)
+    (chnum, edge, ch.threshold)
 }
 
-
 fn generate_windows(fr: u64) -> Channels<DisplayChannel> {
-    let channel_names = ["Channel 1", "Channel 2", "Channel 3", "Channel 4", "Channel Merge"];
+    let channel_names = [
+        "Channel 1",
+        "Channel 2",
+        "Channel 3",
+        "Channel 4",
+        "Channel Merge",
+    ];
     let mut channels = Vec::new();
     for name in channel_names.iter() {
         channels.push(DisplayChannel::new(*name, fr));
     }
     Channels::new(channels)
-
 }
 
 /// Initializes things on the Python side and starts the acquisition.
@@ -225,10 +231,11 @@ fn generate_windows(fr: u64) -> Channels<DisplayChannel> {
 /// This method is called once the user clicks the "Run Application" button or
 /// from the CLI.
 pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
-    let _ = save_cfg(Some(config_name), &cfg).ok();  // errors are logged and quite irrelevant
+    let _ = save_cfg(Some(config_name), &cfg).ok(); // errors are logged and quite irrelevant
     let fr = (&cfg).frame_rate().round() as u64;
     let channels = generate_windows(fr);
-    let mut app = AppState::<DisplayChannel, File>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
+    let mut app =
+        AppState::<DisplayChannel, File>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
@@ -273,7 +280,10 @@ fn save_cfg(config_name: Option<PathBuf>, app_config: &AppConfig) -> anyhow::Res
 pub fn setup_logger(fname: Option<PathBuf>) {
     let log_fname;
     if let Some(f) = fname {
-        log_fname = f } else { log_fname = PathBuf::from("target/test_rpysight.log"); };
+        log_fname = f
+    } else {
+        log_fname = PathBuf::from("target/test_rpysight.log");
+    };
 
     fern::Dispatch::new()
         .format(move |out, message, record| {

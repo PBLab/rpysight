@@ -42,8 +42,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
     def __init__(self, tagger, channels: Optional[list], fname: Optional[str] = None):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
         if channels:
-            for channel in channels:
-                self.register_channel(channel)
+            [self.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
 
         self.init_stream_and_schema()
 
@@ -151,7 +150,7 @@ def infer_channel_list_from_cfg(config):
         config['line_ch'],
         config['taglens_ch'],
     ]
-    channels = [ch for ch in relevant_channels if ch != 0]
+    channels = [ch for ch in relevant_channels if ch["channel"] != 0]
     return channels
 
 
