@@ -63,18 +63,20 @@ impl From<Bidirectionality> for bool {
     }
 }
 
-/// Enumerates all possible data streams that can be handled by RPySight, like
+/// Enumerates all possible data streams that can be handled by rPySight, like
 /// PMT data, line sync events and so on.
+///
+/// The associated value is the trigger level of that data type, in volts.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Copy)]
 pub enum DataType {
-    Pmt1,
-    Pmt2,
-    Pmt3,
-    Pmt4,
-    Frame,
-    Line,
-    TagLens,
-    Laser,
+    Pmt1(f32),
+    Pmt2(f32),
+    Pmt3(f32),
+    Pmt4(f32),
+    Frame(f32),
+    Line(f32),
+    TagLens(f32),
+    Laser(f32),
     /// A connected output which is unneeded in this experiment
     Unwanted,
     Invalid,
@@ -85,6 +87,15 @@ pub enum DataType {
 /// It's an i32 due to it having to interact with the channel values that
 /// return from the time tagger stream, which are also i32.
 const MAX_TIMETAGGER_INPUTS: i32 = 18;
+
+/// A physical input port on the TimeTagger, having both a channel value
+/// (positive if the threshold is positive, else negative) and a threshold
+/// value that is set as the trigger of it.
+#[derive(Debug, Clone)]
+struct InputChannel {
+    channel: i32,
+    threshold: f32,
+}
 
 /// A data structure which maps the input channel to the data type it relays.
 ///
@@ -112,14 +123,14 @@ impl Inputs {
             config.laser_ch,
         ];
         let mut datatypes = vec![
-            DataType::Pmt1,
-            DataType::Pmt2,
-            DataType::Pmt3,
-            DataType::Pmt4,
-            DataType::Frame,
-            DataType::Line,
-            DataType::TagLens,
-            DataType::Laser,
+            DataType::Pmt1(0.0),
+            DataType::Pmt2(0.0),
+            DataType::Pmt3(0.0),
+            DataType::Pmt4(0.0),
+            DataType::Frame(0.0),
+            DataType::Line(0.0),
+            DataType::TagLens(0.0),
+            DataType::Laser(0.0),
         ];
 
         let num_unwanted_channels = config.ignored_channels.len();
@@ -129,9 +140,7 @@ impl Inputs {
         assert!(needed_channels.len() == datatypes.len());
         // Loop over a pair of input and the corresponding data type, but only
         // register the inputs which are actually used, i.e. different than 0.
-        for (ch, dt) in needed_channels.into_iter()
-        .zip(datatypes).into_iter()
-        {
+        for (ch, dt) in needed_channels.into_iter().zip(datatypes).into_iter() {
             if ch != 0 {
                 set.insert(ch);
                 data[(MAX_TIMETAGGER_INPUTS + ch) as usize] = dt;
@@ -288,7 +297,12 @@ fn convert_ignored_to_vec(ignored_str: &str) -> Vec<i32> {
     if ignored_str.len() == 0 {
         vec![]
     } else {
-        ignored_str.trim_end_matches(",").replace(" ", "").split(",").map(|ch| ch.parse::<i32>().unwrap()).collect()
+        ignored_str
+            .trim_end_matches(",")
+            .replace(" ", "")
+            .split(",")
+            .map(|ch| ch.parse::<i32>().unwrap())
+            .collect()
     }
 }
 
