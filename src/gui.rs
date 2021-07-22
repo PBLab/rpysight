@@ -129,7 +129,7 @@ impl MainAppGui {
         (
             self.pmt1_selected,
             self.pmt1_edge_selected,
-            self.pmt1_threshold_value.parse::<f32>().unwrap(),
+            self.pmt1_threshold_value.parse::<f32>().unwrap_or(0.0),
         )
     }
 
@@ -137,7 +137,7 @@ impl MainAppGui {
         (
             self.pmt2_selected,
             self.pmt2_edge_selected,
-            self.pmt2_threshold_value.parse::<f32>().unwrap(),
+            self.pmt2_threshold_value.parse::<f32>().unwrap_or(0.0),
         )
     }
 
@@ -145,7 +145,7 @@ impl MainAppGui {
         (
             self.pmt3_selected,
             self.pmt3_edge_selected,
-            self.pmt3_threshold_value.parse::<f32>().unwrap(),
+            self.pmt3_threshold_value.parse::<f32>().unwrap_or(0.0),
         )
     }
 
@@ -153,7 +153,7 @@ impl MainAppGui {
         (
             self.pmt4_selected,
             self.pmt4_edge_selected,
-            self.pmt4_threshold_value.parse::<f32>().unwrap(),
+            self.pmt4_threshold_value.parse::<f32>().unwrap_or(0.0),
         )
     }
 
@@ -161,7 +161,7 @@ impl MainAppGui {
         (
             self.laser_selected,
             self.laser_edge_selected,
-            self.laser_threshold_value.parse::<f32>().unwrap(),
+            self.laser_threshold_value.parse::<f32>().unwrap_or(0.0),
         )
     }
 
@@ -169,7 +169,7 @@ impl MainAppGui {
         (
             self.frame_selected,
             self.frame_edge_selected,
-            self.frame_threshold_value.parse::<f32>().unwrap(),
+            self.frame_threshold_value.parse::<f32>().unwrap_or(0.0),
         )
     }
 
@@ -177,7 +177,7 @@ impl MainAppGui {
         (
             self.line_selected,
             self.line_edge_selected,
-            self.line_threshold_value.parse::<f32>().unwrap(),
+            self.line_threshold_value.parse::<f32>().unwrap_or(0.0),
         )
     }
 
@@ -185,7 +185,7 @@ impl MainAppGui {
         (
             self.taglens_selected,
             self.taglens_edge_selected,
-            self.taglens_threshold_value.parse::<f32>().unwrap(),
+            self.taglens_threshold_value.parse::<f32>().unwrap_or(0.0),
         )
     }
 
@@ -781,7 +781,7 @@ impl Application for MainAppGui {
             Message::Pmt1ThresholdChanged,
         )
         .padding(10)
-        .size(10);
+        .size(20);
 
         let pmt1_row = Row::new()
             .spacing(10)
@@ -813,7 +813,7 @@ impl Application for MainAppGui {
             Message::Pmt2ThresholdChanged,
         )
         .padding(10)
-        .size(10);
+        .size(20);
 
         let pmt2_row = Row::new()
             .spacing(10)
@@ -844,7 +844,7 @@ impl Application for MainAppGui {
             Message::Pmt3ThresholdChanged,
         )
         .padding(10)
-        .size(10);
+        .size(20);
 
         let pmt3_row = Row::new()
             .spacing(10)
@@ -875,7 +875,7 @@ impl Application for MainAppGui {
             Message::Pmt4ThresholdChanged,
         )
         .padding(10)
-        .size(10);
+        .size(20);
 
         let pmt4_row = Row::new()
             .spacing(10)
@@ -906,7 +906,7 @@ impl Application for MainAppGui {
             Message::LaserThresholdChanged,
         )
         .padding(10)
-        .size(10);
+        .size(20);
 
         let laser_row = Row::new()
             .spacing(10)
@@ -937,7 +937,7 @@ impl Application for MainAppGui {
             Message::FrameThresholdChanged,
         )
         .padding(10)
-        .size(10);
+        .size(20);
 
         let frame_row = Row::new()
             .spacing(10)
@@ -968,7 +968,7 @@ impl Application for MainAppGui {
             Message::LineThresholdChanged,
         )
         .padding(10)
-        .size(10);
+        .size(20);
 
         let line_row = Row::new()
             .spacing(10)
@@ -999,7 +999,7 @@ impl Application for MainAppGui {
             Message::TagLensThresholdChanged,
         )
         .padding(10)
-        .size(10);
+        .size(20);
 
         let taglens_row = Row::new()
             .spacing(10)
@@ -1053,6 +1053,7 @@ impl Application for MainAppGui {
             .spacing(20)
             .padding(20)
             .max_width(1200)
+            .max_height(1200)
             .align_items(Align::Center)
             .push(Image::new("resources/logo.png"))
             .push(Row::new().push(first_column).push(second_column))

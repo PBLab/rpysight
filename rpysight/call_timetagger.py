@@ -42,7 +42,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
     def __init__(self, tagger, channels: Optional[list], fname: Optional[str] = None):
         TimeTagger.CustomMeasurement.__init__(self, tagger)
         if channels:
-            [self.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
+            [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
 
         self.init_stream_and_schema()
 
@@ -134,7 +134,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         batch = self.convert_tags_to_recordbatch(incoming_tags)
         self.stream.write(batch)
         # Saving the data to an npy file for future-proofing purposes
-        # np.save(self.filehandle, incoming_tags)
+        np.save(self.filehandle, incoming_tags)
 
 
 def infer_channel_list_from_cfg(config):

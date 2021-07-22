@@ -188,6 +188,12 @@ pub struct AppConfig {
     pub(crate) planes: u32,
     pub(crate) fill_fraction: f32, // (0..100)
     pub(crate) frame_dead_time: Picosecond,
+    pub(crate) replay_existing: bool,
+    pub(crate) line_shift: Picosecond,
+    pub(crate) bidir: Bidirectionality,
+    pub(crate) point_color: Point3<f32>,
+    pub(crate) scan_period: Period,
+    pub(crate) tag_period: Period,
     pub(crate) pmt1_ch: InputChannel,
     pub(crate) pmt2_ch: InputChannel,
     pub(crate) pmt3_ch: InputChannel,
@@ -196,12 +202,6 @@ pub struct AppConfig {
     pub(crate) frame_ch: InputChannel,
     pub(crate) line_ch: InputChannel,
     pub(crate) taglens_ch: InputChannel,
-    pub(crate) replay_existing: bool,
-    pub(crate) line_shift: Picosecond,
-    pub(crate) bidir: Bidirectionality,
-    pub(crate) point_color: Point3<f32>,
-    pub(crate) scan_period: Period,
-    pub(crate) tag_period: Period,
 }
 
 impl AppConfig {
@@ -371,6 +371,7 @@ pub struct AppConfigBuilder {
     fill_fraction: f32, // (0..100)
     frame_dead_time: Picosecond,
     replay_existing: bool,
+    line_shift: Picosecond,
     pmt1_ch: InputChannel,
     pmt2_ch: InputChannel,
     pmt3_ch: InputChannel,
@@ -379,7 +380,6 @@ pub struct AppConfigBuilder {
     frame_ch: InputChannel,
     line_ch: InputChannel,
     taglens_ch: InputChannel,
-    line_shift: Picosecond,
 }
 
 impl AppConfigBuilder {
@@ -399,6 +399,7 @@ impl AppConfigBuilder {
             replay_existing: false,
             fill_fraction: 71.0,
             frame_dead_time: 1_310_000_000,
+            line_shift: 0,
             pmt1_ch: InputChannel::new(1, 0.0),
             pmt2_ch: InputChannel::new(0, 0.0),
             pmt3_ch: InputChannel::new(0, 0.0),
@@ -407,7 +408,6 @@ impl AppConfigBuilder {
             frame_ch: InputChannel::new(0, 0.0),
             line_ch: InputChannel::new(-2, 0.0),
             taglens_ch: InputChannel::new(3, 0.0),
-            line_shift: 0,
         }
     }
 
