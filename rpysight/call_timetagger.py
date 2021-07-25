@@ -40,7 +40,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
     """
 
     def __init__(self, tagger, channels: Optional[list], fname: Optional[str] = None):
-        TimeTagger.CustomMeasurement.__init__(self, tagger)
+        super().__init__(tagger)
         if channels:
             [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
 
@@ -134,7 +134,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         batch = self.convert_tags_to_recordbatch(incoming_tags)
         self.stream.write(batch)
         # Saving the data to an npy file for future-proofing purposes
-        np.save(self.filehandle, incoming_tags)
+        # np.save(self.filehandle, incoming_tags)
 
 
 def infer_channel_list_from_cfg(config):
@@ -176,14 +176,15 @@ def run_tagger(cfg: str):
     tagger = TimeTagger.createTimeTagger()
     tagger.reset()
     channels = infer_channel_list_from_cfg(config)
-    # Enable the test signal
-    # channels = [1, 2]
-    # tagger.setTestSignal(channels, True)
-    tag = RealTimeRendering(tagger, channels, config['filename'])
-    stream_fname = add_fname_suffix(config['filename'])
-    _ = TimeTagger.FileWriter(tagger, stream_fname, [CHAN_START, CHAN_STOP])
-    tag.startFor(int(10e12))
-    tag.waitUntilFinished()
+    with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
+        tag = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
+        measure_group.start()
+    # stream_fname = add_fname_suffix(config['filename'])
+    # print("Init FileWriter")
+    # _ = TimeTagger.FileWriter(tagger, stream_fname, channels=[ch['channel'] for ch in channels])
+    # tag.startFor(int(100e12))
+    # tag.waitUntilFinished()
+    print("finished")
 
 
 def replay_existing(cfg: str):

@@ -37,6 +37,8 @@ pub enum ProcessedEvent {
     Displayed(Point3<f32>, Point3<f32>),
     /// Nothing to do with this event
     NoOp,
+    /// A new frame signal
+    FrameNewFrame,
     /// Start drawing a new frame due to a line signal that belongs to the
     /// next frame (> num_rows)
     LineNewFrame,
@@ -216,6 +218,11 @@ impl<T: PointDisplay> AppState<T, File> {
                 match self.event_to_coordinate(*event) {
                     ProcessedEvent::Displayed(p, c) => self.channels.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
+                    ProcessedEvent::FrameNewFrame => {
+                        info!("New frame due to a frame signal while parsing events from previous iter");
+                        let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
+                        return new_events_after_newframe
+                    }
                     ProcessedEvent::LineNewFrame => {
                         info!("New frame due to line while parsing events from previous iter");
                         let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
@@ -258,6 +265,11 @@ impl<T: PointDisplay> AppState<T, File> {
                 match self.event_to_coordinate(event) {
                     ProcessedEvent::Displayed(p, c) => self.channels.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
+                    ProcessedEvent::FrameNewFrame => {
+                        info!("New frame due to frame signal");
+                        events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
+                        break 'frame;
+                    },
                     ProcessedEvent::PhotonNewFrame => {
                         info!("New frame due to photon {} while we had {} lines", event.time, self.line_count);
                         events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
@@ -267,11 +279,11 @@ impl<T: PointDisplay> AppState<T, File> {
                         info!("New frame due to line");
                         events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
                         break 'frame;
-                    }
+                    },
                     ProcessedEvent::Error => {
                         error!("Received an erroneuous event: {:?}", event);
                         continue;
-                    }
+                    },
                 }
             }
         }
@@ -321,24 +333,23 @@ impl<T: PointDisplay> AppState<T, File> {
     /// object with this knowledge.
     fn advance_till_first_frame_line(&mut self, event_stream: Option<Vec<Event>>) -> Option<Vec<Event>> {
         if let Some(ref previos_events) = event_stream {
-            info!("Looking for the first line in the previous event stream");
-            let first_line = previos_events.iter().by_ref().find_map(|event| {
+            info!("Looking for the first line/frame in the previous event stream");
+            let frame_started = previos_events.iter().by_ref().find_map(|event| {
                 match self.inputs[event.channel] {
-                    DataType::Line => Some(event.time),
+                    DataType::Line | DataType::Frame => Some(event.time),
                     _ => None,
                 }
             });
-            if first_line.is_some() {
+            if frame_started.is_some() {
                 self.lines_vec.clear();
                 self.line_count = 1;
-                info!("Found the first line in the previous event stream: {}", first_line.unwrap());
-                self.time_to_coord.update_2d_data_for_next_frame(first_line.unwrap());
+                info!("Found the first line/frame in the previous event stream: {}", frame_started.unwrap());
+                self.time_to_coord.update_2d_data_for_next_frame(frame_started.unwrap());
                 return event_stream
             };
         }
-        // We'll look for the first line indefinitely
+        // We'll look for the first line\frame indefinitely
         loop {
-            info!("Looking for the first line in a newly acquired stream");
             // The following lines cannot be factored to a function due to
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
@@ -348,19 +359,26 @@ impl<T: PointDisplay> AppState<T, File> {
             };
             let event_stream = match self.get_event_stream(&batch) {
                 Some(stream) => stream,
-                None => continue,
+                None => {
+                    info!("No stream found, restarting loop");
+                    continue
+                    },
             };
-            let first_line = event_stream.iter().by_ref().find_map(|event| {
+            let frame_started = event_stream.iter().by_ref().find_map(|event| {
                 match self.inputs[event.channel] {
-                    DataType::Line => Some(event.time),
-                    _ => None,
+                    DataType::Line | DataType::Frame => Some(event.time),
+                    _ => {
+                        trace!("{}", event.channel); None
+                    },
+                    // _ => None,
                 }
             });
-            if first_line.is_some() {
+            info!("Looking for the first line/frame in a newly acquired stream");
+            if frame_started.is_some() {
                 self.lines_vec.clear();
                 self.line_count = 1;
-                info!("Found the first line: {}", first_line.unwrap());
-                self.time_to_coord.update_2d_data_for_next_frame(first_line.unwrap());
+                info!("Found the first line/frame: {}", frame_started.unwrap());
+                self.time_to_coord.update_2d_data_for_next_frame(frame_started.unwrap());
                 return Some(event_stream.iter().collect::<Vec<Event>>())
             }
         }
