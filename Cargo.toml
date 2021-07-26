@@ -10,7 +10,7 @@ edition = "2018"
 kiss3d = "0.30"
 nalgebra = { version = "0.25", features = ["serde-serialize"] }
 pyo3 = { version = "0.13", features = ["extension-module"] }
-arrow = "4.0.0"
+arrow = "5.0.0"
 thiserror = "1.0"
 anyhow = "1.0"
 iced = { version = "0.3", features = ["image"] }
@@ -32,6 +32,6 @@ name = "librpysight"
 crate-type = ["cdylib", "rlib"]
 
 [package.metadata.maturin]
-requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=3.0.0", "toml > 0.10",]
+requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=4.0.0", "toml>=0.10",]
 classifier = ["Programming Language :: Python", "Programming Language :: Rust"]
 maintainer = "Hagai Har-Gil"

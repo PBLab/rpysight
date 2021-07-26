@@ -28,7 +28,7 @@ use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{AppState, Channels};
 
-const TT_DATA_STREAM: &str = "__tt_data_stream.dat";
+const TT_DATA_STREAM: &str = "tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
 pub const DEFAULT_CONFIG_FNAME: &str = "default.toml";
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
@@ -132,6 +132,7 @@ pub fn load_timetagger_run_function(
 }
 
 pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<()> {
+    debug!("Starting timetagger");
     let module_filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let tt_module = load_timetagger_run_function(module_filename, app_config.replay_existing)?;
     tt_module
@@ -140,6 +141,7 @@ pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<()> {
             (toml::to_string(app_config).expect("Unable to convert configuration to string"),),
         )
         .expect("Starting the TimeTagger failed, aborting!");
+    debug!("Called Python to start the TT business");
     Ok(())
 }
 

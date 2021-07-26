@@ -25,7 +25,7 @@ import TimeTagger
 # Channel definitions
 CHAN_START = 1
 CHAN_STOP = 2
-TT_DATA_STREAM = "__tt_data_stream.dat"
+TT_DATA_STREAM = "tt_data_stream.dat"
 
 
 class RealTimeRendering(TimeTagger.CustomMeasurement):
@@ -41,11 +41,9 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
 
     def __init__(self, tagger, channels: Optional[list], fname: Optional[str] = None):
         super().__init__(tagger)
-        if channels:
-            [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
-
+        # if channels:
+        #     [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
         self.init_stream_and_schema()
-
         if fname:
             self.filehandle = open(fname, "wb")
 
@@ -54,7 +52,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         self.finalize_init()
 
     def init_stream_and_schema(self):
-        self.schema = pa.record_batch(
+        test_batch = pa.record_batch(
             [
                 pa.array([], type=pa.uint8()),
                 pa.array([], type=pa.uint16()),
@@ -62,9 +60,11 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
                 pa.array([], type=pa.int64()),
             ],
             names=["type_", "missed_events", "channel", "time"],
-        ).schema
+        )
+        self.schema = test_batch.schema
         pathlib.Path(TT_DATA_STREAM).unlink(missing_ok=True)
         self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
+        self.stream.write(test_batch)
 
     def __del__(self):
         # The measurement must be stopped before deconstruction to avoid
@@ -176,9 +176,12 @@ def run_tagger(cfg: str):
     tagger = TimeTagger.createTimeTagger()
     tagger.reset()
     channels = infer_channel_list_from_cfg(config)
+    if channels:
+        [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
     with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
         tag = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
-        measure_group.start()
+        measure_group.startFor(int(1_000_000e12))
+        measure_group.waitUntilFinished()
     # stream_fname = add_fname_suffix(config['filename'])
     # print("Init FileWriter")
     # _ = TimeTagger.FileWriter(tagger, stream_fname, channels=[ch['channel'] for ch in channels])
