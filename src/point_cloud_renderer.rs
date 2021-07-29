@@ -214,32 +214,36 @@ impl<T: PointDisplay> AppState<T, File> {
         if let Some(ref previous_events) = events_after_newframe {
             debug!("Looking for leftover events");
             // Start with the leftover events from the previous frame
-            for event in previous_events.iter() {
+            let mut previous_events_mut = previous_events.iter();
+            let new_frame_in_pre_events = previous_events_mut.find_map(|event| {
                 match self.event_to_coordinate(*event) {
-                    ProcessedEvent::Displayed(p, c) => self.channels.channel_merge.display_point(p, c, event.time),
-                    ProcessedEvent::NoOp => continue,
+                    ProcessedEvent::Displayed(p, c) => { 
+                        self.channels.channel_merge.display_point(p, c, event.time);
+                        None 
+                    },
+                    ProcessedEvent::NoOp => { None },
                     ProcessedEvent::FrameNewFrame => {
                         info!("New frame due to a frame signal while parsing events from previous iter");
-                        let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
-                        return new_events_after_newframe
-                    }
+                        Some(0)
+                    },
                     ProcessedEvent::LineNewFrame => {
                         info!("New frame due to line while parsing events from previous iter");
-                        let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
-                        return new_events_after_newframe
+                        Some(0)
                     },
                     ProcessedEvent::PhotonNewFrame => {
                         info!("Found a photon after this frame's end. Looking for the line that starts the next frame {}", event.time);
-                        let new_events_after_newframe = Some(previous_events.iter().copied().collect::<Vec<Event>>());
-                        return new_events_after_newframe
-                    }
+                        Some(0)
+                    },
                     ProcessedEvent::Error => {
                         error!("Received an erroneuous event: {:?}", event);
-                        continue;
-                    }
+                        None
+                    },
                 }
+            });
+            if let Some(_) = new_frame_in_pre_events {
+                return Some(previous_events_mut.copied().collect::<Vec<Event>>())
             }
-        }
+        };
         // New experiments will start out here, by loading the data and
         // looking for the first line signal
         debug!("Starting a 'frame loop");
