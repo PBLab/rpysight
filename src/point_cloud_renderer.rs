@@ -214,7 +214,7 @@ impl<T: PointDisplay> AppState<T, File> {
         if let Some(ref previous_events) = events_after_newframe {
             debug!("Looking for leftover events");
             // Start with the leftover events from the previous frame
-            for event in previous_events.iter().by_ref() {
+            for event in previous_events.iter() {
                 match self.event_to_coordinate(*event) {
                     ProcessedEvent::Displayed(p, c) => self.channels.channel_merge.display_point(p, c, event.time),
                     ProcessedEvent::NoOp => continue,
@@ -277,7 +277,7 @@ impl<T: PointDisplay> AppState<T, File> {
                     },
                     ProcessedEvent::LineNewFrame => {
                         info!("New frame due to line");
-                        events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
+                        events_after_newframe = Some(event_stream.stream.iter().collect::<Vec<Event>>());
                         break 'frame;
                     },
                     ProcessedEvent::Error => {
@@ -332,20 +332,21 @@ impl<T: PointDisplay> AppState<T, File> {
     /// When it finds the first line it also updates the internal state of this
     /// object with this knowledge.
     fn advance_till_first_frame_line(&mut self, event_stream: Option<Vec<Event>>) -> Option<Vec<Event>> {
-        if let Some(ref previos_events) = event_stream {
+        if let Some(ref previous_events) = event_stream {
             info!("Looking for the first line/frame in the previous event stream");
-            let frame_started = previos_events.iter().by_ref().find_map(|event| {
+            let mut steps = 0;
+            let frame_started = previous_events.iter().find_map(|event| {
                 match self.inputs[event.channel] {
                     DataType::Line | DataType::Frame => Some(event.time),
-                    _ => None,
+                    _ => {steps += 1; None},
                 }
             });
             if frame_started.is_some() {
                 self.lines_vec.clear();
                 self.line_count = 1;
-                info!("Found the first line/frame in the previous event stream: {}", frame_started.unwrap());
+                info!("Found the first line/frame in the previous event stream ({}) after {} steps", frame_started.unwrap(), steps);
                 self.time_to_coord.update_2d_data_for_next_frame(frame_started.unwrap());
-                return event_stream
+                return Some(previous_events.iter().copied().collect::<Vec<Event>>())
             };
         }
         // We'll look for the first line\frame indefinitely
@@ -364,14 +365,10 @@ impl<T: PointDisplay> AppState<T, File> {
                     continue
                     },
             };
-            info!("Found something?");
-            let frame_started = event_stream.iter().by_ref().find_map(|event| {
+            let frame_started = event_stream.iter().find_map(|event| {
                 match self.inputs[event.channel] {
                     DataType::Line | DataType::Frame => Some(event.time),
-                    _ => {
-                        trace!("{}", event.channel); None
-                    },
-                    // _ => None,
+                    _ => None,
                 }
             });
             info!("Looking for the first line/frame in a newly acquired stream");
@@ -397,6 +394,7 @@ impl AppState<DisplayChannel, File> {
         let mut events_after_newframe = None;
         while !self.channels.channel_merge.get_window().should_close() {
             events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
+            info!("Starting the population of single frame");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Starting render");
             // self.channel1.render();
@@ -438,7 +436,7 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
             warn!("Event type was not a time tag: {:?}", event);
             return ProcessedEvent::NoOp;
         }
-        trace!("Received the following event: {:?}", event);
+        // trace!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time, 0),
             DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time, 1),

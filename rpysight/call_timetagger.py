@@ -43,6 +43,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         super().__init__(tagger)
         # if channels:
         #     [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
+        [self.register_channel(channel=channel['channel']) for channel in channels]
         self.init_stream_and_schema()
         if fname:
             self.filehandle = open(fname, "wb")
