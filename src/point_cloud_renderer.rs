@@ -210,7 +210,7 @@ impl<T: PointDisplay> AppState<T, File> {
         }
     }
 
-    pub fn populate_single_frame(&mut self, mut events_after_newframe: Option<Vec<Event>>) -> Option<Vec<Event>> {
+    pub fn populate_single_frame(&mut self, events_after_newframe: Option<Vec<Event>>) -> Option<Vec<Event>> {
         if let Some(ref previous_events) = events_after_newframe {
             debug!("Looking for leftover events");
             // Start with the leftover events from the previous frame
@@ -247,7 +247,7 @@ impl<T: PointDisplay> AppState<T, File> {
         // New experiments will start out here, by loading the data and
         // looking for the first line signal
         debug!("Starting a 'frame loop");
-        'frame: loop {
+        loop {
             // The following lines cannot be factored to a function due to
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
@@ -259,40 +259,41 @@ impl<T: PointDisplay> AppState<T, File> {
                 Some(stream) => stream,
                 None => continue,
             };
-            let mut event_stream = event_stream.into_iter();
-            match self.check_relevance_of_batch(&event_stream.stream) {
+            let mut leftover_event_stream = event_stream.iter();
+            match self.check_relevance_of_batch(&event_stream) {
                 true => {}
                 false => continue,
             };
             info!("Starting iteration on this stream");
-            for event in event_stream.by_ref() {
+            let new_frame_found = leftover_event_stream.find_map(|event| {
                 match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => self.channels.channel_merge.display_point(p, c, event.time),
-                    ProcessedEvent::NoOp => continue,
+                    ProcessedEvent::Displayed(p, c) => {
+                        self.channels.channel_merge.display_point(p, c, event.time);
+                        None
+                        },
+                    ProcessedEvent::NoOp => None,
                     ProcessedEvent::FrameNewFrame => {
                         info!("New frame due to frame signal");
-                        events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
-                        break 'frame;
+                        Some(0)
                     },
                     ProcessedEvent::PhotonNewFrame => {
                         info!("New frame due to photon {} while we had {} lines", event.time, self.line_count);
-                        events_after_newframe = Some(event_stream.collect::<Vec<Event>>());
-                        break 'frame;
+                        Some(0)
                     },
                     ProcessedEvent::LineNewFrame => {
                         info!("New frame due to line");
-                        events_after_newframe = Some(event_stream.stream.iter().collect::<Vec<Event>>());
-                        break 'frame;
+                        Some(0)
                     },
                     ProcessedEvent::Error => {
                         error!("Received an erroneuous event: {:?}", event);
-                        continue;
+                        None
                     },
                 }
+            });
+            if let Some(_) = new_frame_found {
+                return Some(leftover_event_stream.collect::<Vec<Event>>())
             }
         }
-        trace!("Returning the leftover events ({:?} of them)", &events_after_newframe);
-        events_after_newframe
     }
 
     /// Verifies that the current event stream lies within the boundaries of
