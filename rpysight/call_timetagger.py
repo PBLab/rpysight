@@ -13,7 +13,6 @@ replaced that function with my own mock function defined in lib.rs just to make
 it work once, and it did, which is great.
 """
 import pathlib
-from time import sleep
 from typing import Optional
 
 import numpy as np
@@ -180,15 +179,10 @@ def run_tagger(cfg: str):
     if channels:
         [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
     with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
-        tag = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
+        _ = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
         measure_group.startFor(int(1_000_000e12))
         measure_group.waitUntilFinished()
-    # stream_fname = add_fname_suffix(config['filename'])
-    # print("Init FileWriter")
-    # _ = TimeTagger.FileWriter(tagger, stream_fname, channels=[ch['channel'] for ch in channels])
-    # tag.startFor(int(100e12))
-    # tag.waitUntilFinished()
-    print("finished")
+    print("TimeTagger has turned the measurement off")
 
 
 def replay_existing(cfg: str):
@@ -198,10 +192,4 @@ def replay_existing(cfg: str):
     _ = RealTimeRendering(tagger, None, None)
     tagger.replay(config['filename'], queue=False)
     tagger.waitForCompletion(timeout=-1)
-
-
-if __name__ == '__main__':
-    with open(r'C:\Users\remote\AppData\Roaming\PBLab\RPySight\config\default.toml', 'r') as f:
-        cfg = f.read()
-    run_tagger(cfg)
 

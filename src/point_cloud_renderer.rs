@@ -166,6 +166,7 @@ pub struct AppState<T: PointDisplay, R: Read> {
     rows_per_frame: u32,
     line_count: u32,
     lines_vec: Vec<Picosecond>,
+    batch_readout_count: u64,
 }
 
 impl<T: PointDisplay> AppState<T, File> {
@@ -181,6 +182,7 @@ impl<T: PointDisplay> AppState<T, File> {
             rows_per_frame: appconfig.rows,
             line_count: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
+            batch_readout_count: 0,
         }
     }
 
@@ -238,17 +240,29 @@ impl<T: PointDisplay> AppState<T, File> {
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
             let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => batch.expect("Couldn't extract batch from stream"),
-                None => continue,
+                Some(batch) => {
+                    self.batch_readout_count += 1;
+                    batch.expect("Couldn't extract batch from stream")
+                },
+                None => {
+                    debug!("No batch received for some reason ({})", self.batch_readout_count);
+                    continue
+                },
             };
             let event_stream = match self.get_event_stream(&batch) {
                 Some(stream) => stream,
-                None => continue,
+                None => {
+                    debug!("Couldn't get event stream");
+                    continue
+                },
             };
             let mut leftover_event_stream = event_stream.iter();
             match self.check_relevance_of_batch(&event_stream) {
                 true => {}
-                false => continue,
+                false => {
+                    debug!("Batch irrelevant!");
+                    continue
+                },
             };
             info!("Starting iteration on this stream");
             // Main iteration on events from this current batch
@@ -256,8 +270,10 @@ impl<T: PointDisplay> AppState<T, File> {
                 leftover_event_stream.find_map(|event| self.act_on_single_event(event));
             // If this batch contained a new frame - we return the leftovers
             if let Some(_) = new_frame_found {
+                debug!("New frame found in the batch!");
                 return Some(leftover_event_stream.collect::<Vec<Event>>());
             }
+            info!("Let's loop again, we're still inside a single frame");
         }
     }
 
@@ -372,7 +388,10 @@ impl<T: PointDisplay> AppState<T, File> {
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
             let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => batch.expect("Couldn't extract batch from stream"),
+                Some(batch) => {
+                    self.batch_readout_count += 1;
+                    batch.unwrap_or_else(|_| panic!("Couldn't extract batch from stream ({})", self.batch_readout_count))
+                },
                 None => continue,
             };
             let event_stream = match self.get_event_stream(&batch) {

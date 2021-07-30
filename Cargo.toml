@@ -14,7 +14,7 @@ arrow = "5.0.0"
 thiserror = "1.0"
 anyhow = "1.0"
 iced = { version = "0.3", features = ["image"] }
-log = { version = "0.4", features = ["release_max_level_info"] }
+log = { version = "0.4", features = ["release_max_level_debug"] }
 fern = { version = "0.6", features = ["date-based"] }
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
@@ -32,6 +32,6 @@ name = "librpysight"
 crate-type = ["cdylib", "rlib"]
 
 [package.metadata.maturin]
-requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=4.0.0", "toml>=0.10",]
+requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=5.0.0", "toml>=0.10",]
 classifier = ["Programming Language :: Python", "Programming Language :: Rust"]
 maintainer = "Hagai Har-Gil"
