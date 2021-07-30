@@ -10,9 +10,9 @@ use kiss3d::window::Window;
 use nalgebra::Point3;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
+use crate::event_stream::{Event, EventStream};
 use crate::rendering_helpers::{Picosecond, TimeToCoord};
 use crate::GLOBAL_OFFSET;
-use crate::event_stream::{Event, EventStream};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -121,7 +121,6 @@ impl<T: PointDisplay> IndexMut<ChannelNames> for Channels<T> {
     }
 }
 
-
 /// Holds the custom renderer that will be used for rendering the
 /// point cloud
 pub struct DisplayChannel {
@@ -148,7 +147,7 @@ impl DisplayChannel {
         let mut window = Window::new(title);
         window.set_framerate_limit(Some(frame_rate));
         Self { window }
-     }
+    }
 
     pub fn get_window(&mut self) -> &mut Window {
         &mut self.window
@@ -171,11 +170,7 @@ pub struct AppState<T: PointDisplay, R: Read> {
 
 impl<T: PointDisplay> AppState<T, File> {
     /// Generates a new app from a renderer and a receiving end of a channel
-    pub fn new(
-        channels: Channels<T>,
-        data_stream_fh: String,
-        appconfig: AppConfig,
-    ) -> Self {
+    pub fn new(channels: Channels<T>, data_stream_fh: String, appconfig: AppConfig) -> Self {
         AppState {
             channels,
             data_stream_fh,
@@ -210,38 +205,29 @@ impl<T: PointDisplay> AppState<T, File> {
         }
     }
 
-    pub fn populate_single_frame(&mut self, events_after_newframe: Option<Vec<Event>>) -> Option<Vec<Event>> {
-        if let Some(ref previous_events) = events_after_newframe {
+    /// One of the main functions of the app, responsible for iterating over
+    /// data streams.
+    ///
+    /// It receives the leftover events from the previous analyzed batch and
+    /// starts processing it. Once it's done it can read a new batch of data
+    /// and process it in the same manner.
+    ///
+    /// The iteration on the event batches is done in a way that lets us
+    /// "remember" the last location on the batch that we visited. The method
+    /// "find_map" mutates the iterator so that when we re-visit it we start
+    /// at the next event in line, which is very efficient.
+    pub fn populate_single_frame(
+        &mut self,
+        events_after_newframe: Option<Vec<Event>>,
+    ) -> Option<Vec<Event>> {
+        if let Some(previous_events) = events_after_newframe {
             debug!("Looking for leftover events");
             // Start with the leftover events from the previous frame
             let mut previous_events_mut = previous_events.iter();
-            let new_frame_in_pre_events = previous_events_mut.find_map(|event| {
-                match self.event_to_coordinate(*event) {
-                    ProcessedEvent::Displayed(p, c) => { 
-                        self.channels.channel_merge.display_point(p, c, event.time);
-                        None 
-                    },
-                    ProcessedEvent::NoOp => { None },
-                    ProcessedEvent::FrameNewFrame => {
-                        info!("New frame due to a frame signal while parsing events from previous iter");
-                        Some(0)
-                    },
-                    ProcessedEvent::LineNewFrame => {
-                        info!("New frame due to line while parsing events from previous iter");
-                        Some(0)
-                    },
-                    ProcessedEvent::PhotonNewFrame => {
-                        info!("Found a photon after this frame's end. Looking for the line that starts the next frame {}", event.time);
-                        Some(0)
-                    },
-                    ProcessedEvent::Error => {
-                        error!("Received an erroneuous event: {:?}", event);
-                        None
-                    },
-                }
-            });
+            let new_frame_in_pre_events =
+                previous_events_mut.find_map(|event| self.act_on_single_event(*event));
             if let Some(_) = new_frame_in_pre_events {
-                return Some(previous_events_mut.copied().collect::<Vec<Event>>())
+                return Some(previous_events_mut.copied().collect::<Vec<Event>>());
             }
         };
         // New experiments will start out here, by loading the data and
@@ -265,33 +251,12 @@ impl<T: PointDisplay> AppState<T, File> {
                 false => continue,
             };
             info!("Starting iteration on this stream");
-            let new_frame_found = leftover_event_stream.find_map(|event| {
-                match self.event_to_coordinate(event) {
-                    ProcessedEvent::Displayed(p, c) => {
-                        self.channels.channel_merge.display_point(p, c, event.time);
-                        None
-                        },
-                    ProcessedEvent::NoOp => None,
-                    ProcessedEvent::FrameNewFrame => {
-                        info!("New frame due to frame signal");
-                        Some(0)
-                    },
-                    ProcessedEvent::PhotonNewFrame => {
-                        info!("New frame due to photon {} while we had {} lines", event.time, self.line_count);
-                        Some(0)
-                    },
-                    ProcessedEvent::LineNewFrame => {
-                        info!("New frame due to line");
-                        Some(0)
-                    },
-                    ProcessedEvent::Error => {
-                        error!("Received an erroneuous event: {:?}", event);
-                        None
-                    },
-                }
-            });
+            // Main iteration on events from this current batch
+            let new_frame_found =
+                leftover_event_stream.find_map(|event| self.act_on_single_event(event));
+            // If this batch contained a new frame - we return the leftovers
             if let Some(_) = new_frame_found {
-                return Some(leftover_event_stream.collect::<Vec<Event>>())
+                return Some(leftover_event_stream.collect::<Vec<Event>>());
             }
         }
     }
@@ -312,6 +277,41 @@ impl<T: PointDisplay> AppState<T, File> {
         }
     }
 
+    /// The function called on each event in the processed batch.
+    ///
+    /// It first finds what type of event has it received (a photon that needs
+    /// rendering, a line event, etc.) and then acts on it accordingly. The
+    /// return value is necessary to fulfil the demands of "find_map" which
+    /// halts only when Some(val) is returned.
+    fn act_on_single_event(&mut self, event: Event) -> Option<i8> {
+        match self.event_to_coordinate(event) {
+            ProcessedEvent::Displayed(p, c) => {
+                self.channels.channel_merge.display_point(p, c, event.time);
+                None
+            }
+            ProcessedEvent::NoOp => None,
+            ProcessedEvent::FrameNewFrame => {
+                info!("New frame due to frame signal");
+                Some(0)
+            }
+            ProcessedEvent::PhotonNewFrame => {
+                info!(
+                    "New frame due to photon {} while we had {} lines",
+                    event.time, self.line_count
+                );
+                Some(0)
+            }
+            ProcessedEvent::LineNewFrame => {
+                info!("New frame due to line");
+                Some(0)
+            }
+            ProcessedEvent::Error => {
+                error!("Received an erroneuous event: {:?}", event);
+                None
+            }
+        }
+    }
+
     /// Main loop of the app. Following a bit of a setup, during each frame
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
@@ -326,7 +326,7 @@ impl<T: PointDisplay> AppState<T, File> {
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Calling render");
             self.channels.channel_merge.render();
-        };
+        }
         info!("Acq loop done");
         Ok(())
     }
@@ -336,22 +336,34 @@ impl<T: PointDisplay> AppState<T, File> {
     ///
     /// When it finds the first line it also updates the internal state of this
     /// object with this knowledge.
-    fn advance_till_first_frame_line(&mut self, event_stream: Option<Vec<Event>>) -> Option<Vec<Event>> {
+    fn advance_till_first_frame_line(
+        &mut self,
+        event_stream: Option<Vec<Event>>,
+    ) -> Option<Vec<Event>> {
         if let Some(ref previous_events) = event_stream {
             info!("Looking for the first line/frame in the previous event stream");
             let mut steps = 0;
-            let frame_started = previous_events.iter().find_map(|event| {
-                match self.inputs[event.channel] {
-                    DataType::Line | DataType::Frame => Some(event.time),
-                    _ => {steps += 1; None},
-                }
-            });
+            let frame_started =
+                previous_events
+                    .iter()
+                    .find_map(|event| match self.inputs[event.channel] {
+                        DataType::Line | DataType::Frame => Some(event.time),
+                        _ => {
+                            steps += 1;
+                            None
+                        }
+                    });
             if frame_started.is_some() {
                 self.lines_vec.clear();
                 self.line_count = 1;
-                info!("Found the first line/frame in the previous event stream ({}) after {} steps", frame_started.unwrap(), steps);
-                self.time_to_coord.update_2d_data_for_next_frame(frame_started.unwrap());
-                return Some(previous_events.iter().copied().collect::<Vec<Event>>())
+                info!(
+                    "Found the first line/frame in the previous event stream ({}) after {} steps",
+                    frame_started.unwrap(),
+                    steps
+                );
+                self.time_to_coord
+                    .update_2d_data_for_next_frame(frame_started.unwrap());
+                return Some(previous_events.iter().copied().collect::<Vec<Event>>());
             };
         }
         // We'll look for the first line\frame indefinitely
@@ -367,22 +379,24 @@ impl<T: PointDisplay> AppState<T, File> {
                 Some(stream) => stream,
                 None => {
                     info!("No stream found, restarting loop");
-                    continue
-                    },
-            };
-            let frame_started = event_stream.iter().find_map(|event| {
-                match self.inputs[event.channel] {
-                    DataType::Line | DataType::Frame => Some(event.time),
-                    _ => None,
+                    continue;
                 }
-            });
+            };
+            let frame_started =
+                event_stream
+                    .iter()
+                    .find_map(|event| match self.inputs[event.channel] {
+                        DataType::Line | DataType::Frame => Some(event.time),
+                        _ => None,
+                    });
             info!("Looking for the first line/frame in a newly acquired stream");
             if frame_started.is_some() {
                 self.lines_vec.clear();
                 self.line_count = 1;
                 info!("Found the first line/frame: {}", frame_started.unwrap());
-                self.time_to_coord.update_2d_data_for_next_frame(frame_started.unwrap());
-                return Some(event_stream.iter().collect::<Vec<Event>>())
+                self.time_to_coord
+                    .update_2d_data_for_next_frame(frame_started.unwrap());
+                return Some(event_stream.iter().collect::<Vec<Event>>());
             }
         }
     }
@@ -407,7 +421,7 @@ impl AppState<DisplayChannel, File> {
             // self.channel3.render();
             // self.channel4.render();
             self.channels.channel_merge.render();
-        };
+        }
         Ok(())
     }
 }
@@ -462,7 +476,10 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
     /// Generates an EventStream instance from the loaded record batch
     #[inline]
     fn get_event_stream<'b>(&mut self, batch: &'b RecordBatch) -> Option<EventStream<'b>> {
-        debug!("When generating the EventStream we received {} rows", batch.num_rows());
+        debug!(
+            "When generating the EventStream we received {} rows",
+            batch.num_rows()
+        );
         let event_stream = EventStream::from_streamed_batch(batch);
         if event_stream.num_rows() == 0 {
             info!("A batch with 0 rows was received");
