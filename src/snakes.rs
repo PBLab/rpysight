@@ -3,7 +3,9 @@
 //! moment.
 
 extern crate log;
+use std::f32::consts::PI;
 
+use itertools_num::linspace;
 use nalgebra::DVector;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +20,7 @@ pub type Picosecond = i64;
 /// Marker trait to allow specific types to be used as deltas between pixels -
 /// for the image space rendering case the deltas are in f32, while for the
 /// rendering the deltas are in Picoseconds.
-trait ImageDelta {}
+pub trait ImageDelta {}
 
 impl ImageDelta for f32 {}
 impl ImageDelta for Picosecond {}
@@ -26,7 +28,7 @@ impl ImageDelta for Picosecond {}
 /// Data regarding the step size, either in image space or in picoseconds, that
 /// is needed to construct the 'snake' data vector of [`TimeToCoord`].
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct VoxelDelta<T: ImageDelta> {
+pub struct VoxelDelta<T: ImageDelta> {
     column: T,
     row: T,
     plane: T,
@@ -103,6 +105,16 @@ impl VoxelDelta<Picosecond> {
                 (full_time_per_line as i64) + (2 * deadtime_during_rotation)
             }
         }
+    }
+
+    fn min(config: &AppConfig) -> Picosecond {
+        let interim = [
+            VoxelDelta::calc_time_between_rows(config),
+            VoxelDelta::calc_time_between_columns(config),
+            VoxelDelta::calc_time_between_planes(config),
+        ];
+        let vals = interim.iter().min();
+        *vals.unwrap()
     }
 }
 
@@ -625,8 +637,7 @@ impl ThreeDimensionalSnake {
             linspace::<f32>(-1.0, 0.0 - step_size, half_planes - 1),
         );
         println!("{:?}", phase_limits_m1_to_0);
-        let mut all_phases =
-            DVector::<f32>::repeat((half_planes + half_planes + planes - 2), 0.0f32);
+        let mut all_phases = DVector::<f32>::repeat(half_planes + half_planes + planes - 2, 0.0f32);
         all_phases
             .rows_mut(0, half_planes)
             .set_column(0, &phase_limits_0_to_1);
@@ -1173,7 +1184,7 @@ mod tests {
         let last_idx = column_deltas_im.len() - 1;
         assert_eq!(
             column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1],
-            voxel_delta_ps.row
+            twod_snake.voxel_delta_ps.row
         );
     }
 
@@ -1191,7 +1202,7 @@ mod tests {
         let last_idx = column_deltas_im.len() - 1;
         assert_eq!(
             column_deltas_ps[last_idx] - column_deltas_ps[last_idx - 1],
-            voxel_delta_ps.row
+            twod_snake.voxel_delta_ps.row
         );
     }
 

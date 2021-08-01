@@ -4,7 +4,7 @@ pub mod configuration;
 pub mod event_stream;
 pub mod gui;
 pub mod point_cloud_renderer;
-pub mod rendering_helpers;
+pub mod snakes;
 
 use std::path::PathBuf;
 use std::{

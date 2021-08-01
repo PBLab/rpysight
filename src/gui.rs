@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{channel_value_to_pair, start_acquisition, DEFAULT_CONFIG_FNAME};
 use crate::{
     configuration::{AppConfig, InputChannel},
-    rendering_helpers::Picosecond,
+    snakes::Picosecond,
 };
 
 #[derive(Default)]

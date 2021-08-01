@@ -11,8 +11,7 @@ use nalgebra::Point3;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::event_stream::{Event, EventStream};
-use crate::rendering_helpers::{Picosecond, TimeToCoord};
-use crate::GLOBAL_OFFSET;
+use crate::snakes::{Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -160,7 +159,7 @@ pub struct AppState<T: PointDisplay, R: Read> {
     pub channels: Channels<T>,
     data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
-    time_to_coord: TimeToCoord,
+    snake: Box<dyn Snake>,
     inputs: Inputs,
     appconfig: AppConfig,
     rows_per_frame: u32,
@@ -172,17 +171,25 @@ pub struct AppState<T: PointDisplay, R: Read> {
 impl<T: PointDisplay> AppState<T, File> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(channels: Channels<T>, data_stream_fh: String, appconfig: AppConfig) -> Self {
+        let snake = AppState::<T, File>::choose_snake_variant(&appconfig);
         AppState {
             channels,
             data_stream_fh,
             data_stream: None,
-            time_to_coord: TimeToCoord::from_acq_params(&appconfig, GLOBAL_OFFSET),
+            snake,
             inputs: Inputs::from_config(&appconfig),
             appconfig: appconfig.clone(),
             rows_per_frame: appconfig.rows,
             line_count: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
             batch_readout_count: 0,
+        }
+    }
+
+    fn choose_snake_variant(config: &AppConfig) -> Box<dyn Snake + 'static> {
+        match config.planes {
+            0 | 1 => Box::new(TwoDimensionalSnake::from_acq_params(config, 0)),
+            2..=u32::MAX => Box::new(ThreeDimensionalSnake::from_acq_params(config, 0)),
         }
     }
 
@@ -198,7 +205,7 @@ impl<T: PointDisplay> AppState<T, File> {
             self.line_count = 0;
             debug!("Here are the lines: {:#?}", self.lines_vec);
             self.lines_vec.clear();
-            self.time_to_coord.update_2d_data_for_next_frame(event.time);
+            self.snake.update_snake_for_next_frame(event.time);
             ProcessedEvent::LineNewFrame
         } else {
             self.line_count += 1;
@@ -243,26 +250,29 @@ impl<T: PointDisplay> AppState<T, File> {
                 Some(batch) => {
                     self.batch_readout_count += 1;
                     batch.expect("Couldn't extract batch from stream")
-                },
+                }
                 None => {
-                    debug!("No batch received for some reason ({})", self.batch_readout_count);
-                    continue
-                },
+                    debug!(
+                        "No batch received for some reason ({})",
+                        self.batch_readout_count
+                    );
+                    continue;
+                }
             };
             let event_stream = match self.get_event_stream(&batch) {
                 Some(stream) => stream,
                 None => {
                     debug!("Couldn't get event stream");
-                    continue
-                },
+                    continue;
+                }
             };
             let mut leftover_event_stream = event_stream.iter();
             match self.check_relevance_of_batch(&event_stream) {
                 true => {}
                 false => {
                     debug!("Batch irrelevant!");
-                    continue
-                },
+                    continue;
+                }
             };
             info!("Starting iteration on this stream");
             // Main iteration on events from this current batch
@@ -281,8 +291,8 @@ impl<T: PointDisplay> AppState<T, File> {
     /// the current frame we're trying to render.
     fn check_relevance_of_batch(&self, event_stream: &EventStream) -> bool {
         if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
-            if event.time <= self.time_to_coord.earliest_frame_time {
-                debug!("The last event in the batch arrived before the first in the frame: received event: {}, earliest in frame: {}", event.time ,self.time_to_coord.earliest_frame_time);
+            if event.time <= self.snake.get_earliest_frame_time() {
+                debug!("The last event in the batch arrived before the first in the frame: received event: {}, earliest in frame: {}", event.time ,self.snake.get_earliest_frame_time());
                 false
             } else {
                 true
@@ -334,7 +344,6 @@ impl<T: PointDisplay> AppState<T, File> {
     /// detect the last of the photons or a new frame signal.
     pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
         self.acquire_stream_filehandle()?;
-        self.time_to_coord = TimeToCoord::from_acq_params(&self.appconfig, 0);
         let mut events_after_newframe = None;
         for _ in 0..steps {
             debug!("Starting population");
@@ -377,8 +386,8 @@ impl<T: PointDisplay> AppState<T, File> {
                     frame_started.unwrap(),
                     steps
                 );
-                self.time_to_coord
-                    .update_2d_data_for_next_frame(frame_started.unwrap());
+                self.snake
+                    .update_snake_for_next_frame(frame_started.unwrap());
                 return Some(previous_events.iter().copied().collect::<Vec<Event>>());
             };
         }
@@ -390,8 +399,13 @@ impl<T: PointDisplay> AppState<T, File> {
             let batch = match self.data_stream.as_mut().unwrap().next() {
                 Some(batch) => {
                     self.batch_readout_count += 1;
-                    batch.unwrap_or_else(|_| panic!("Couldn't extract batch from stream ({})", self.batch_readout_count))
-                },
+                    batch.unwrap_or_else(|_| {
+                        panic!(
+                            "Couldn't extract batch from stream ({})",
+                            self.batch_readout_count
+                        )
+                    })
+                }
                 None => continue,
             };
             let event_stream = match self.get_event_stream(&batch) {
@@ -413,8 +427,8 @@ impl<T: PointDisplay> AppState<T, File> {
                 self.lines_vec.clear();
                 self.line_count = 1;
                 info!("Found the first line/frame: {}", frame_started.unwrap());
-                self.time_to_coord
-                    .update_2d_data_for_next_frame(frame_started.unwrap());
+                self.snake
+                    .update_snake_for_next_frame(frame_started.unwrap());
                 return Some(event_stream.iter().collect::<Vec<Event>>());
             }
         }
@@ -428,7 +442,6 @@ impl AppState<DisplayChannel, File> {
     /// detect the last of the photons or a new frame signal.
     pub fn start_inf_acq_loop(&mut self) -> Result<()> {
         self.acquire_stream_filehandle()?;
-        self.time_to_coord = TimeToCoord::from_acq_params(&self.appconfig, 0);
         let mut events_after_newframe = None;
         while !self.channels.channel_merge.get_window().should_close() {
             events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
@@ -476,13 +489,13 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
         }
         // trace!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
-            DataType::Pmt1 => self.time_to_coord.tag_to_coord_linear(event.time, 0),
-            DataType::Pmt2 => self.time_to_coord.tag_to_coord_linear(event.time, 1),
-            DataType::Pmt3 => self.time_to_coord.tag_to_coord_linear(event.time, 2),
-            DataType::Pmt4 => self.time_to_coord.tag_to_coord_linear(event.time, 3),
+            DataType::Pmt1 => self.snake.time_to_coord_linear(event.time, 0),
+            DataType::Pmt2 => self.snake.time_to_coord_linear(event.time, 1),
+            DataType::Pmt3 => self.snake.time_to_coord_linear(event.time, 2),
+            DataType::Pmt4 => self.snake.time_to_coord_linear(event.time, 3),
             DataType::Line => self.handle_line_event(event),
-            DataType::TagLens => self.time_to_coord.new_taglens_period(event.time),
-            DataType::Laser => self.time_to_coord.new_laser_event(event.time),
+            DataType::TagLens => self.snake.new_taglens_period(event.time),
+            DataType::Laser => self.snake.new_laser_event(event.time),
             DataType::Frame => ProcessedEvent::NoOp,
             DataType::Unwanted => ProcessedEvent::NoOp,
             DataType::Invalid => {

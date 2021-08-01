@@ -7,7 +7,7 @@ use nalgebra::Point3;
 use serde::{Deserialize, Serialize};
 
 use crate::gui::{ChannelNumber, EdgeDetected, MainAppGui};
-use crate::rendering_helpers::Picosecond;
+use crate::snakes::Picosecond;
 use crate::UserInputError;
 
 /// Picosecond and Hz aware period
@@ -601,7 +601,7 @@ mod tests {
             .with_taglens_ch(InputChannel::new(8, 0.0))
             .build();
         let inputs = Inputs::from_config(&config);
-        assert_eq!(inputs[1], DataType::Pmt1(0.0));
+        assert_eq!(inputs[1], DataType::Pmt1);
     }
 
     #[test]
@@ -617,7 +617,7 @@ mod tests {
             .with_taglens_ch(InputChannel::new(18, 0.0))
             .build();
         let inputs = Inputs::from_config(&config);
-        assert_eq!(inputs[18], DataType::TagLens(0.0));
+        assert_eq!(inputs[18], DataType::TagLens);
     }
 
     #[test]
@@ -633,7 +633,7 @@ mod tests {
             .with_taglens_ch(InputChannel::new(8, 0.0))
             .build();
         let inputs = Inputs::from_config(&config);
-        assert_eq!(inputs[-1], DataType::Pmt1(0.0));
+        assert_eq!(inputs[-1], DataType::Pmt1);
     }
 
     #[test]
@@ -649,7 +649,7 @@ mod tests {
             .with_taglens_ch(InputChannel::new(-18, 0.0))
             .build();
         let inputs = Inputs::from_config(&config);
-        assert_eq!(inputs[-18], DataType::TagLens(0.0));
+        assert_eq!(inputs[-18], DataType::TagLens);
     }
 
     #[test]
