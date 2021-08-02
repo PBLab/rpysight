@@ -611,6 +611,12 @@ impl ThreeDimensionalSnake {
         }
     }
 
+    /// Create a Z-planes coordinate vector.
+    ///
+    /// This method assigns the coordinates to each plane of the volume by
+    /// dividing the Z axis into three parts, in accordance with a sine curve:
+    /// The rising part (up to pi/2), the decending part (pi/2, 3pi/2) and the
+    // last rise (3pi/2, 2pi).
     fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<f32> {
         let step_size = 2.0f32 / (planes as f32);
         let half_planes = planes / 2 + 1;
@@ -621,23 +627,28 @@ impl ThreeDimensionalSnake {
             linspace::<f32>(1.0 - step_size, -1.0 + step_size, planes - 1),
         );
         let phase_limits_m1_to_0 = DVector::<f32>::from_iterator(
-            half_planes,
+            half_planes - 1,
             linspace::<f32>(-1.0, 0.0 - step_size, half_planes - 1),
         );
-        println!("{:?}", phase_limits_m1_to_0);
         let mut all_phases = DVector::<f32>::repeat(half_planes + half_planes + planes - 2, 0.0f32);
         all_phases
-            .rows_mut(0, half_planes)
+            .rows_mut(0, phase_limits_0_to_1.len())
             .set_column(0, &phase_limits_0_to_1);
         all_phases
-            .rows_mut(half_planes, planes)
+            .rows_mut(phase_limits_0_to_1.len(), phase_limits_1_to_m1.len())
             .set_column(0, &phase_limits_1_to_m1);
         all_phases
-            .rows_mut(half_planes + planes, half_planes)
+            .rows_mut(phase_limits_0_to_1.len() + phase_limits_1_to_m1.len(), phase_limits_m1_to_0.len())
             .set_column(0, &phase_limits_m1_to_0);
         all_phases
     }
 
+    /// Create a Z-planes Picosecond vector.
+    ///
+    /// This method assigns the Picosecond value to each plane of the volume by
+    /// dividing the Z axis into three parts, in accordance with a sine curve:
+    /// The rising part (up to pi/2), the decending part (pi/2, 3pi/2) and the
+    // last rise (3pi/2, 2pi).
     fn create_planes_snake_ps(
         &self,
         planes: &DVector<f32>,
@@ -645,27 +656,34 @@ impl ThreeDimensionalSnake {
     ) -> DVector<Picosecond> {
         let quarter_period = (period / 4) as f32;
         let num_planes = planes.len();
+        let firstq = num_planes / 4;
+        let half = num_planes / 2;
+        let lastq = 3 * num_planes / 4;
         let mut asin = planes.map(|x| x.asin() / (PI / 2.0));
         let mut sine_ps = DVector::<f32>::repeat(num_planes, quarter_period);
+        // First quarter of phase
         sine_ps
-            .rows_mut(0, num_planes / 4)
-            .component_mul(&asin.rows(0, num_planes / 4));
+            .rows_mut(0, firstq)
+            .component_mul_assign(&asin.rows(0, firstq));
+        // Middle two quarters
         sine_ps
-            .rows_mut(num_planes / 4, num_planes / 2)
-            .component_mul(
+            .rows_mut(firstq, half)
+            .component_mul_assign(
                 &asin
-                    .rows_mut(num_planes / 4, num_planes / 2)
+                    .rows_mut(firstq, half)
                     .map(|x| 1.0 - x),
-            )
-            .add_scalar_mut(quarter_period);
+            );
+        sine_ps.rows_mut(firstq, half).add_scalar_mut(quarter_period);
+        // Last quarter
         sine_ps
-            .rows_mut(3 * num_planes / 4, num_planes / 4)
-            .component_mul(
+            .rows_mut(lastq, firstq)
+            .component_mul_assign(
                 &asin
-                    .rows_mut(3 * num_planes / 4, num_planes / 4)
+                    .rows_mut(lastq, firstq)
                     .map(|x| 1.0 + x),
-            )
-            .add_scalar_mut(3.0 * quarter_period);
+            );
+        sine_ps.rows_mut(lastq, firstq).add_scalar_mut(3.0 * quarter_period);
+
         sine_ps.map(|x| (x as Picosecond))
     }
 
@@ -1010,6 +1028,7 @@ impl Snake for ThreeDimensionalSnake {
 #[cfg(test)]
 mod tests {
     use nalgebra::Point3;
+    use assert_approx_eq::assert_approx_eq;
 
     use super::*;
     use crate::configuration::{AppConfigBuilder, InputChannel, Period};
@@ -1267,26 +1286,9 @@ mod tests {
     #[test]
     fn build_snake_3d() {
         let config = setup_image_scanning_config().with_planes(10).build();
-        let twod_snake = naive_init_2d(&config);
-        let snake = twod_snake.allocate_snake(&config);
+        let threed_snake = naive_init_3d(&config);
+        let snake = threed_snake.allocate_snake(&config);
         assert_eq!(snake.capacity(), 1101);
-    }
-
-    #[test]
-    fn voxel_delta_min_2d() {
-        let config = setup_image_scanning_config().with_planes(1).build();
-        let min = VoxelDelta::min(&config);
-        assert_eq!(min, 25);
-    }
-
-    #[test]
-    fn voxel_delta_min_3d() {
-        let config = setup_image_scanning_config()
-            .with_planes(90000)
-            .with_scan_period(Period::from_freq(100))
-            .build();
-        let min = VoxelDelta::min(&config);
-        assert_eq!(min, 29);
     }
 
     // TODO: A test that verifies that only a 2D snake is formed when the
@@ -1296,13 +1298,11 @@ mod tests {
         let config = setup_image_scanning_config().with_planes(10).build();
         let snake = ThreeDimensionalSnake::naive_init(&config);
         let sine = snake.create_planes_snake_imagespace(config.planes as usize);
-        assert_eq!(
-            sine,
-            DVector::from_vec(vec![
-                0.0f32, 0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0, -0.2, -0.4, -0.6, -0.8,
-                -1.0, -0.8, -0.6, -0.4, -0.2
-            ])
-        );
+        let truth = DVector::from_vec(vec![
+            0.0f32, 0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0, -0.2, -0.4, -0.6, -0.8,
+            -1.0, -0.8, -0.6, -0.4, -0.2
+        ]);
+        let _ = sine.iter().zip(truth.iter()).map(|x| assert_approx_eq!(x.0, x.1, 0.001f32));
     }
 
     #[test]
@@ -1312,41 +1312,27 @@ mod tests {
         let planes = config.planes as usize;
         let sine = snake.create_planes_snake_imagespace(planes);
         let sine_ps = snake.create_planes_snake_ps(&sine, 1000);
-        assert_eq!(
-            sine_ps,
-            DVector::from_vec(vec![
-                0, 32, 65, 102, 147, 250, 352, 397, 434, 467, 500, 532, 565, 602, 647, 749, 852,
-                897, 934, 967, 1000
-            ])
-        );
-    }
-
-    #[test]
-    fn create_sine_ps_with_offset() {
-        let config = setup_image_scanning_config().with_planes(10).build();
-        let snake = ThreeDimensionalSnake::naive_init(&config);
-        let planes = config.planes as usize;
-        let sine = snake.create_planes_snake_imagespace(planes);
-        let sine_ps = snake.create_planes_snake_ps(&sine, 1000);
-        assert_eq!(
-            sine_ps,
-            DVector::from_vec(vec![
-                10, 42, 75, 112, 157, 260, 362, 407, 444, 477, 510, 542, 575, 612, 657, 759, 862,
-                907, 944, 977, 1010
-            ])
-        );
+        let truth = DVector::from_vec(vec![
+            0i64, 32, 65, 102,
+            147, 250, 352, 397,
+            434, 467, 500, 532,
+            565, 602, 647, 750,
+            852, 897, 934, 967,
+        ]);
+        let c = sine_ps.iter().zip(truth.iter()).filter(|(a, b)| a == b).count();
+        assert_eq!(c, sine_ps.len());
     }
 
     #[test]
     #[should_panic]
     fn setup_interval_coord_map_incorrectly() {
         let im = DVector::from_vec(vec![-1.0f32, -0.5, 0.0, 0.5, 1.0]);
-        let time = DVector::from_vec(vec![0i64, 20, 30, 40, 50]);
+        let time = DVector::from_vec(vec![0i64, 10, 20, 30, 40, 50]);
         IntervalToCoordMap::new(im, time);
     }
 
     fn setup_interval_coord_map_correctly() -> IntervalToCoordMap {
-        let im = DVector::from_vec(vec![-1.0f32, -0.5, 0.0, 0.5, 1.0]);
+        let im = DVector::from_vec(vec![-1.0f32, -0.6, -0.2, 0.2, 0.6, 1.0]);
         let time = DVector::from_vec(vec![0i64, 10, 20, 30, 40, 50]);
         IntervalToCoordMap::new(im, time)
     }
@@ -1354,7 +1340,7 @@ mod tests {
     #[test]
     fn interval_index() {
         let interval = setup_interval_coord_map_correctly();
-        assert_eq!(interval[9], -0.5f32);
+        assert_eq!(interval[9], -0.6f32);
         assert_eq!(interval[50], 1.0f32);
         assert_eq!(interval[500], 0.0f32);
     }

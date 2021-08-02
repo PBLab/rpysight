@@ -10,9 +10,9 @@ use nalgebra::Point3;
 use ron::de::from_reader;
 use serde::{Serialize, Deserialize};
 
-use librpysight::configuration::{AppConfig, AppConfigBuilder, Bidirectionality, Period};
+use librpysight::configuration::{InputChannel, AppConfig, AppConfigBuilder, Bidirectionality, Period};
 use librpysight::point_cloud_renderer::{AppState, PointDisplay, Channels, ChannelNames};
-use librpysight::rendering_helpers::{Picosecond, TimeCoordPair};
+use librpysight::snakes::{Picosecond, TimeCoordPair};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
 const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
@@ -157,7 +157,7 @@ fn stepwise_short_bidir_single_frame() {
         .with_rows(10)
         .with_planes(1)
         .with_bidir(Bidirectionality::Bidir)
-        .with_line_ch(9)
+        .with_line_ch(InputChannel::new(9, 0.0))
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
     app.start_acq_loop_for(10).unwrap();
@@ -174,7 +174,7 @@ fn stepwise_short_unidir_single_frame() {
         .with_columns(10)
         .with_rows(10)
         .with_planes(1)
-        .with_line_ch(9)
+        .with_line_ch(InputChannel::new(9, 0.0))
         .with_bidir(Bidirectionality::Unidir)
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
@@ -192,14 +192,14 @@ fn stepwise_short_two_frames_bidir() {
         .with_columns(10)
         .with_rows(10)
         .with_planes(1)
-        .with_line_ch(9)
+        .with_line_ch(InputChannel::new(9, 0.0))
         .with_bidir(Bidirectionality::Bidir)
         .with_frame_dead_time(10_000_000)
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
     app.start_acq_loop_for(4).unwrap();
     // to_writer_pretty(File::create("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap(), &app.channels[ChannelNames::ChannelMerge], PrettyConfig::new()).unwrap();
-    let original: PointLogger = 
+    let original: PointLogger =
         from_reader(File::open("tests/data/short_two_frames_batch_bidir_valid.ron").unwrap()).unwrap();
     assert_eq!(app.channels[ChannelNames::ChannelMerge], original);
 }
@@ -213,7 +213,7 @@ fn stepwise_short_two_frames_unidir() {
         .with_planes(1)
         .with_bidir(Bidirectionality::Unidir)
         .with_frame_dead_time(10_000_000)
-        .with_line_ch(9)
+        .with_line_ch(InputChannel::new(9, 0.0))
         .build();
     let mut app = setup(SHORT_TWO_FRAME_BATCH_STREAM, Some(cfg));
     app.start_acq_loop_for(3).unwrap();
@@ -289,13 +289,13 @@ fn offset_with_lines() {
         .with_planes(1)
         .with_rows(2)
         .with_columns(2)
-        .with_pmt1_ch(-3)
-        .with_pmt2_ch(-8)
-        .with_line_ch(1)
+        .with_pmt1_ch(InputChannel::new(-3, 0.0))
+        .with_pmt2_ch(InputChannel::new(8, 0.0))
+        .with_line_ch(InputChannel::new(1, 0.0))
         .build();
     let mut app = setup(WITH_LINES_STREAM, Some(cfg));
     app.start_acq_loop_for(20).unwrap();
     // to_writer_pretty(File::create("tests/data/record_batch_with_lines.ron").unwrap(), &app.channels[ChannelNames::ChannelMerge], PrettyConfig::new()).unwrap();
-    let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines.ron").unwrap()).unwrap();  
+    let original: PointLogger = from_reader(File::open("tests/data/record_batch_with_lines.ron").unwrap()).unwrap();
     assert_eq!(original, app.channels[ChannelNames::ChannelMerge]);
 }
