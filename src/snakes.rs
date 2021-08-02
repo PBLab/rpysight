@@ -107,16 +107,6 @@ impl VoxelDelta<Picosecond> {
             }
         }
     }
-
-    fn min(config: &AppConfig) -> Picosecond {
-        let interim = [
-            VoxelDelta::calc_time_between_rows(config),
-            VoxelDelta::calc_time_between_columns(config),
-            VoxelDelta::calc_time_between_planes(config),
-        ];
-        let vals = interim.iter().min();
-        *vals.unwrap()
-    }
 }
 
 /// The mapping\pairing between a time in ps since the start of the experiment
@@ -620,35 +610,6 @@ impl ThreeDimensionalSnake {
             ));
         }
     }
-
-    // fn populate_snake(&mut self, starting_coord: ImageCoor, config: &AppConfig) {
-    //     let smallest_time_unit = VoxelDelta::min(config);
-    //     let mut snake: Vec<TimeCoordPair> =
-    //         Vec::with_capacity((config.planes * config.columns * config.rows) as usize);
-    //     let planes_im = self.create_planes_snake_imagespace(config.planes as usize);
-    //     let planes_ps =
-    //         self.create_planes_snake_ps(&planes_im, *config.tag_period, self.earliest_frame_time);
-    //     snake
-    //         .iter_mut()
-    //         .zip(planes_im.iter().zip(planes_ps.iter()))
-    //         .map(|x| x.1);
-    // let mut ordered = OrderedCoordinates::new(config);
-    // let time = self.earliest_frame_time;
-    // while time < self.max_frame_time {
-    //     while time < ordered.slow.delta {
-    //         while time < ordered.mid.delta {
-    //             snake.push(TimeCoordPair::new(time, ordered.coord));
-    //             ordered.fast.next();
-    //             trace!("Added coord on time {} and place {}", time, ordered.coord);
-    //             time += ordered.fast.delta;
-    //         }
-    //         ordered.mid.next();
-    //         time = time % ordered.mid.delta;
-    // }
-    // ordered.slow.next();
-    // }
-    //     self.data = snake;
-    // }
 
     fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<f32> {
         let step_size = 2.0f32 / (planes as f32);
@@ -1374,5 +1335,27 @@ mod tests {
                 907, 944, 977, 1010
             ])
         );
+    }
+
+    #[test]
+    #[should_panic]
+    fn setup_interval_coord_map_incorrectly() {
+        let im = DVector::from_vec(vec![-1.0f32, -0.5, 0.0, 0.5, 1.0]);
+        let time = DVector::from_vec(vec![0i64, 20, 30, 40, 50]);
+        IntervalToCoordMap::new(im, time);
+    }
+
+    fn setup_interval_coord_map_correctly() -> IntervalToCoordMap {
+        let im = DVector::from_vec(vec![-1.0f32, -0.5, 0.0, 0.5, 1.0]);
+        let time = DVector::from_vec(vec![0i64, 10, 20, 30, 40, 50]);
+        IntervalToCoordMap::new(im, time)
+    }
+
+    #[test]
+    fn interval_index() {
+        let interval = setup_interval_coord_map_correctly();
+        assert_eq!(interval[9], -0.5f32);
+        assert_eq!(interval[50], 1.0f32);
+        assert_eq!(interval[500], 0.0f32);
     }
 }
