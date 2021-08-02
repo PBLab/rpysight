@@ -4,12 +4,13 @@
 
 extern crate log;
 use std::f32::consts::PI;
+use std::ops::Index;
 
 use itertools_num::linspace;
-use nalgebra::DVector;
+use nalgebra::{DVector, Point3};
 use serde::{Deserialize, Serialize};
 
-use crate::configuration::{AppConfig, Bidirectionality};
+use crate::configuration::{AppConfig, Bidirectionality, Period};
 use crate::point_cloud_renderer::{ImageCoor, ProcessedEvent};
 use crate::DISPLAY_COLORS;
 
@@ -130,6 +131,46 @@ pub struct TimeCoordPair {
 impl TimeCoordPair {
     pub fn new(end_time: Picosecond, coord: ImageCoor) -> TimeCoordPair {
         TimeCoordPair { end_time, coord }
+    }
+}
+
+/// Connect each timestamp to its coordinate.
+///
+/// This struct matches between the Picosecond-based partitioning of the planes
+/// and the coordinate-based one, by allowing its users to index with a
+/// Picosecond value and get the matching coordinate in imagespace back.
+///
+/// Matching is done via linear search currently, although using some B-TreeMap
+/// could potentially be faster.
+#[derive(Clone, Debug)]
+struct IntervalToCoordMap {
+    im_vec: DVector<f32>,
+    time_vec: DVector<Picosecond>,
+}
+
+impl IntervalToCoordMap {
+    pub fn new(im_vec: DVector<f32>, time_vec: DVector<Picosecond>) -> Self {
+        assert_eq!(im_vec.len(), time_vec.len());
+        Self { im_vec, time_vec }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            im_vec: DVector::from_vec(vec![0.0f32]),
+            time_vec: DVector::from_vec(vec![0i64]),
+        }
+    }
+}
+
+impl Index<Picosecond> for IntervalToCoordMap {
+    type Output = f32;
+
+    fn index(&self, time: Picosecond) -> &Self::Output {
+        let idx = self.time_vec.iter().position(|x| time <= *x);
+        match idx {
+            Some(loc) => &self.im_vec[loc],
+            None => &0.0f32,
+        }
     }
 }
 
@@ -273,18 +314,25 @@ pub trait Snake {
     /// a single step, or perhaps two. This should, in theory, be faster than
     /// other options for this algorithm (which are currently unexplored), such
     /// as binary search, hashmap or an interval tree.
-    fn time_to_coord_linear(&mut self, time: i64, ch: usize) -> ProcessedEvent;
+    fn time_to_coord_linear(&mut self, time: Picosecond, ch: usize) -> ProcessedEvent;
+
+    /// Return the Z coordinate of a timetag.
+    ///
+    /// In the 2D case this method should be left unimplemented.
+    fn update_z_coord(&self, _coord: ImageCoor, _time: Picosecond) -> ImageCoor {
+        ImageCoor::new(0.0, 0.0, 0.0)
+    }
 
     /// Handles a new TAG lens start-of-cycle event
-    fn new_taglens_period(&self, _time: i64) -> ProcessedEvent {
+    fn new_taglens_period(&mut self, _time: Picosecond) -> ProcessedEvent {
         ProcessedEvent::NoOp
     }
 
-    fn new_laser_event(&self, _time: i64) -> ProcessedEvent {
+    fn new_laser_event(&self, _time: Picosecond) -> ProcessedEvent {
         ProcessedEvent::NoOp
     }
 
-    fn dump(&self, _time: i64) -> ProcessedEvent {
+    fn dump(&self, _time: Picosecond) -> ProcessedEvent {
         ProcessedEvent::NoOp
     }
 }
@@ -353,7 +401,11 @@ pub struct ThreeDimensionalSnake {
     /// coordinates. We keep it to look for the next matching end time only from
     /// that value onward.
     last_accessed_idx: usize,
+    /// Last signal received from the TAG Lens
     last_taglens_time: Picosecond,
+    /// A mapping between the arrival time of an event relative to the TAG lens
+    /// period and the assigned coordinate.
+    tag_deltas_to_coord: IntervalToCoordMap,
     /// The end time for the frame. Useful to quickly check
     /// whether a time tag belongs in the next frame.
     max_frame_time: Picosecond,
@@ -460,41 +512,6 @@ impl TwoDimensionalSnake {
         }
     }
 
-    /// Aggregate and calculate metadata for generating the 1D vector of event
-    /// arrival times.
-    ///
-    /// To make such a snake we have to get the correct image dimensions and
-    /// then populate the 'subsnakes' that will be used as a basis for the
-    /// final snake.
-    fn prep_snake_2d_metadata(
-        num_columns: usize,
-        voxel_delta_ps: &VoxelDelta<Picosecond>,
-        voxel_delta_im: &VoxelDelta<f32>,
-    ) -> (DVector<Picosecond>, DVector<f32>) {
-        // We add to the naive capacity 1 due to the cell containing all events
-        // arriving in between frames. The number of columns for the capacity
-        // calculation includes a fake column containing the photons arriving
-        // during mirror rotation. Their coordinate will contain a NaN value,
-        // which means that it will not be rendered.
-        let column_deltas_ps = DVector::<Picosecond>::from_fn(num_columns, |i, _| {
-            (i as Picosecond) * voxel_delta_ps.column + voxel_delta_ps.column
-        });
-        // Manually add the cell corresponding to events arriving during mirror
-        // rotation
-        let end_of_rotation_value = column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
-        let column_deltas_ps = column_deltas_ps.insert_rows(num_columns, 1, end_of_rotation_value);
-        let column_deltas_imagespace =
-            DVector::<f32>::from_fn(num_columns, |i, _| ((i as f32) * voxel_delta_im.column));
-        // The events during mirror rotation will be discarded - The NaN takes
-        // care of that
-        let column_deltas_imagespace =
-            column_deltas_imagespace
-                .add_scalar(-1.0)
-                .insert_rows(num_columns, 1, f32::NAN);
-        info!("2d snake metadata prepped");
-        (column_deltas_ps, column_deltas_imagespace)
-    }
-
     /// Update the time -> coordinate snake when we're scanning unidirectionally.
     ///
     /// This method is also used in the bidirectional case, except it's used
@@ -578,6 +595,7 @@ impl ThreeDimensionalSnake {
             voxel_delta_im,
             last_accessed_idx: 0,
             last_taglens_time: 0,
+            tag_deltas_to_coord: IntervalToCoordMap::empty(),
             max_frame_time: 0,
             earliest_frame_time: 0,
             frame_duration: 0,
@@ -591,48 +609,57 @@ impl ThreeDimensionalSnake {
         row_coord: f32,
         line_offset: Picosecond,
     ) {
-        todo!()
+        for (column_delta_im, column_delta_ps) in column_deltas_imagespace
+            .into_iter()
+            .zip(column_deltas_ps.into_iter())
+        {
+            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.0);
+            snake.push(TimeCoordPair::new(
+                column_delta_ps + line_offset,
+                cur_imcoor,
+            ));
+        }
     }
 
-    fn populate_snake(&mut self, starting_coord: ImageCoor, config: &AppConfig) {
-        let smallest_time_unit = VoxelDelta::min(config);
-        let mut snake: Vec<TimeCoordPair> =
-            Vec::with_capacity((config.planes * config.columns * config.rows) as usize);
-        let planes_im = self.create_planes_snake_imagespace(config.planes as usize);
-        let planes_ps =
-            self.create_planes_snake_ps(&planes_im, *config.tag_period, self.earliest_frame_time);
-        snake
-            .iter_mut()
-            .zip(planes_im.iter().zip(planes_ps.iter()))
-            .map(|x| x.1);
-        // let mut ordered = OrderedCoordinates::new(config);
-        // let time = self.earliest_frame_time;
-        // while time < self.max_frame_time {
-        //     while time < ordered.slow.delta {
-        //         while time < ordered.mid.delta {
-        //             snake.push(TimeCoordPair::new(time, ordered.coord));
-        //             ordered.fast.next();
-        //             trace!("Added coord on time {} and place {}", time, ordered.coord);
-        //             time += ordered.fast.delta;
-        //         }
-        //         ordered.mid.next();
-        //         time = time % ordered.mid.delta;
-        // }
-        // ordered.slow.next();
-        // }
-        self.data = snake;
-    }
+    // fn populate_snake(&mut self, starting_coord: ImageCoor, config: &AppConfig) {
+    //     let smallest_time_unit = VoxelDelta::min(config);
+    //     let mut snake: Vec<TimeCoordPair> =
+    //         Vec::with_capacity((config.planes * config.columns * config.rows) as usize);
+    //     let planes_im = self.create_planes_snake_imagespace(config.planes as usize);
+    //     let planes_ps =
+    //         self.create_planes_snake_ps(&planes_im, *config.tag_period, self.earliest_frame_time);
+    //     snake
+    //         .iter_mut()
+    //         .zip(planes_im.iter().zip(planes_ps.iter()))
+    //         .map(|x| x.1);
+    // let mut ordered = OrderedCoordinates::new(config);
+    // let time = self.earliest_frame_time;
+    // while time < self.max_frame_time {
+    //     while time < ordered.slow.delta {
+    //         while time < ordered.mid.delta {
+    //             snake.push(TimeCoordPair::new(time, ordered.coord));
+    //             ordered.fast.next();
+    //             trace!("Added coord on time {} and place {}", time, ordered.coord);
+    //             time += ordered.fast.delta;
+    //         }
+    //         ordered.mid.next();
+    //         time = time % ordered.mid.delta;
+    // }
+    // ordered.slow.next();
+    // }
+    //     self.data = snake;
+    // }
 
     fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<f32> {
         let step_size = 2.0f32 / (planes as f32);
         let half_planes = planes / 2 + 1;
-        let mut phase_limits_0_to_1 =
+        let phase_limits_0_to_1 =
             DVector::<f32>::from_iterator(half_planes, linspace::<f32>(0.0, 1.0, half_planes));
-        let mut phase_limits_1_to_m1 = DVector::<f32>::from_iterator(
+        let phase_limits_1_to_m1 = DVector::<f32>::from_iterator(
             planes - 1,
             linspace::<f32>(1.0 - step_size, -1.0 + step_size, planes - 1),
         );
-        let mut phase_limits_m1_to_0 = DVector::<f32>::from_iterator(
+        let phase_limits_m1_to_0 = DVector::<f32>::from_iterator(
             half_planes,
             linspace::<f32>(-1.0, 0.0 - step_size, half_planes - 1),
         );
@@ -653,13 +680,12 @@ impl ThreeDimensionalSnake {
     fn create_planes_snake_ps(
         &self,
         planes: &DVector<f32>,
-        delta: Picosecond,
-        offset: Picosecond,
+        period: Picosecond,
     ) -> DVector<Picosecond> {
-        let quarter_delta = (delta / 4) as f32;
+        let quarter_period = (period / 4) as f32;
         let num_planes = planes.len();
         let mut asin = planes.map(|x| x.asin() / (PI / 2.0));
-        let mut sine_ps = DVector::<f32>::repeat(num_planes, quarter_delta);
+        let mut sine_ps = DVector::<f32>::repeat(num_planes, quarter_period);
         sine_ps
             .rows_mut(0, num_planes / 4)
             .component_mul(&asin.rows(0, num_planes / 4));
@@ -670,7 +696,7 @@ impl ThreeDimensionalSnake {
                     .rows_mut(num_planes / 4, num_planes / 2)
                     .map(|x| 1.0 - x),
             )
-            .add_scalar_mut(quarter_delta);
+            .add_scalar_mut(quarter_period);
         sine_ps
             .rows_mut(3 * num_planes / 4, num_planes / 4)
             .component_mul(
@@ -678,8 +704,8 @@ impl ThreeDimensionalSnake {
                     .rows_mut(3 * num_planes / 4, num_planes / 4)
                     .map(|x| 1.0 + x),
             )
-            .add_scalar_mut(3.0 * quarter_delta);
-        sine_ps.map(|x| (x as Picosecond) + offset)
+            .add_scalar_mut(3.0 * quarter_period);
+        sine_ps.map(|x| (x as Picosecond))
     }
 
     /// Constructs the 1D vector mapping the time of arrival to image-space
@@ -735,17 +761,73 @@ impl ThreeDimensionalSnake {
         let _ = self.data.pop(); // Last element is the mirror rotation for the
                                  // last row, which is unneeded.
         let max_frame_time = self.data[self.data.len() - 1].end_time;
+        let tag_deltas_to_coord =
+            self.build_taglens_delta_to_coord_mapping(config.planes, config.tag_period);
         info!("3D bidir Snake built");
         ThreeDimensionalSnake {
             data: self.data,
             last_accessed_idx: 0,
             last_taglens_time: 0,
+            tag_deltas_to_coord,
             max_frame_time,
             voxel_delta_ps: self.voxel_delta_ps,
             voxel_delta_im: self.voxel_delta_im,
             earliest_frame_time: offset,
             frame_duration: config.calc_frame_duration(),
         }
+    }
+
+    fn update_naive_with_parameters_unidir(
+        mut self,
+        config: &AppConfig,
+        column_deltas_ps: &mut DVector<Picosecond>,
+        column_deltas_imagespace: &DVector<f32>,
+        offset: Picosecond,
+    ) -> ThreeDimensionalSnake {
+        // Add the cell capturing all photons arriving between frames
+        let line_len = column_deltas_ps.len();
+        let offset_per_row = column_deltas_ps[line_len - 1];
+        let mut line_offset: Picosecond = offset;
+        for row in 0..config.rows {
+            let row_coord = ((row as f32) * self.voxel_delta_im.row) - 1.0;
+            ThreeDimensionalSnake::push_pair_unidir(
+                &mut self.data,
+                &column_deltas_imagespace,
+                &column_deltas_ps,
+                row_coord,
+                line_offset,
+            );
+            line_offset += offset_per_row;
+        }
+        let _ = self.data.pop();
+        let max_frame_time = self.data[self.data.len() - 1].end_time;
+        let frame_duration = config.calc_frame_duration();
+        let tag_deltas_to_coord =
+            self.build_taglens_delta_to_coord_mapping(config.planes, config.tag_period);
+        info!("3D unidir snake finished");
+        ThreeDimensionalSnake {
+            data: self.data,
+            last_accessed_idx: 0,
+            max_frame_time,
+            voxel_delta_ps: self.voxel_delta_ps,
+            voxel_delta_im: self.voxel_delta_im,
+            earliest_frame_time: offset,
+            frame_duration,
+            last_taglens_time: 0,
+            tag_deltas_to_coord,
+        }
+    }
+
+    /// Construct a mapping between the arrival time of an event and its
+    /// coordinate in the planes dimension for 3D imaging.
+    fn build_taglens_delta_to_coord_mapping(
+        &self,
+        planes: u32,
+        period: Period,
+    ) -> IntervalToCoordMap {
+        let snake_im = self.create_planes_snake_imagespace(planes as usize);
+        let snake_ps = self.create_planes_snake_ps(&snake_im, *period);
+        IntervalToCoordMap::new(snake_im, snake_ps)
     }
 }
 
@@ -784,8 +866,7 @@ impl Snake for TwoDimensionalSnake {
 
     /// Returns the value assigned to the snake's capacity
     ///
-    /// For 2D imaging it's num_rows * (num_columns + 1), and for 3D we add
-    /// in the number of planes.
+    /// For 2D imaging it's num_rows * (num_columns + 1)
     ///
     /// These numbers take into account a cell before each frame which captures
     /// photons arriving between frames, and a cell we remove from the last row
@@ -793,10 +874,7 @@ impl Snake for TwoDimensionalSnake {
     /// allocate..
     fn calc_snake_length(&self, config: &AppConfig) -> usize {
         let baseline_count = ((config.columns + 1) * config.rows) as usize;
-        match config.planes {
-            0 | 1 => baseline_count + 1,
-            _ => baseline_count * config.planes as usize + 1,
-        }
+        baseline_count + 1
     }
 
     /// Handle a time tag by finding its corresponding coordinate in image
@@ -884,23 +962,25 @@ impl Snake for ThreeDimensionalSnake {
             threed_snake.construct_row_ps_snake(num_columns, &threed_snake.voxel_delta_ps);
         let column_deltas_imagespace =
             threed_snake.construct_row_im_snake(num_columns, &threed_snake.voxel_delta_im);
-        let planes_delta_ps =
-            threed_snake.construct_row_im_snake(num_columns, &threed_snake.voxel_delta_im);
-        let planes_delta_im =
-            threed_snake.construct_row_im_snake(num_columns, &threed_snake.voxel_delta_im);
-        todo!()
-        // match config.bidir {
-        //     Bidirectionality::Bidir => twod_snake.update_naive_with_parameters_bidir(
-        //         &config,
-        //         &mut column_deltas_ps,
-        //         &column_deltas_imagespace,
-        //         offset,), Bidirectionality::Unidir =>
-        //         twod_snake.update_naive_with_parameters_unidir( &config, &mut column_deltas_ps,
-        //         &column_deltas_imagespace, offset,), }
+        match config.bidir {
+            Bidirectionality::Bidir => threed_snake.update_naive_with_parameters_bidir(
+                &config,
+                &mut column_deltas_ps,
+                &column_deltas_imagespace,
+                offset,
+            ),
+            Bidirectionality::Unidir => threed_snake.update_naive_with_parameters_unidir(
+                &config,
+                &mut column_deltas_ps,
+                &column_deltas_imagespace,
+                offset,
+            ),
+        }
     }
 
     fn calc_snake_length(&self, config: &AppConfig) -> usize {
-        todo!()
+        let baseline_count = ((config.columns + 1) * config.rows) as usize;
+        baseline_count * config.planes as usize + 1
     }
 
     fn time_to_coord_linear(&mut self, time: i64, ch: usize) -> ProcessedEvent {
@@ -920,7 +1000,7 @@ impl Snake for ThreeDimensionalSnake {
                     pair, time, additional_steps_taken, ch
                 );
                 self.last_accessed_idx += additional_steps_taken;
-                coord = Some(pair.coord);
+                coord = Some(self.update_z_coord(pair.coord, time));
                 break;
             }
             additional_steps_taken += 1;
@@ -939,6 +1019,11 @@ impl Snake for ThreeDimensionalSnake {
         }
     }
 
+    fn update_z_coord(&self, coord: ImageCoor, time: Picosecond) -> Point3<f32> {
+        let tag_delta = self.last_taglens_time - time;
+        ImageCoor::new(coord.x, coord.y, self.tag_deltas_to_coord[tag_delta])
+    }
+
     fn update_snake_for_next_frame(&mut self, next_frame_at: Picosecond) {
         self.last_accessed_idx = 0;
         let offset = next_frame_at - self.earliest_frame_time;
@@ -954,6 +1039,11 @@ impl Snake for ThreeDimensionalSnake {
     fn get_earliest_frame_time(&self) -> Picosecond {
         self.earliest_frame_time
     }
+
+    fn new_taglens_period(&mut self, time: Picosecond) -> ProcessedEvent {
+        self.last_taglens_time = time;
+        ProcessedEvent::NoOp
+    }
 }
 
 #[cfg(test)]
@@ -961,7 +1051,7 @@ mod tests {
     use nalgebra::Point3;
 
     use super::*;
-    use crate::configuration::{AppConfigBuilder, Period};
+    use crate::configuration::{AppConfigBuilder, InputChannel, Period};
 
     /// Helper method to test config-dependent things without actually caring
     /// about the different config values
@@ -976,14 +1066,14 @@ mod tests {
             .with_bidir(Bidirectionality::Bidir)
             .with_fill_fraction(71.3)
             .with_frame_dead_time(8 * *Period::from_freq(7926.17))
-            .with_pmt1_ch(-1)
-            .with_pmt2_ch(0)
-            .with_pmt3_ch(0)
-            .with_pmt4_ch(0)
-            .with_laser_ch(0)
-            .with_frame_ch(0)
-            .with_line_ch(2)
-            .with_taglens_ch(3)
+            .with_pmt1_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(0, 0.0))
+            .with_pmt3_ch(InputChannel::new(0, 0.0))
+            .with_pmt4_ch(InputChannel::new(0, 0.0))
+            .with_laser_ch(InputChannel::new(0, 0.0))
+            .with_frame_ch(InputChannel::new(0, 0.0))
+            .with_line_ch(InputChannel::new(2, 0.0))
+            .with_taglens_ch(InputChannel::new(3, 0.0))
             .with_line_shift(0)
             .clone()
     }
@@ -999,14 +1089,14 @@ mod tests {
             .with_bidir(Bidirectionality::Bidir)
             .with_fill_fraction(50i16)
             .with_frame_dead_time(1 * *Period::from_freq(1_000_000_000))
-            .with_pmt1_ch(-1)
-            .with_pmt2_ch(0)
-            .with_pmt3_ch(0)
-            .with_pmt4_ch(0)
-            .with_laser_ch(0)
-            .with_frame_ch(0)
-            .with_line_ch(2)
-            .with_taglens_ch(0)
+            .with_pmt1_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(0, 0.0))
+            .with_pmt3_ch(InputChannel::new(0, 0.0))
+            .with_pmt4_ch(InputChannel::new(0, 0.0))
+            .with_laser_ch(InputChannel::new(0, 0.0))
+            .with_frame_ch(InputChannel::new(0, 0.0))
+            .with_line_ch(InputChannel::new(2, 0.0))
+            .with_taglens_ch(InputChannel::new(0, 0.0))
             .with_line_shift(0)
             .clone()
     }
@@ -1191,7 +1281,6 @@ mod tests {
     #[test]
     fn snake_2d_metadata_unidir() {
         let config = setup_image_scanning_config().with_bidir(false).build();
-        let config = setup_image_scanning_config().with_bidir(false).build();
         let twod_snake = naive_init_2d(&config);
         let column_deltas_ps =
             twod_snake.construct_row_ps_snake(config.columns as usize, &twod_snake.voxel_delta_ps);
@@ -1261,7 +1350,7 @@ mod tests {
         let snake = ThreeDimensionalSnake::naive_init(&config);
         let planes = config.planes as usize;
         let sine = snake.create_planes_snake_imagespace(planes);
-        let sine_ps = snake.create_planes_snake_ps(&sine, 1000, 0);
+        let sine_ps = snake.create_planes_snake_ps(&sine, 1000);
         assert_eq!(
             sine_ps,
             DVector::from_vec(vec![
@@ -1277,7 +1366,7 @@ mod tests {
         let snake = ThreeDimensionalSnake::naive_init(&config);
         let planes = config.planes as usize;
         let sine = snake.create_planes_snake_imagespace(planes);
-        let sine_ps = snake.create_planes_snake_ps(&sine, 1000, 10);
+        let sine_ps = snake.create_planes_snake_ps(&sine, 1000);
         assert_eq!(
             sine_ps,
             DVector::from_vec(vec![
