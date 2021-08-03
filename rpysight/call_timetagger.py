@@ -19,11 +19,15 @@ import numpy as np
 import pyarrow as pa
 import toml
 
-import TimeTagger
+try:
+    import TimeTagger
+except ModuleNotFoundError:
+    import sys
+    sys.path.append(r"C:\Users\PBLab\.conda\envs\timetagger")
+    sys.path.append(r"/mnt/Us")
+    import TimeTagger
 
-# Channel definitions
-CHAN_START = 1
-CHAN_STOP = 2
+
 TT_DATA_STREAM = "tt_data_stream.dat"
 
 
@@ -42,7 +46,8 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         super().__init__(tagger)
         # if channels:
         #     [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
-        [self.register_channel(channel=channel['channel']) for channel in channels]
+        if channels:
+            [self.register_channel(channel=channel['channel']) for channel in channels]
         self.init_stream_and_schema()
         if fname:
             self.filehandle = open(fname, "wb")
@@ -193,3 +198,6 @@ def replay_existing(cfg: str):
     tagger.replay(config['filename'], queue=False)
     tagger.waitForCompletion(timeout=-1)
 
+
+if __name__ == '__main__':
+    print("Imports are working")

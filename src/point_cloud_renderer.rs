@@ -461,14 +461,18 @@ impl AppState<DisplayChannel, File> {
 impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     fn acquire_stream_filehandle(&mut self) -> Result<()> {
-        std::thread::sleep(std::time::Duration::from_secs(13));
-        debug!("Finished waiting");
-        let stream =
-            File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
-        let stream =
-            StreamReader::try_new(stream).context("Stream file isn't a true Arrow IPC stream")?;
-        self.data_stream = Some(stream);
-        debug!("File handle for stream acquired!");
+        if self.data_stream.is_none() {
+            std::thread::sleep(std::time::Duration::from_secs(13));
+            debug!("Finished waiting");
+            let stream =
+                File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
+            let stream =
+                StreamReader::try_new(stream).context("Stream file isn't a true Arrow IPC stream")?;
+            self.data_stream = Some(stream);
+            debug!("File handle for stream acquired!");
+        } else {
+            debug!("File handle already acquired.");
+        }
         Ok(())
     }
 

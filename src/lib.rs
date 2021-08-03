@@ -33,7 +33,6 @@ const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
 pub const DEFAULT_CONFIG_FNAME: &str = "default.toml";
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
-const GLOBAL_OFFSET: i64 = 0;
 
 lazy_static! {
     /// GREEN, MAGENTA, CYAN, GRAY
