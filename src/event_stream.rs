@@ -1,22 +1,21 @@
-use pyo3::prelude::*;
+use arrow2::array::{Array, Int32Array, Int64Array, UInt16Array, UInt8Array};
+use arrow2::datatypes::DataType;
+use arrow2::record_batch::RecordBatch;
 use lazy_static::lazy_static;
-use arrow::{array::{Int32Array, Int64Array, UInt16Array, UInt8Array}, record_batch::RecordBatch};
+use pyo3::prelude::*;
 
 lazy_static! {
-    static ref TYPE_: UInt8Array = UInt8Array::builder(0).finish();
-    static ref MISSED_EVENTS: UInt16Array = UInt16Array::builder(0).finish();
-    static ref CHANNEL: Int32Array = Int32Array::builder(0).finish();
-    static ref TIME: Int64Array = Int64Array::builder(0).finish();
-
-    static ref EMPTY_EVENT_STREAM: EventStream<'static> = EventStream { 
+    static ref TYPE_: UInt8Array = UInt8Array::new_empty(DataType::UInt8);
+    static ref MISSED_EVENTS: UInt16Array = UInt16Array::new_empty(DataType::UInt16);
+    static ref CHANNEL: Int32Array = Int32Array::new_empty(DataType::Int32);
+    static ref TIME: Int64Array = Int64Array::new_empty(DataType::Int64);
+    static ref EMPTY_EVENT_STREAM: EventStream<'static> = EventStream {
         type_: &TYPE_,
         missed_events: &MISSED_EVENTS,
         channel: &CHANNEL,
         time: &TIME,
     };
 }
-
-
 
 /// A single tag\event that arrives from the Time Tagger.
 #[pyclass]
@@ -84,7 +83,6 @@ impl<'a> Iterator for RefEventStreamIter<'a> {
         }
     }
 }
-
 
 /// An consuming iterator wrapper for [`EventStream`]
 #[derive(Clone, Debug)]

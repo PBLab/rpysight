@@ -5,7 +5,10 @@ use std::io::Read;
 use std::ops::{Index, IndexMut};
 
 use anyhow::{Context, Result};
-use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch};
+use arrow2::{
+    io::ipc::read::{read_stream_metadata, StreamReader},
+    record_batch::RecordBatch,
+};
 use kiss3d::window::Window;
 use nalgebra::Point3;
 
@@ -161,7 +164,6 @@ pub struct AppState<T: PointDisplay, R: Read> {
     pub data_stream: Option<StreamReader<R>>,
     snake: Box<dyn Snake>,
     inputs: Inputs,
-    appconfig: AppConfig,
     rows_per_frame: u32,
     line_count: u32,
     lines_vec: Vec<Picosecond>,
@@ -178,7 +180,6 @@ impl<T: PointDisplay> AppState<T, File> {
             data_stream: None,
             snake,
             inputs: Inputs::from_config(&appconfig),
-            appconfig: appconfig.clone(),
             rows_per_frame: appconfig.rows,
             line_count: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
@@ -464,10 +465,10 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
         if self.data_stream.is_none() {
             std::thread::sleep(std::time::Duration::from_secs(13));
             debug!("Finished waiting");
-            let stream =
+            let mut reader =
                 File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
-            let stream =
-                StreamReader::try_new(stream).context("Stream file isn't a true Arrow IPC stream")?;
+            let meta = read_stream_metadata(&mut reader).context("Can't read stream metadata")?;
+            let stream = StreamReader::new(reader, meta);
             self.data_stream = Some(stream);
             debug!("File handle for stream acquired!");
         } else {

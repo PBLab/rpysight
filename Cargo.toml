@@ -10,7 +10,7 @@ edition = "2018"
 kiss3d = "0.30"
 nalgebra = { version = "0.25", features = ["serde-serialize"] }
 pyo3 = { version = "0.13", features = ["extension-module", "auto-initialize"] }
-arrow = "5.0.0"
+arrow2 = "0.2.0"
 thiserror = "1.0"
 anyhow = "1.0"
 iced = { version = "0.3", features = ["image"] }
