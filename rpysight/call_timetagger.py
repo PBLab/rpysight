@@ -1,7 +1,7 @@
 """Taken directly from Swabian's examples. Written on 132.66.42.158 (laser
 room computer) for realtime interaction with the TT. This somehow works
 without any PYTHONPATH manipulation - someone has already added the
-'driver\python' directory and it seems stable enough for this POC.
+'driver\\python' directory and it seems stable enough for this POC.
 
 By and large, the 'process' method is automatically called when each batch of
 events arrive. The entire data is in the 'incoming_tags' variable, the
@@ -24,7 +24,6 @@ try:
 except ModuleNotFoundError:
     import sys
     sys.path.append(r"C:\Users\PBLab\.conda\envs\timetagger")
-    sys.path.append(r"/mnt/Us")
     import TimeTagger
 
 
