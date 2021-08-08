@@ -132,8 +132,8 @@ impl PointDisplay for DisplayChannel {
 }
 
 impl DisplayChannel {
-    pub fn new(title: &str, frame_rate: u64) -> Self {
-        let mut window = Window::new(title);
+    pub fn new(title: &str, width: u32, height: u32, frame_rate: u64) -> Self {
+        let mut window = Window::new_with_size(title, width, height);
         window.set_framerate_limit(Some(frame_rate));
         Self { window }
     }

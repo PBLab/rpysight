@@ -212,7 +212,7 @@ fn channel_value_to_pair(ch: InputChannel) -> (ChannelNumber, EdgeDetected, f32)
     (chnum, edge, ch.threshold)
 }
 
-fn generate_windows(fr: u64) -> Channels<DisplayChannel> {
+fn generate_windows(width: u32, height: u32, fr: u64) -> Channels<DisplayChannel> {
     let channel_names = [
         "Channel 1",
         "Channel 2",
@@ -222,7 +222,7 @@ fn generate_windows(fr: u64) -> Channels<DisplayChannel> {
     ];
     let mut channels = Vec::new();
     for name in channel_names.iter() {
-        channels.push(DisplayChannel::new(*name, fr));
+        channels.push(DisplayChannel::new(*name, width, height, fr));
     }
     Channels::new(channels)
 }
@@ -234,9 +234,9 @@ fn generate_windows(fr: u64) -> Channels<DisplayChannel> {
 pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok(); // errors are logged and quite irrelevant
     let fr = (&cfg).frame_rate().round() as u64;
-    let channels = generate_windows(fr);
-    let stream = ArrowIpcStream::new(TT_DATA_STREAM.to_string());
-    let mut app = AppState::<DisplayChannel, ArrowIpcStream>::new(channels, stream, cfg.clone());
+    let channels = generate_windows(cfg.columns, cfg.rows, fr);
+    let mut app =
+        AppState::<DisplayChannel, File>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
