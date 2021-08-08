@@ -160,6 +160,15 @@ impl Inputs {
         debug!("The inputs struct was constructed successfully: {:?}", inps);
         inps
     }
+
+    pub fn get(&self, channel: i32) -> Option<&DataType> {
+        let modified_idx = (MAX_TIMETAGGER_INPUTS + channel) as usize;
+        if  modified_idx >= self.0.len() {
+            None
+        } else {
+            Some(&self.0[modified_idx])
+        }
+    }
 }
 
 impl Index<i32> for Inputs {

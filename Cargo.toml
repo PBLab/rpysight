@@ -14,7 +14,7 @@ arrow2 = "0.2.0"
 thiserror = "1.0"
 anyhow = "1.0"
 iced = { version = "0.3", features = ["image"] }
-log = { version = "0.4", features = ["release_max_level_debug"] }
+log = { version = "0.4", features = ["release_max_level_warn"] }
 fern = { version = "0.6", features = ["date-based"] }
 chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }

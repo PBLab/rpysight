@@ -145,8 +145,8 @@ impl PointDisplay for DisplayChannel {
 }
 
 impl DisplayChannel {
-    pub fn new(title: &str, frame_rate: u64) -> Self {
-        let mut window = Window::new(title);
+    pub fn new(title: &str, width: u32, height: u32, frame_rate: u64) -> Self {
+        let mut window = Window::new_with_size(title, width, height);
         window.set_framerate_limit(Some(frame_rate));
         Self { window }
     }
@@ -248,16 +248,18 @@ impl<T: PointDisplay> AppState<T, File> {
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
             let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => {
-                    self.batch_readout_count += 1;
-                    batch.expect("Couldn't extract batch from stream")
+                Some(batch) => { 
+                    match batch {
+                        Ok(b) => { self.batch_readout_count += 1; b },
+                        Err(b) => { error!("In populate, batch couldn't be extracted. Num: {}, error: {:?}", self.batch_readout_count, b); continue },
+                    }
                 }
                 None => {
                     debug!(
                         "No batch received for some reason ({})",
                         self.batch_readout_count
                     );
-                    continue;
+                    continue
                 }
             };
             let event_stream = match self.get_event_stream(&batch) {
@@ -399,14 +401,20 @@ impl<T: PointDisplay> AppState<T, File> {
             // 'batch' cannot go out of scope
             let batch = match self.data_stream.as_mut().unwrap().next() {
                 Some(batch) => {
-                    self.batch_readout_count += 1;
-                    batch.unwrap_or_else(|_| {
-                        panic!(
-                            "Couldn't extract batch from stream ({})",
-                            self.batch_readout_count
-                        )
-                    })
-                }
+                    match batch {
+                        Ok(b) => { 
+                            self.batch_readout_count += 1; 
+                            b 
+                        },
+                        Err(b) => {
+                            error!(
+                                "Couldn't extract batch from stream ({}): {:?}",
+                                self.batch_readout_count, b
+                            );
+                            continue
+                        },
+                    }
+                },
                 None => continue,
             };
             let event_stream = match self.get_event_stream(&batch) {
@@ -419,8 +427,10 @@ impl<T: PointDisplay> AppState<T, File> {
             let frame_started =
                 event_stream
                     .iter()
-                    .find_map(|event| match self.inputs[event.channel] {
-                        DataType::Line | DataType::Frame => Some(event.time),
+                    // .find_map(|event| match self.inputs[event.channel] {
+                    .find_map(|event| match self.inputs.get(event.channel) {
+                        Some(DataType::Line) | Some(DataType::Frame) => Some(event.time),
+                        None => { error!("Out of bounds access: {:?}", event); None },
                         _ => None,
                     });
             info!("Looking for the first line/frame in a newly acquired stream");
