@@ -27,17 +27,38 @@ lazy_static! {
     };
 }
 
-/// A handler of streaming time tagger data
+/// A protocol for handling the IPC portion of the app.
+///
+/// This trait's implementers are objects designed to read data from the TT and
+/// write it back to the Rust app. This task can be done in several ways, so it
+/// was factored out into a trait that can be implemented by the different
+/// implementors. The two main examples are the Arrow IPC handler and the TT's
+/// own Network class.
 pub trait TimeTaggerIpcHandler {
+    /// The type the stream has, e.g. RecordBatch
     type InnerItem;
+    /// The type of error that creating the iterator may return, e.g. an
+    /// ArrowError
     type IterError: Debug;
+    /// The iterator's type containing the stream of data, e.g.
+    /// StreamReader<File>.
     type StreamIterator: Iterator<Item = Result<Self::InnerItem, Self::IterError>>;
 
+    /// Populate the `data_stream` attribute of the implementing struct by
+    /// opening the filehandle of the stream and asserting that something's
+    /// there.
     fn acquire_stream_filehandle(&mut self) -> Result<()>;
-    fn get_event_stream<'a>(&mut self, batch: &'a Self::InnerItem) -> Option<EventStream<'a>>;
+    /// Get a consuming iterator that we can parse into the event stream.
     fn get_mut_data_stream(&mut self) -> Option<&mut Self::StreamIterator>;
+    /// Generate the `EventStream` struct from the item we're iterating over.
+    /// `EventStream` is used in the downstream processing of this data.
+    fn get_event_stream<'a>(&mut self, batch: &'a Self::InnerItem) -> Option<EventStream<'a>>;
 }
 
+/// An Apache Arrow based data stream.
+///
+/// Data is streamed using their IPC format - it's converted on the TT side to
+/// a pyarrow record batch, and read as a Rust RecordBatch on the other side.
 pub(crate) struct ArrowIpcStream {
     pub data_stream_fh: String,
     data_stream: Option<StreamReader<File>>,
@@ -90,6 +111,7 @@ impl TimeTaggerIpcHandler for ArrowIpcStream {
         }
     }
 
+    /// Get a consuming iterator.
     fn get_mut_data_stream(&mut self) -> Option<&mut Self::StreamIterator> {
         self.data_stream.as_mut()
     }
