@@ -97,7 +97,7 @@ impl TimeTaggerIpcHandler for ArrowIpcStream {
 
     /// Generates an EventStream instance from the loaded record batch
     #[inline]
-    fn get_event_stream<'b>(&mut self, batch: &'b Self::InnerItem) -> Option<EventStream<'b>> {
+    fn get_event_stream<'b>(&mut self, batch: &'b RecordBatch) -> Option<EventStream<'b>> {
         debug!(
             "When generating the EventStream we received {} rows",
             batch.num_rows()
@@ -112,7 +112,7 @@ impl TimeTaggerIpcHandler for ArrowIpcStream {
     }
 
     /// Get a consuming iterator.
-    fn get_mut_data_stream(&mut self) -> Option<&mut Self::StreamIterator> {
+    fn get_mut_data_stream(&mut self) -> Option<&mut StreamReader<File>> {
         self.data_stream.as_mut()
     }
 }
