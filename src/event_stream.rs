@@ -1,14 +1,25 @@
-use pyo3::prelude::*;
+//! Objects and functions that deal directly with the data stream
+//! from the TimeTagger.
+
+use std::fmt::Debug;
+use std::fs::File;
+
+use anyhow::{Context, Result};
+use arrow::{
+    array::{Int32Array, Int64Array, UInt16Array, UInt8Array},
+    error::ArrowError,
+    ipc::reader::StreamReader,
+    record_batch::RecordBatch,
+};
 use lazy_static::lazy_static;
-use arrow::{array::{Int32Array, Int64Array, UInt16Array, UInt8Array}, record_batch::RecordBatch};
+use pyo3::prelude::*;
 
 lazy_static! {
     static ref TYPE_: UInt8Array = UInt8Array::builder(0).finish();
     static ref MISSED_EVENTS: UInt16Array = UInt16Array::builder(0).finish();
     static ref CHANNEL: Int32Array = Int32Array::builder(0).finish();
     static ref TIME: Int64Array = Int64Array::builder(0).finish();
-
-    static ref EMPTY_EVENT_STREAM: EventStream<'static> = EventStream { 
+    static ref EMPTY_EVENT_STREAM: EventStream<'static> = EventStream {
         type_: &TYPE_,
         missed_events: &MISSED_EVENTS,
         channel: &CHANNEL,
@@ -16,7 +27,73 @@ lazy_static! {
     };
 }
 
+/// A handler of streaming time tagger data
+pub trait TimeTaggerIpcHandler {
+    type InnerItem;
+    type IterError: Debug;
+    type StreamIterator: Iterator<Item = Result<Self::InnerItem, Self::IterError>>;
 
+    fn acquire_stream_filehandle(&mut self) -> Result<()>;
+    fn get_event_stream<'a>(&mut self, batch: &'a Self::InnerItem) -> Option<EventStream<'a>>;
+    fn get_mut_data_stream(&mut self) -> Option<&mut Self::StreamIterator>;
+}
+
+pub(crate) struct ArrowIpcStream {
+    pub data_stream_fh: String,
+    data_stream: Option<StreamReader<File>>,
+}
+
+impl ArrowIpcStream {
+    pub(crate) fn new(data_stream_fh: String) -> Self {
+        Self {
+            data_stream_fh,
+            data_stream: None,
+        }
+    }
+}
+
+impl TimeTaggerIpcHandler for ArrowIpcStream {
+    type InnerItem = RecordBatch;
+    type IterError = ArrowError;
+    type StreamIterator = StreamReader<File>;
+
+    /// Instantiate an IPC StreamReader using an existing file handle.
+    fn acquire_stream_filehandle(&mut self) -> Result<()> {
+        if self.data_stream.is_none() {
+            std::thread::sleep(std::time::Duration::from_secs(11));
+            debug!("Finished waiting");
+            let stream =
+                File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
+            let stream = StreamReader::try_new(stream)
+                .context("Stream file isn't a true Arrow IPC stream")?;
+            self.data_stream = Some(stream);
+            debug!("File handle for stream acquired!");
+        } else {
+            debug!("File handle already acquired.");
+        }
+        Ok(())
+    }
+
+    /// Generates an EventStream instance from the loaded record batch
+    #[inline]
+    fn get_event_stream<'b>(&mut self, batch: &'b Self::InnerItem) -> Option<EventStream<'b>> {
+        debug!(
+            "When generating the EventStream we received {} rows",
+            batch.num_rows()
+        );
+        let event_stream = EventStream::from_streamed_batch(batch);
+        if event_stream.num_rows() == 0 {
+            info!("A batch with 0 rows was received");
+            None
+        } else {
+            Some(event_stream)
+        }
+    }
+
+    fn get_mut_data_stream(&mut self) -> Option<&mut Self::StreamIterator> {
+        self.data_stream.as_mut()
+    }
+}
 
 /// A single tag\event that arrives from the Time Tagger.
 #[pyclass]
@@ -84,7 +161,6 @@ impl<'a> Iterator for RefEventStreamIter<'a> {
         }
     }
 }
-
 
 /// An consuming iterator wrapper for [`EventStream`]
 #[derive(Clone, Debug)]

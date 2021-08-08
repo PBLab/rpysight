@@ -20,13 +20,13 @@ use anyhow::Result;
 use directories::ProjectDirs;
 use iced::Settings;
 use nalgebra::Point3;
-use point_cloud_renderer::DisplayChannel;
 use pyo3::prelude::*;
 use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
+use crate::event_stream::ArrowIpcStream;
 use crate::gui::{ChannelNumber, EdgeDetected};
-use crate::point_cloud_renderer::{AppState, Channels};
+use crate::point_cloud_renderer::{AppState, Channels, DisplayChannel};
 
 const TT_DATA_STREAM: &str = "tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
@@ -235,8 +235,8 @@ pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok(); // errors are logged and quite irrelevant
     let fr = (&cfg).frame_rate().round() as u64;
     let channels = generate_windows(fr);
-    let mut app =
-        AppState::<DisplayChannel, File>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
+    let stream = ArrowIpcStream::new(TT_DATA_STREAM.to_string());
+    let mut app = AppState::<DisplayChannel, ArrowIpcStream>::new(channels, stream, cfg.clone());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
