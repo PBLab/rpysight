@@ -3,7 +3,7 @@ use std::fs::File;
 use std::sync::Arc;
 
 use arrow::datatypes::{DataType, Field, Schema};
-use arrow::ipc::{reader::StreamReader, writer::StreamWriter};
+use arrow::ipc::writer::StreamWriter;
 use arrow::csv::Reader;
 use log::*;
 use nalgebra::Point3;
@@ -11,8 +11,9 @@ use ron::de::from_reader;
 use serde::{Serialize, Deserialize};
 
 use librpysight::configuration::{InputChannel, AppConfig, AppConfigBuilder, Bidirectionality, Period};
-use librpysight::point_cloud_renderer::{AppState, PointDisplay, Channels, ChannelNames, TimeTaggerIpcHandler};
+use librpysight::point_cloud_renderer::{AppState, PointDisplay, Channels, ChannelNames};
 use librpysight::snakes::{Picosecond, TimeCoordPair};
+use librpysight::event_stream::{TimeTaggerIpcHandler, ArrowIpcStream};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
 const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
@@ -117,14 +118,15 @@ pub fn setup_logger() {
 
 /// Start a logger, generate a default config file (if given none) and generate
 /// a data stream from one of the CSV files.
-fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, File> {
+fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, ArrowIpcStream> {
     setup_logger();
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
     let channels = generate_mock_channels();
     info!("{:?}", channels);
-    let mut app = AppState::new(channels, csv_to_stream.to_string(), cfg);
-    app.acquire_stream_filehandle().unwrap();
+    let stream = ArrowIpcStream::new(csv_to_stream.to_string());
+    let mut app = AppState::new(channels, stream, cfg);
+    app.stream.acquire_stream_filehandle().unwrap();
     app.channels.hide_all();
     app
 }
@@ -133,7 +135,7 @@ fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, F
 fn assert_full_stream_exists() {
     test_file_to_stream();
     let mut app = setup(FULL_BATCH_STREAM, None);
-    if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
+    if let Some(batch) = app.stream.get_mut_data_stream().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
     }
@@ -143,7 +145,7 @@ fn assert_full_stream_exists() {
 fn assert_short_stream_exists() {
     test_file_to_stream();
     let mut app = setup(SHORT_BATCH_STREAM, None);
-    if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
+    if let Some(batch) = app.stream.get_mut_data_stream().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
     }

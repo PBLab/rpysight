@@ -24,6 +24,8 @@ lazy_static = "1.4"
 futures = "0.3"
 itertools-num = "0.1"
 assert_approx_eq = "1.1.0"
+polars = { version = "0.15", features = ["random", "ipc", "rows", "pretty_fmt"] }
+nalgebra-numpy = { git = "https://github.com/PBLab/nalgebra-numpy"}
 
 [dev-dependencies]
 ron = "0.6"
