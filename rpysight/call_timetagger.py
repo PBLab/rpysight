@@ -135,8 +135,9 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        batch = self.convert_tags_to_recordbatch(incoming_tags)
-        self.stream.write(batch)
+        if len(incoming_tags) > 0:
+            batch = self.convert_tags_to_recordbatch(incoming_tags)
+            self.stream.write(batch)
         # Saving the data to an npy file for future-proofing purposes
         # np.save(self.filehandle, incoming_tags)
 
