@@ -160,6 +160,16 @@ impl Inputs {
         debug!("The inputs struct was constructed successfully: {:?}", inps);
         inps
     }
+
+    /// An safer indexing-like method
+    pub fn get(&self, channel: i32) -> &DataType {
+        let actual_idx = (MAX_TIMETAGGER_INPUTS + channel) as usize;
+        if actual_idx >= self.0.len() {
+            &DataType::Invalid
+        } else {
+            &self.0[actual_idx]
+        }
+    }
 }
 
 impl Index<i32> for Inputs {
