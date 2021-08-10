@@ -59,13 +59,13 @@ pub trait TimeTaggerIpcHandler {
 ///
 /// Data is streamed using their IPC format - it's converted on the TT side to
 /// a pyarrow record batch, and read as a Rust RecordBatch on the other side.
-pub(crate) struct ArrowIpcStream {
+pub struct ArrowIpcStream {
     pub data_stream_fh: String,
     data_stream: Option<StreamReader<File>>,
 }
 
 impl ArrowIpcStream {
-    pub(crate) fn new(data_stream_fh: String) -> Self {
+    pub fn new(data_stream_fh: String) -> Self {
         Self {
             data_stream_fh,
             data_stream: None,

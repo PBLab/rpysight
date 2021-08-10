@@ -39,6 +39,10 @@ pub enum ProcessedEvent {
     Error,
 }
 
+/// A simple flag showing whether a new frame was detected in the last photon
+/// stream
+type NewFrameDetected = bool;
+
 /// Implemented by Apps who wish to display points
 pub trait PointDisplay {
     fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond);
@@ -184,20 +188,28 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
     /// It handles the first line of the experiment, by returning a special
     /// signal, a standard line in the middle of the frame or a line which
     /// is the first in the next frame's line count.
-    fn handle_line_event(&mut self, event: Event) -> ProcessedEvent {
-        let time = event.time;
+    fn handle_line_event(&mut self, time: Picosecond) -> ProcessedEvent {
         // The new line that arrived is the first of the next frame
         if self.line_count == self.rows_per_frame {
             self.line_count = 0;
             debug!("Here are the lines: {:#?}", self.lines_vec);
             self.lines_vec.clear();
-            self.snake.update_snake_for_next_frame(event.time);
+            self.snake.update_snake_for_next_frame(time);
             ProcessedEvent::LineNewFrame
         } else {
             self.line_count += 1;
             self.lines_vec.push(time);
             ProcessedEvent::NoOp
         }
+    }
+
+    /// Called when an event from the frame channel arrives
+    fn handle_frame_event(&mut self, time: Picosecond) -> ProcessedEvent {
+        debug!("A new frame due to a frame signal");
+        self.line_count = 0;
+        self.lines_vec.clear();
+        self.snake.update_snake_for_next_frame(time);
+        ProcessedEvent::FrameNewFrame
     }
 
     /// Convert a raw event tag to a coordinate which will be displayed on the
@@ -221,10 +233,10 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
             DataType::Pmt2 => self.snake.time_to_coord_linear(event.time, 1),
             DataType::Pmt3 => self.snake.time_to_coord_linear(event.time, 2),
             DataType::Pmt4 => self.snake.time_to_coord_linear(event.time, 3),
-            DataType::Line => self.handle_line_event(event),
+            DataType::Line => self.handle_line_event(event.time),
             DataType::TagLens => self.snake.new_taglens_period(event.time),
             DataType::Laser => self.snake.new_laser_event(event.time),
-            DataType::Frame => ProcessedEvent::NoOp,
+            DataType::Frame => self.handle_frame_event(event.time),
             DataType::Unwanted => ProcessedEvent::NoOp,
             DataType::Invalid => {
                 warn!("Unsupported event: {:?}", event);
@@ -328,32 +340,36 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
     /// rendering, a line event, etc.) and then acts on it accordingly. The
     /// return value is necessary to fulfil the demands of "find_map" which
     /// halts only when Some(val) is returned.
-    fn act_on_single_event(&mut self, event: Event) -> Option<i8> {
-        match self.event_to_coordinate(event) {
+    fn act_on_single_event(&mut self, event: Event) -> Option<NewFrameDetected> {
+        let new_frame_detected: NewFrameDetected = match self.event_to_coordinate(event) {
             ProcessedEvent::Displayed(p, c) => {
                 self.channels.channel_merge.display_point(p, c, event.time);
-                None
+                false
             }
-            ProcessedEvent::NoOp => None,
+            ProcessedEvent::NoOp => false,
             ProcessedEvent::FrameNewFrame => {
                 info!("New frame due to frame signal");
-                Some(0)
+                true
             }
             ProcessedEvent::PhotonNewFrame => {
                 info!(
                     "New frame due to photon {} while we had {} lines",
                     event.time, self.line_count
                 );
-                Some(0)
+                true
             }
             ProcessedEvent::LineNewFrame => {
                 info!("New frame due to line");
-                Some(0)
+                true
             }
             ProcessedEvent::Error => {
                 error!("Received an erroneuous event: {:?}", event);
-                None
+                false
             }
+        };
+        match new_frame_detected {
+            true => Some(new_frame_detected),
+            false => None,
         }
     }
 
@@ -363,13 +379,13 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
     /// detect the last of the photons or a new frame signal.
     pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
         self.stream.acquire_stream_filehandle()?;
-        let mut events_after_newframe = None;
+        let mut events_after_newframe = self.advance_till_first_frame_line(None);
         for _ in 0..steps {
             debug!("Starting population");
-            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Calling render");
             self.channels.channel_merge.render();
+            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
         }
         info!("Acq loop done");
         Ok(())
@@ -390,7 +406,7 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
             let frame_started =
                 previous_events
                     .iter()
-                    .find_map(|event| match self.inputs[event.channel] {
+                    .find_map(|event| match self.inputs.get(event.channel) {
                         DataType::Line | DataType::Frame => Some(event.time),
                         _ => {
                             steps += 1;
@@ -434,22 +450,23 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
                     continue;
                 }
             };
+            let mut counter = 0i64;
             let frame_started =
                 event_stream
                     .iter()
-                    .find_map(|event| match self.inputs[event.channel] {
+                    .find_map(|event| match self.inputs.get(event.channel) {
                         DataType::Line | DataType::Frame => Some(event.time),
-                        _ => None,
+                        _ => {counter += 1; None},
                     });
-            info!("Looking for the first line/frame in a newly acquired stream");
-            if frame_started.is_some() {
+            info!("Looking for the first line/frame in a newly acquired stream (went over {} items)", counter);
+            if let Some(start_time) = frame_started {
                 self.lines_vec.clear();
                 self.line_count = 1;
-                info!("Found the first line/frame: {}", frame_started.unwrap());
+                info!("Found the first line/frame in a newly acquired stream: {}", start_time);
                 self.snake
-                    .update_snake_for_next_frame(frame_started.unwrap());
-                return Some(event_stream.iter().collect::<Vec<Event>>());
-            }
+                    .update_snake_for_next_frame(start_time);
+                return Some(event_stream.iter().collect::<Vec<Event>>())
+            };
         }
     }
 }
@@ -461,9 +478,8 @@ impl<S: TimeTaggerIpcHandler> AppState<DisplayChannel, S> {
     /// detect the last of the photons or a new frame signal.
     pub fn start_inf_acq_loop(&mut self) -> Result<()> {
         self.stream.acquire_stream_filehandle()?;
-        let mut events_after_newframe = None;
+        let mut events_after_newframe = self.advance_till_first_frame_line(None);
         while !self.channels.channel_merge.get_window().should_close() {
-            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
             info!("Starting the population of single frame");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Starting render");
@@ -472,7 +488,9 @@ impl<S: TimeTaggerIpcHandler> AppState<DisplayChannel, S> {
             // self.channel3.render();
             // self.channel4.render();
             self.channels.channel_merge.render();
+            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
         }
+        info!("We're done!");
         Ok(())
     }
 }
