@@ -287,7 +287,7 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
                         "No batch received for some reason ({})",
                         self.batch_readout_count
                     );
-                    continue;
+                    continue
                 }
             };
             let event_stream = match self.stream.get_event_stream(&batch) {
@@ -433,14 +433,20 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
             // 'batch' cannot go out of scope
             let batch = match self.stream.get_mut_data_stream().unwrap().next() {
                 Some(batch) => {
-                    self.batch_readout_count += 1;
-                    batch.unwrap_or_else(|_| {
-                        panic!(
-                            "Couldn't extract batch from stream ({})",
-                            self.batch_readout_count
-                        )
-                    })
-                }
+                    match batch {
+                        Ok(b) => {
+                            self.batch_readout_count += 1;
+                            b
+                        },
+                        Err(b) => {
+                            error!(
+                                "Couldn't extract batch from stream ({}): {:?}",
+                                self.batch_readout_count, b
+                            );
+                            continue
+                        },
+                    }
+                },
                 None => continue,
             };
             let event_stream = match self.stream.get_event_stream(&batch) {

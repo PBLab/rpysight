@@ -5,20 +5,19 @@ use std::fmt::Debug;
 use std::fs::File;
 
 use anyhow::{Context, Result};
-use arrow::{
-    array::{Int32Array, Int64Array, UInt16Array, UInt8Array},
-    error::ArrowError,
-    ipc::reader::StreamReader,
-    record_batch::RecordBatch,
-};
+use arrow2::array::{Array, Int32Array, Int64Array, UInt16Array, UInt8Array};
+use arrow2::datatypes::DataType;
+use arrow2::record_batch::RecordBatch;
+use arrow2::io::ipc::read::{read_stream_metadata, StreamReader};
+use arrow2::error::ArrowError;
 use lazy_static::lazy_static;
 use pyo3::prelude::*;
 
 lazy_static! {
-    static ref TYPE_: UInt8Array = UInt8Array::builder(0).finish();
-    static ref MISSED_EVENTS: UInt16Array = UInt16Array::builder(0).finish();
-    static ref CHANNEL: Int32Array = Int32Array::builder(0).finish();
-    static ref TIME: Int64Array = Int64Array::builder(0).finish();
+    static ref TYPE_: UInt8Array = UInt8Array::new_empty(DataType::UInt8);
+    static ref MISSED_EVENTS: UInt16Array = UInt16Array::new_empty(DataType::UInt16);
+    static ref CHANNEL: Int32Array = Int32Array::new_empty(DataType::Int32);
+    static ref TIME: Int64Array = Int64Array::new_empty(DataType::Int64);
     static ref EMPTY_EVENT_STREAM: EventStream<'static> = EventStream {
         type_: &TYPE_,
         missed_events: &MISSED_EVENTS,
@@ -83,10 +82,10 @@ impl TimeTaggerIpcHandler for ArrowIpcStream {
         if self.data_stream.is_none() {
             std::thread::sleep(std::time::Duration::from_secs(11));
             debug!("Finished waiting");
-            let stream =
+            let mut reader =
                 File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
-            let stream = StreamReader::try_new(stream)
-                .context("Stream file isn't a true Arrow IPC stream")?;
+            let meta = read_stream_metadata(&mut reader).context("Can't read stream metadata")?;
+            let stream = StreamReader::new(reader, meta);
             self.data_stream = Some(stream);
             debug!("File handle for stream acquired!");
         } else {
