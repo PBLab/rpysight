@@ -7,10 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-kiss3d = "0.30"
-nalgebra = { version = "0.25", features = ["serde-serialize"] }
-pyo3 = { version = "0.13", features = ["extension-module", "auto-initialize"] }
-arrow2 = "0.2.0"
+kiss3d = "0.31"
+nalgebra = { version = "0.26", features = ["serde-serialize"] }
+pyo3 = { version = "0.14", features = ["extension-module", "auto-initialize"] }
+nalgebra-numpy = { git = "https://github.com/PBLab/nalgebra-numpy"}
 thiserror = "1.0"
 anyhow = "1.0"
 iced = { version = "0.3", features = ["image"] }
@@ -24,6 +24,7 @@ lazy_static = "1.4"
 futures = "0.3"
 itertools-num = "0.1"
 assert_approx_eq = "1.1.0"
+crossbeam = "0.8"
 
 [dev-dependencies]
 ron = "0.6"
