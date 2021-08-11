@@ -2,9 +2,9 @@ extern crate log;
 use std::fs::File;
 use std::sync::Arc;
 
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::ipc::writer::StreamWriter;
-use arrow::csv::Reader;
+use arrow2::datatypes::{DataType, Field, Schema};
+use arrow2::io::ipc::write::StreamWriter;
+use arrow2::io::csv::read::Reader;
 use log::*;
 use nalgebra::Point3;
 use ron::de::from_reader;
