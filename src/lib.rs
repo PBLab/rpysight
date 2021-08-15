@@ -17,21 +17,21 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 use anyhow::Result;
+use crossbeam::channel::unbounded;
 use directories::ProjectDirs;
 use iced::Settings;
-use nalgebra::Point3;
+use nalgebra::{DMatrix, Point3};
 use pyo3::prelude::*;
 use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
-use crate::event_stream::ArrowIpcStream;
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{AppState, Channels, DisplayChannel};
 
 const TT_DATA_STREAM: &str = "tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
 pub const DEFAULT_CONFIG_FNAME: &str = "default.toml";
-const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
+const TT_RUN_CLASS_NAME: &str = "TimeTaggerRunner";
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 
 lazy_static! {
@@ -124,24 +124,24 @@ pub fn load_timetagger_run_function(
     if replay_existing {
         tt_starter = run_tt.getattr(TT_REPLAY_FUNCTION_NAME)?;
     } else {
-        tt_starter = run_tt.getattr(TT_RUN_FUNCTION_NAME)?;
+        tt_starter = run_tt.getattr(TT_RUN_CLASS_NAME)?;
     };
     // Generate an owned object to be returned by value
     Ok(tt_starter.to_object(py))
 }
 
-pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<()> {
+pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<PyObject> {
     debug!("Starting timetagger");
     let module_filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let tt_module = load_timetagger_run_function(module_filename, app_config.replay_existing)?;
-    tt_module
+    let tt_runner = tt_module
         .call1(
             Python::acquire_gil().python(),
             (toml::to_string(app_config).expect("Unable to convert configuration to string"),),
         )
         .expect("Starting the TimeTagger failed, aborting!");
     debug!("Called Python to start the TT business");
-    Ok(())
+    Ok(tt_runner)
 }
 
 /// A custom error returned when the user supplies incorrect values.
@@ -238,10 +238,12 @@ pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let stream = ArrowIpcStream::new(TT_DATA_STREAM.to_string());
     let mut app = AppState::<DisplayChannel, ArrowIpcStream>::new(channels, stream, cfg.clone());
     debug!("Renderer set up correctly");
+    let (sender, receiver) = unbounded();
     std::thread::spawn(move || {
-        start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
+        let tt_runner = start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting");
+        send_arrays_over_ffi(tt_runner, sender);
     });
-    app.start_inf_acq_loop().expect("Some error during acq");
+    app.start_inf_acq_loop(receiver).expect("Some error during acq");
 }
 
 /// Saves the current configuration to disk.

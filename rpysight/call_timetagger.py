@@ -47,28 +47,13 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         #     [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
         if channels:
             [self.register_channel(channel=channel['channel']) for channel in channels]
-        self.init_stream_and_schema()
         if fname:
             self.filehandle = open(fname, "wb")
 
+        self.begin_time = 0
         # At the end of a CustomMeasurement construction,
         # we must indicate that we have finished.
         self.finalize_init()
-
-    def init_stream_and_schema(self):
-        test_batch = pa.record_batch(
-            [
-                pa.array([], type=pa.uint8()),
-                pa.array([], type=pa.uint16()),
-                pa.array([], type=pa.int32()),
-                pa.array([], type=pa.int64()),
-            ],
-            names=["type_", "missed_events", "channel", "time"],
-        )
-        self.schema = test_batch.schema
-        pathlib.Path(TT_DATA_STREAM).unlink(missing_ok=True)
-        self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
-        self.stream.write(test_batch)
 
     def __del__(self):
         # The measurement must be stopped before deconstruction to avoid
@@ -82,37 +67,6 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
     def on_stop(self):
         # The lock is already acquired within the backend.
         pass
-
-    def convert_tags_to_recordbatch(self, incoming_tags):
-        num_tags = len(incoming_tags)
-        type_ = pa.UInt8Array.from_buffers(
-            pa.uint8(),
-            num_tags,
-            [None, pa.py_buffer(np.ascontiguousarray(incoming_tags["type"]))],
-            null_count=0,
-        )
-        missed_events = pa.UInt16Array.from_buffers(
-            pa.uint16(),
-            num_tags,
-            [None, pa.py_buffer(np.ascontiguousarray(incoming_tags["missed_events"]))],
-            null_count=0,
-        )
-        channel = pa.Int32Array.from_buffers(
-            pa.int32(),
-            num_tags,
-            [None, pa.py_buffer(np.ascontiguousarray(incoming_tags["channel"]))],
-            null_count=0,
-        )
-        time = pa.Int64Array.from_buffers(
-            pa.int64(),
-            num_tags,
-            [None, pa.py_buffer(np.ascontiguousarray(incoming_tags["time"]))],
-            null_count=0,
-        )
-        batch = pa.record_batch(
-            [type_, missed_events, channel, time], schema=self.schema
-        )
-        return batch
 
     def process(self, incoming_tags, begin_time, end_time):
         """
@@ -136,58 +90,57 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
             End timestamp of the of the current data block.
         """
         if len(incoming_tags) > 0:
-            batch = self.convert_tags_to_recordbatch(incoming_tags)
-            self.stream.write(batch)
+            self.type_ = incoming_tags['type']
+            self.missed_events = incoming_tags['missed_events']
+            self.channel = incoming_tags["channel"]
+            self.time = incoming_tags["time"]
+            self.begin_time = begin_time
         # Saving the data to an npy file for future-proofing purposes
         # np.save(self.filehandle, incoming_tags)
 
 
-def infer_channel_list_from_cfg(config):
-    """Generates a list of channels to register with the TimeTagger based
-    on the inputs in the configuration object"""
-    relevant_channels = [
-        config['pmt1_ch'],
-        config['pmt2_ch'],
-        config['pmt3_ch'],
-        config['pmt4_ch'],
-        config['laser_ch'],
-        config['frame_ch'],
-        config['line_ch'],
-        config['taglens_ch'],
-    ]
-    channels = [ch for ch in relevant_channels if ch["channel"] != 0]
-    return channels
+class TimeTaggerRunner:
+    """Runs a TimeTagger experiment via its methods.
 
-
-def add_fname_suffix(fname: str) -> str:
-    fname_path = pathlib.Path(fname)
-    new_name = fname_path.stem + "_stream.ttbin"
-    return str(fname_path.with_name(new_name))
-
-
-def run_tagger(cfg: str):
-    """Run a TimeTagger acquisition with the GUI's parameters.
-
-    This function starts an acquisition using parameters from the rPySight GUI.
-    It should be called from that GUI since the parameter it receives arrives
-    directly from Rust.
-
-    Parameters
-    ----------
-    cfg : str
-        A TOML string to be parsed into a dictionary
+    This class constitutes a variety of methods that control different aspects
+    of running a TimeTagger experiment. Some of the methods are only loosely
+    connected, but we still need them in a single class due to the way we
+    interface with the Rust-side and PyO3.
     """
-    config = toml.loads(cfg)
-    tagger = TimeTagger.createTimeTagger()
-    tagger.reset()
-    channels = infer_channel_list_from_cfg(config)
-    if channels:
-        [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
-    with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
-        _ = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
-        measure_group.startFor(int(1_000_000e12))
-        measure_group.waitUntilFinished()
-    print("TimeTagger has turned the measurement off")
+    def __init__(self, config: str):
+        """
+        Parameters
+        ----------
+        cfg : str
+            A TOML string to be parsed into a dictionary
+        """
+        config = toml.loads(cfg)
+        tagger = TimeTagger.createTimeTagger()
+        tagger.reset()
+        channels = self.infer_channel_list_from_cfg(config)
+        if channels:
+            [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
+        with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
+            self.tagger = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
+            measure_group.startFor(int(1_000_000e12))
+            measure_group.waitUntilFinished()
+        print("The TimeTagger has turned the measurement off")
+
+    def infer_channel_list_from_cfg(self, config: dict):
+        """Generates a list of channels to register with the TimeTagger based
+        on the inputs in the configuration object"""
+        relevant_channels = [
+            config['pmt1_ch'],
+            config['pmt2_ch'],
+            config['pmt3_ch'],
+            config['pmt4_ch'],
+            config['laser_ch'],
+            config['frame_ch'],
+            config['line_ch'],
+            config['taglens_ch'],
+        ]
+        channels = [ch for ch in relevant_channels if ch["channel"] != 0]
+        return channels
 
 
 def replay_existing(cfg: str):

@@ -5,26 +5,12 @@ use std::fmt::Debug;
 use std::fs::File;
 
 use anyhow::{Context, Result};
-use arrow2::array::{Array, Int32Array, Int64Array, UInt16Array, UInt8Array};
-use arrow2::datatypes::DataType;
-use arrow2::record_batch::RecordBatch;
-use arrow2::io::ipc::read::{read_stream_metadata, StreamReader};
-use arrow2::error::ArrowError;
-use lazy_static::lazy_static;
 use pyo3::prelude::*;
+use crossbeam::channel::Sender;
+use nalgebra::DMatrix;
+use nalgebra_numpy::matrix_from_numpy;
 
-lazy_static! {
-    static ref TYPE_: UInt8Array = UInt8Array::new_empty(DataType::UInt8);
-    static ref MISSED_EVENTS: UInt16Array = UInt16Array::new_empty(DataType::UInt16);
-    static ref CHANNEL: Int32Array = Int32Array::new_empty(DataType::Int32);
-    static ref TIME: Int64Array = Int64Array::new_empty(DataType::Int64);
-    static ref EMPTY_EVENT_STREAM: EventStream<'static> = EventStream {
-        type_: &TYPE_,
-        missed_events: &MISSED_EVENTS,
-        channel: &CHANNEL,
-        time: &TIME,
-    };
-}
+use crate::snakes::Picosecond;
 
 /// A protocol for handling the IPC portion of the app.
 ///
@@ -54,66 +40,9 @@ pub trait TimeTaggerIpcHandler {
     fn get_event_stream<'a>(&mut self, batch: &'a Self::InnerItem) -> Option<EventStream<'a>>;
 }
 
-/// An Apache Arrow based data stream.
-///
-/// Data is streamed using their IPC format - it's converted on the TT side to
-/// a pyarrow record batch, and read as a Rust RecordBatch on the other side.
-pub struct ArrowIpcStream {
+pub struct NalgebraNumpyStream {
     pub data_stream_fh: String,
-    data_stream: Option<StreamReader<File>>,
-}
-
-impl ArrowIpcStream {
-    pub fn new(data_stream_fh: String) -> Self {
-        Self {
-            data_stream_fh,
-            data_stream: None,
-        }
-    }
-}
-
-impl TimeTaggerIpcHandler for ArrowIpcStream {
-    type InnerItem = RecordBatch;
-    type IterError = ArrowError;
-    type StreamIterator = StreamReader<File>;
-
-    /// Instantiate an IPC StreamReader using an existing file handle.
-    fn acquire_stream_filehandle(&mut self) -> Result<()> {
-        if self.data_stream.is_none() {
-            std::thread::sleep(std::time::Duration::from_secs(11));
-            debug!("Finished waiting");
-            let mut reader =
-                File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
-            let meta = read_stream_metadata(&mut reader).context("Can't read stream metadata")?;
-            let stream = StreamReader::new(reader, meta);
-            self.data_stream = Some(stream);
-            debug!("File handle for stream acquired!");
-        } else {
-            debug!("File handle already acquired.");
-        }
-        Ok(())
-    }
-
-    /// Generates an EventStream instance from the loaded record batch
-    #[inline]
-    fn get_event_stream<'b>(&mut self, batch: &'b RecordBatch) -> Option<EventStream<'b>> {
-        debug!(
-            "When generating the EventStream we received {} rows",
-            batch.num_rows()
-        );
-        let event_stream = EventStream::from_streamed_batch(batch);
-        if event_stream.num_rows() == 0 {
-            info!("A batch with 0 rows was received");
-            None
-        } else {
-            Some(event_stream)
-        }
-    }
-
-    /// Get a consuming iterator.
-    fn get_mut_data_stream(&mut self) -> Option<&mut StreamReader<File>> {
-        self.data_stream.as_mut()
-    }
+    data_stream: Option<File>,
 }
 
 /// A single tag\event that arrives from the Time Tagger.
@@ -218,19 +147,19 @@ impl<'a> Iterator for EventStreamIter<'a> {
 /// ['EventStreamIter`].
 #[derive(Clone, Debug)]
 pub struct EventStream<'a> {
-    type_: &'a UInt8Array,
-    missed_events: &'a UInt16Array,
-    channel: &'a Int32Array,
-    time: &'a Int64Array,
+    type_: &'a DMatrix<u8>,
+    missed_events: &'a DMatrix<u16>,
+    channel: &'a DMatrix<i32>,
+    time: &'a DMatrix<Picosecond>,
 }
 
 impl<'a> EventStream<'a> {
     /// Creates a new stream with views over the arriving data.
     pub fn new(
-        type_: &'a UInt8Array,
-        missed_events: &'a UInt16Array,
-        channel: &'a Int32Array,
-        time: &'a Int64Array,
+        type_: &'a DMatrix<u8>,
+        missed_events: &'a DMatrix<u16>,
+        channel: &'a DMatrix<i32>,
+        time: &'a DMatrix<Picosecond>,
     ) -> Self {
         EventStream {
             type_,
@@ -301,4 +230,28 @@ impl<'a> IntoIterator for &'a EventStream<'a> {
             len: self.num_rows(),
         }
     }
+}
+
+fn send_arrays_over_ffi<'a>(tt_runner: Py<PyAny>, sender: Sender<EventStream<'a>>) {
+    Python::with_gil(|py| {
+        let mut type_: DMatrix<u8> = DMatrix::zeros(1, 1);
+        let mut missed_events: DMatrix<u16> = DMatrix::zeros(1, 1);
+        let mut channel: DMatrix<i32> = DMatrix::zeros(1, 1);
+        let mut time: DMatrix<Picosecond> = DMatrix::zeros(1, 1);
+        let tagger = tt_runner.getattr(py, "tagger").unwrap();
+        let mut previous_begin_time: Picosecond = 0;
+        let mut current_begin_time: Picosecond = 0;
+        loop {
+            current_begin_time = tagger.getattr(py, "begin_time").unwrap().extract(py).unwrap();
+            if previous_begin_time == current_begin_time {
+                continue
+            }
+            type_ = matrix_from_numpy(py, tagger.getattr(py, "type_").unwrap().extract(py).unwrap()).unwrap();
+            missed_events = matrix_from_numpy(py, tagger.getattr(py, "missed_events").unwrap().extract(py).unwrap()).unwrap();
+            channel = matrix_from_numpy(py, tagger.getattr(py, "channel").unwrap().extract(py).unwrap()).unwrap();
+            time = matrix_from_numpy(py, tagger.getattr(py, "time").unwrap().extract(py).unwrap()).unwrap();
+            EventStream::new(type_, missed_events, channel, time)
+        }
+
+    })
 }
