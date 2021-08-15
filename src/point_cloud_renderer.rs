@@ -3,11 +3,12 @@ extern crate kiss3d;
 use std::ops::{Index, IndexMut};
 
 use anyhow::Result;
+use crossbeam::channel::Receiver;
 use kiss3d::window::Window;
 use nalgebra::Point3;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
-use crate::event_stream::{Event, EventStream, TimeTaggerIpcHandler};
+use crate::event_stream::{Event, EventStream};
 use crate::snakes::{Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
@@ -149,9 +150,8 @@ impl DisplayChannel {
 
 /// Main struct that holds the renderers and the needed data streams for
 /// them
-pub struct AppState<T: PointDisplay, S: TimeTaggerIpcHandler> {
+pub struct AppState<T: PointDisplay> {
     pub channels: Channels<T>,
-    pub stream: S,
     snake: Box<dyn Snake>,
     inputs: Inputs,
     rows_per_frame: u32,
@@ -160,13 +160,12 @@ pub struct AppState<T: PointDisplay, S: TimeTaggerIpcHandler> {
     batch_readout_count: u64,
 }
 
-impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
+impl<T: PointDisplay> AppState<T> {
     /// Generates a new app from a renderer and a receiving end of a channel
-    pub fn new(channels: Channels<T>, stream: S, appconfig: AppConfig) -> Self {
-        let snake = AppState::<T, S>::choose_snake_variant(&appconfig);
+    pub fn new(channels: Channels<T>, appconfig: AppConfig) -> Self {
+        let snake = AppState::<T>::choose_snake_variant(&appconfig);
         AppState {
             channels,
-            stream,
             snake,
             inputs: Inputs::from_config(&appconfig),
             rows_per_frame: appconfig.rows,
@@ -258,6 +257,7 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
     /// at the next event in line, which is very efficient.
     pub fn populate_single_frame(
         &mut self,
+        receiver: &Receiver<EventStream>,
         events_after_newframe: Option<Vec<Event>>,
     ) -> Option<Vec<Event>> {
         if let Some(previous_events) = events_after_newframe {
@@ -277,23 +277,16 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
             // The following lines cannot be factored to a function due to
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
-            let batch = match self.stream.get_mut_data_stream().unwrap().next() {
-                Some(batch) => {
+            let event_stream = match receiver.recv() {
+                Ok(stream) => {
                     self.batch_readout_count += 1;
-                    batch.expect("Couldn't extract batch from stream")
+                    stream
                 }
-                None => {
+                Err(e) => {
                     debug!(
-                        "No batch received for some reason ({})",
-                        self.batch_readout_count
+                        "No batch received for some reason ({:?}: {})",
+                        e, self.batch_readout_count
                     );
-                    continue
-                }
-            };
-            let event_stream = match self.stream.get_event_stream(&batch) {
-                Some(stream) => stream,
-                None => {
-                    debug!("Couldn't get event stream");
                     continue;
                 }
             };
@@ -377,15 +370,19 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
     /// detect the last of the photons or a new frame signal.
-    pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
-        self.stream.acquire_stream_filehandle()?;
-        let mut events_after_newframe = self.advance_till_first_frame_line(None);
+    pub fn start_acq_loop_for(
+        &mut self,
+        receiver: Receiver<EventStream>,
+        steps: usize,
+    ) -> Result<()> {
+        let mut events_after_newframe = self.advance_till_first_frame_line(&receiver, None);
         for _ in 0..steps {
             debug!("Starting population");
-            events_after_newframe = self.populate_single_frame(events_after_newframe);
+            events_after_newframe = self.populate_single_frame(&receiver, events_after_newframe);
             debug!("Calling render");
             self.channels.channel_merge.render();
-            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
+            events_after_newframe =
+                self.advance_till_first_frame_line(&receiver, events_after_newframe);
         }
         info!("Acq loop done");
         Ok(())
@@ -398,6 +395,7 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
     /// object with this knowledge.
     fn advance_till_first_frame_line(
         &mut self,
+        receiver: &Receiver<EventStream>,
         event_stream: Option<Vec<Event>>,
     ) -> Option<Vec<Event>> {
         if let Some(ref previous_events) = event_stream {
@@ -431,28 +429,16 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
             // The following lines cannot be factored to a function due to
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
-            let batch = match self.stream.get_mut_data_stream().unwrap().next() {
-                Some(batch) => {
-                    match batch {
-                        Ok(b) => {
-                            self.batch_readout_count += 1;
-                            b
-                        },
-                        Err(b) => {
-                            error!(
-                                "Couldn't extract batch from stream ({}): {:?}",
-                                self.batch_readout_count, b
-                            );
-                            continue
-                        },
-                    }
-                },
-                None => continue,
-            };
-            let event_stream = match self.stream.get_event_stream(&batch) {
-                Some(stream) => stream,
-                None => {
-                    info!("No stream found, restarting loop");
+            let event_stream = match receiver.recv() {
+                Ok(stream) => {
+                    self.batch_readout_count += 1;
+                    stream
+                }
+                Err(b) => {
+                    error!(
+                        "Couldn't extract batch from stream ({}): {:?}",
+                        self.batch_readout_count, b
+                    );
                     continue;
                 }
             };
@@ -462,39 +448,47 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
                     .iter()
                     .find_map(|event| match self.inputs.get(event.channel) {
                         DataType::Line | DataType::Frame => Some(event.time),
-                        _ => {counter += 1; None},
+                        _ => {
+                            counter += 1;
+                            None
+                        }
                     });
-            info!("Looking for the first line/frame in a newly acquired stream (went over {} items)", counter);
+            info!(
+                "Looking for the first line/frame in a newly acquired stream (went over {} items)",
+                counter
+            );
             if let Some(start_time) = frame_started {
                 self.lines_vec.clear();
                 self.line_count = 1;
-                info!("Found the first line/frame in a newly acquired stream: {}", start_time);
-                self.snake
-                    .update_snake_for_next_frame(start_time);
-                return Some(event_stream.iter().collect::<Vec<Event>>())
+                info!(
+                    "Found the first line/frame in a newly acquired stream: {}",
+                    start_time
+                );
+                self.snake.update_snake_for_next_frame(start_time);
+                return Some(event_stream.iter().collect::<Vec<Event>>());
             };
         }
     }
 }
 
-impl<S: TimeTaggerIpcHandler> AppState<DisplayChannel, S> {
+impl AppState<DisplayChannel> {
     /// Main loop of the app. Following a bit of a setup, during each frame
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
     /// detect the last of the photons or a new frame signal.
-    pub fn start_inf_acq_loop(&mut self) -> Result<()> {
-        self.stream.acquire_stream_filehandle()?;
-        let mut events_after_newframe = self.advance_till_first_frame_line(None);
+    pub fn start_inf_acq_loop(&mut self, receiver: Receiver<EventStream>) -> Result<()> {
+        let mut events_after_newframe = self.advance_till_first_frame_line(&receiver, None);
         while !self.channels.channel_merge.get_window().should_close() {
             info!("Starting the population of single frame");
-            events_after_newframe = self.populate_single_frame(events_after_newframe);
+            events_after_newframe = self.populate_single_frame(&receiver, events_after_newframe);
             debug!("Starting render");
             // self.channel1.render();
             // self.channel2.render();
             // self.channel3.render();
             // self.channel4.render();
             self.channels.channel_merge.render();
-            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
+            events_after_newframe =
+                self.advance_till_first_frame_line(&receiver, events_after_newframe);
         }
         info!("We're done!");
         Ok(())

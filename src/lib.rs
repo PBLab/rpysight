@@ -25,6 +25,7 @@ use pyo3::prelude::*;
 use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
+use crate::event_stream::send_arrays_over_ffi;
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{AppState, Channels, DisplayChannel};
 
@@ -235,15 +236,16 @@ pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok(); // errors are logged and quite irrelevant
     let fr = (&cfg).frame_rate().round() as u64;
     let channels = generate_windows(cfg.columns, cfg.rows, fr);
-    let stream = ArrowIpcStream::new(TT_DATA_STREAM.to_string());
-    let mut app = AppState::<DisplayChannel, ArrowIpcStream>::new(channels, stream, cfg.clone());
+    let mut app = AppState::<DisplayChannel>::new(channels, cfg.clone());
     debug!("Renderer set up correctly");
     let (sender, receiver) = unbounded();
     std::thread::spawn(move || {
-        let tt_runner = start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting");
+        let tt_runner =
+            start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting");
         send_arrays_over_ffi(tt_runner, sender);
     });
-    app.start_inf_acq_loop(receiver).expect("Some error during acq");
+    app.start_inf_acq_loop(receiver)
+        .expect("Some error during acq");
 }
 
 /// Saves the current configuration to disk.

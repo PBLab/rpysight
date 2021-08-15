@@ -5,10 +5,10 @@ use std::fmt::Debug;
 use std::fs::File;
 
 use anyhow::{Context, Result};
-use pyo3::prelude::*;
 use crossbeam::channel::Sender;
 use nalgebra::DMatrix;
 use nalgebra_numpy::matrix_from_numpy;
+use pyo3::prelude::*;
 
 use crate::snakes::Picosecond;
 
@@ -29,20 +29,25 @@ pub trait TimeTaggerIpcHandler {
     /// StreamReader<File>.
     type StreamIterator: Iterator<Item = Result<Self::InnerItem, Self::IterError>>;
 
-    /// Populate the `data_stream` attribute of the implementing struct by
-    /// opening the filehandle of the stream and asserting that something's
-    /// there.
-    fn acquire_stream_filehandle(&mut self) -> Result<()>;
     /// Get a consuming iterator that we can parse into the event stream.
     fn get_mut_data_stream(&mut self) -> Option<&mut Self::StreamIterator>;
     /// Generate the `EventStream` struct from the item we're iterating over.
     /// `EventStream` is used in the downstream processing of this data.
-    fn get_event_stream<'a>(&mut self, batch: &'a Self::InnerItem) -> Option<EventStream<'a>>;
+    fn get_event_stream(&mut self, batch: Self::InnerItem) -> Option<EventStream>;
 }
 
 pub struct NalgebraNumpyStream {
     pub data_stream_fh: String,
     data_stream: Option<File>,
+}
+
+impl NalgebraNumpyStream {
+    pub fn new(stream: String) -> Self {
+        Self {
+            data_stream_fh: stream,
+            data_stream: None,
+        }
+    }
 }
 
 /// A single tag\event that arrives from the Time Tagger.
@@ -69,10 +74,10 @@ impl Event {
     pub fn from_stream_idx(stream: &EventStream, idx: usize) -> Option<Self> {
         if stream.num_rows() > idx {
             Some(Event {
-                type_: stream.type_.value(idx),
-                missed_event: stream.missed_events.value(idx),
-                channel: stream.channel.value(idx),
-                time: stream.time.value(idx),
+                type_: stream.type_[(idx, 0)],
+                missed_event: stream.missed_events[(idx, 0)],
+                channel: stream.channel[(idx, 0)],
+                time: stream.time[(idx, 0)],
             })
         } else {
             info!(
@@ -88,7 +93,7 @@ impl Event {
 /// An non-consuming iterator wrapper for [`EventStream`]
 #[derive(Clone, Debug)]
 pub struct RefEventStreamIter<'a> {
-    stream: &'a EventStream<'a>,
+    stream: &'a EventStream,
     idx: usize,
     len: usize,
 }
@@ -99,10 +104,10 @@ impl<'a> Iterator for RefEventStreamIter<'a> {
     fn next(&mut self) -> Option<Event> {
         if self.idx < self.len {
             let cur_row = Event::new(
-                self.stream.type_.value(self.idx),
-                self.stream.missed_events.value(self.idx),
-                self.stream.channel.value(self.idx),
-                self.stream.time.value(self.idx),
+                self.stream.type_[(self.idx, 0)],
+                self.stream.missed_events[(self.idx, 0)],
+                self.stream.channel[(self.idx, 0)],
+                self.stream.time[(self.idx, 0)],
             );
             self.idx += 1;
             Some(cur_row)
@@ -114,22 +119,22 @@ impl<'a> Iterator for RefEventStreamIter<'a> {
 
 /// An consuming iterator wrapper for [`EventStream`]
 #[derive(Clone, Debug)]
-pub struct EventStreamIter<'a> {
-    pub stream: EventStream<'a>,
+pub struct EventStreamIter {
+    pub stream: EventStream,
     idx: usize,
     len: usize,
 }
 
-impl<'a> Iterator for EventStreamIter<'a> {
+impl Iterator for EventStreamIter {
     type Item = Event;
 
     fn next(&mut self) -> Option<Event> {
         if self.idx < self.len {
             let cur_row = Event::new(
-                self.stream.type_.value(self.idx),
-                self.stream.missed_events.value(self.idx),
-                self.stream.channel.value(self.idx),
-                self.stream.time.value(self.idx),
+                self.stream.type_[(self.idx, 0)],
+                self.stream.missed_events[(self.idx, 0)],
+                self.stream.channel[(self.idx, 0)],
+                self.stream.time[(self.idx, 0)],
             );
             self.idx += 1;
             Some(cur_row)
@@ -146,20 +151,20 @@ impl<'a> Iterator for EventStreamIter<'a> {
 /// iteration over the tags for the downstream 'user', via the accompanying
 /// ['EventStreamIter`].
 #[derive(Clone, Debug)]
-pub struct EventStream<'a> {
-    type_: &'a DMatrix<u8>,
-    missed_events: &'a DMatrix<u16>,
-    channel: &'a DMatrix<i32>,
-    time: &'a DMatrix<Picosecond>,
+pub struct EventStream {
+    type_: DMatrix<u8>,
+    missed_events: DMatrix<u16>,
+    channel: DMatrix<i32>,
+    time: DMatrix<Picosecond>,
 }
 
-impl<'a> EventStream<'a> {
+impl EventStream {
     /// Creates a new stream with views over the arriving data.
     pub fn new(
-        type_: &'a DMatrix<u8>,
-        missed_events: &'a DMatrix<u16>,
-        channel: &'a DMatrix<i32>,
-        time: &'a DMatrix<Picosecond>,
+        type_: DMatrix<u8>,
+        missed_events: DMatrix<u16>,
+        channel: DMatrix<i32>,
+        time: DMatrix<Picosecond>,
     ) -> Self {
         EventStream {
             type_,
@@ -170,34 +175,29 @@ impl<'a> EventStream<'a> {
     }
 
     pub fn empty() -> Self {
-        EMPTY_EVENT_STREAM.clone()
+        Self::from_stream(
+            DMatrix::<u8>::from_vec(0, 0, vec![]),
+            DMatrix::<u16>::from_vec(0, 0, vec![]),
+            DMatrix::<i32>::from_vec(0, 0, vec![]),
+            DMatrix::<Picosecond>::from_vec(0, 0, vec![]),
+        )
     }
 
-    pub fn from_streamed_batch(batch: &'a RecordBatch) -> EventStream<'a> {
-        let type_ = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<UInt8Array>()
-            .expect("Type field conversion failed");
-        let missed_events = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<UInt16Array>()
-            .expect("Missed events field conversion failed");
-        let channel = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<Int32Array>()
-            .expect("Channel field conversion failed");
-        let time = batch
-            .column(3)
-            .as_any()
-            .downcast_ref::<Int64Array>()
-            .expect("Time field conversion failed");
-        EventStream::new(type_, missed_events, channel, time)
+    pub fn from_stream(
+        type_: DMatrix<u8>,
+        missed_events: DMatrix<u16>,
+        channel: DMatrix<i32>,
+        time: DMatrix<Picosecond>,
+    ) -> EventStream {
+        Self {
+            type_,
+            missed_events,
+            channel,
+            time,
+        }
     }
 
-    pub fn iter(&'a self) -> RefEventStreamIter<'a> {
+    pub fn iter<'a>(&'a self) -> RefEventStreamIter<'a> {
         self.into_iter()
     }
 
@@ -206,9 +206,9 @@ impl<'a> EventStream<'a> {
     }
 }
 
-impl<'a> IntoIterator for EventStream<'a> {
+impl IntoIterator for EventStream {
     type Item = Event;
-    type IntoIter = EventStreamIter<'a>;
+    type IntoIter = EventStreamIter;
 
     fn into_iter(self) -> Self::IntoIter {
         EventStreamIter {
@@ -219,7 +219,7 @@ impl<'a> IntoIterator for EventStream<'a> {
     }
 }
 
-impl<'a> IntoIterator for &'a EventStream<'a> {
+impl<'a> IntoIterator for &'a EventStream {
     type Item = Event;
     type IntoIter = RefEventStreamIter<'a>;
 
@@ -232,26 +232,55 @@ impl<'a> IntoIterator for &'a EventStream<'a> {
     }
 }
 
-fn send_arrays_over_ffi<'a>(tt_runner: Py<PyAny>, sender: Sender<EventStream<'a>>) {
+pub fn send_arrays_over_ffi(tt_runner: Py<PyAny>, sender: Sender<EventStream>) {
     Python::with_gil(|py| {
-        let mut type_: DMatrix<u8> = DMatrix::zeros(1, 1);
-        let mut missed_events: DMatrix<u16> = DMatrix::zeros(1, 1);
-        let mut channel: DMatrix<i32> = DMatrix::zeros(1, 1);
-        let mut time: DMatrix<Picosecond> = DMatrix::zeros(1, 1);
+        let mut type_: DMatrix<u8>;
+        let mut missed_events: DMatrix<u16>;
+        let mut channel: DMatrix<i32>;
+        let mut time: DMatrix<Picosecond>;
         let tagger = tt_runner.getattr(py, "tagger").unwrap();
         let mut previous_begin_time: Picosecond = 0;
-        let mut current_begin_time: Picosecond = 0;
+        let mut current_begin_time: Picosecond;
         loop {
-            current_begin_time = tagger.getattr(py, "begin_time").unwrap().extract(py).unwrap();
+            current_begin_time = tagger
+                .getattr(py, "begin_time")
+                .unwrap()
+                .extract(py)
+                .unwrap();
             if previous_begin_time == current_begin_time {
-                continue
+                continue;
+            } else {
+                previous_begin_time = current_begin_time;
             }
-            type_ = matrix_from_numpy(py, tagger.getattr(py, "type_").unwrap().extract(py).unwrap()).unwrap();
-            missed_events = matrix_from_numpy(py, tagger.getattr(py, "missed_events").unwrap().extract(py).unwrap()).unwrap();
-            channel = matrix_from_numpy(py, tagger.getattr(py, "channel").unwrap().extract(py).unwrap()).unwrap();
-            time = matrix_from_numpy(py, tagger.getattr(py, "time").unwrap().extract(py).unwrap()).unwrap();
-            EventStream::new(type_, missed_events, channel, time)
+            type_ = matrix_from_numpy(
+                py,
+                tagger.getattr(py, "type_").unwrap().extract(py).unwrap(),
+            )
+            .unwrap();
+            missed_events = matrix_from_numpy(
+                py,
+                tagger
+                    .getattr(py, "missed_events")
+                    .unwrap()
+                    .extract(py)
+                    .unwrap(),
+            )
+            .unwrap();
+            channel = matrix_from_numpy(
+                py,
+                tagger.getattr(py, "channel").unwrap().extract(py).unwrap(),
+            )
+            .unwrap();
+            time = matrix_from_numpy(py, tagger.getattr(py, "time").unwrap().extract(py).unwrap())
+                .unwrap();
+            sender
+                .send(EventStream::from_stream(
+                    type_,
+                    missed_events,
+                    channel,
+                    time,
+                ))
+                .unwrap();
         }
-
     })
 }
