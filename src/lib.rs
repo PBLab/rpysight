@@ -20,7 +20,7 @@ use anyhow::Result;
 use crossbeam::channel::unbounded;
 use directories::ProjectDirs;
 use iced::Settings;
-use nalgebra::{DMatrix, Point3};
+use nalgebra::Point3;
 use pyo3::prelude::*;
 use thiserror::Error;
 
@@ -29,7 +29,6 @@ use crate::event_stream::send_arrays_over_ffi;
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{AppState, Channels, DisplayChannel};
 
-const TT_DATA_STREAM: &str = "tt_data_stream.dat";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
 pub const DEFAULT_CONFIG_FNAME: &str = "default.toml";
 const TT_RUN_CLASS_NAME: &str = "TimeTaggerRunner";

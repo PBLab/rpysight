@@ -2,9 +2,8 @@
 //! from the TimeTagger.
 
 use std::fmt::Debug;
-use std::fs::File;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use crossbeam::channel::Sender;
 use nalgebra::DMatrix;
 use nalgebra_numpy::matrix_from_numpy;
@@ -34,20 +33,6 @@ pub trait TimeTaggerIpcHandler {
     /// Generate the `EventStream` struct from the item we're iterating over.
     /// `EventStream` is used in the downstream processing of this data.
     fn get_event_stream(&mut self, batch: Self::InnerItem) -> Option<EventStream>;
-}
-
-pub struct NalgebraNumpyStream {
-    pub data_stream_fh: String,
-    data_stream: Option<File>,
-}
-
-impl NalgebraNumpyStream {
-    pub fn new(stream: String) -> Self {
-        Self {
-            data_stream_fh: stream,
-            data_stream: None,
-        }
-    }
 }
 
 /// A single tag\event that arrives from the Time Tagger.
