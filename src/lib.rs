@@ -17,7 +17,7 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 use anyhow::Result;
-use crossbeam::channel::unbounded;
+use crossbeam::channel::{unbounded, Sender};
 use directories::ProjectDirs;
 use iced::Settings;
 use nalgebra::Point3;
@@ -25,7 +25,7 @@ use pyo3::prelude::*;
 use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
-use crate::event_stream::send_arrays_over_ffi;
+use crate::event_stream::{send_arrays_over_ffi, EventStream};
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{AppState, Channels, DisplayChannel};
 
@@ -130,10 +130,11 @@ pub fn load_timetagger_run_function(
     Ok(tt_starter.to_object(py))
 }
 
-pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<PyObject> {
+pub fn start_timetagger_with_python(app_config: &AppConfig, sender: Sender<EventStream>) -> PyResult<()> {
     debug!("Starting timetagger");
     let module_filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let tt_module = load_timetagger_run_function(module_filename, app_config.replay_existing)?;
+    debug!("Module loaded!");
     let tt_runner = tt_module
         .call1(
             Python::acquire_gil().python(),
@@ -141,7 +142,8 @@ pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<PyObject
         )
         .expect("Starting the TimeTagger failed, aborting!");
     debug!("Called Python to start the TT business");
-    Ok(tt_runner)
+    send_arrays_over_ffi(tt_runner, sender);
+    Ok(())
 }
 
 /// A custom error returned when the user supplies incorrect values.
@@ -239,9 +241,7 @@ pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     debug!("Renderer set up correctly");
     let (sender, receiver) = unbounded();
     std::thread::spawn(move || {
-        let tt_runner =
-            start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting");
-        send_arrays_over_ffi(tt_runner, sender);
+        start_timetagger_with_python(&cfg, sender).expect("Failed to start TT, aboutring");
     });
     app.start_inf_acq_loop(receiver)
         .expect("Some error during acq");

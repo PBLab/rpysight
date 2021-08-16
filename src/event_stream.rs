@@ -217,24 +217,29 @@ impl<'a> IntoIterator for &'a EventStream {
     }
 }
 
-pub fn send_arrays_over_ffi(tt_runner: Py<PyAny>, sender: Sender<EventStream>) {
+pub fn send_arrays_over_ffi(tt_module: Py<PyAny>, sender: Sender<EventStream>) {
     Python::with_gil(|py| {
+        let tt_runner = tt_module.call1(py, toml::to_string())
         let mut type_: DMatrix<u8>;
         let mut missed_events: DMatrix<u16>;
         let mut channel: DMatrix<i32>;
         let mut time: DMatrix<Picosecond>;
+        debug!("Getting the tagger object from Python!");
         let tagger = tt_runner.getattr(py, "tagger").unwrap();
         let mut previous_begin_time: Picosecond = 0;
         let mut current_begin_time: Picosecond;
         loop {
+            debug!("Starting FFI loop");
             current_begin_time = tagger
                 .getattr(py, "begin_time")
                 .unwrap()
                 .extract(py)
                 .unwrap();
             if previous_begin_time == current_begin_time {
-                continue;
+                debug!("Time hasn't changed, retrying!");
+                continue
             } else {
+                trace!("Time has changed");
                 previous_begin_time = current_begin_time;
             }
             type_ = matrix_from_numpy(
@@ -258,14 +263,17 @@ pub fn send_arrays_over_ffi(tt_runner: Py<PyAny>, sender: Sender<EventStream>) {
             .unwrap();
             time = matrix_from_numpy(py, tagger.getattr(py, "time").unwrap().extract(py).unwrap())
                 .unwrap();
-            sender
+            match sender
                 .send(EventStream::from_stream(
                     type_,
                     missed_events,
                     channel,
                     time,
                 ))
-                .unwrap();
+                {
+                    Ok(_) => trace!("Sent batch at time {}", current_begin_time),
+                    Err(e) => warn!("Error in sending a batch: {:?}", e),
+                }
         }
     })
 }

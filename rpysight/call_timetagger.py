@@ -107,7 +107,7 @@ class TimeTaggerRunner:
     connected, but we still need them in a single class due to the way we
     interface with the Rust-side and PyO3.
     """
-    def __init__(self, config: str):
+    def __init__(self, cfg: str):
         """
         Parameters
         ----------
@@ -118,6 +118,7 @@ class TimeTaggerRunner:
         tagger = TimeTagger.createTimeTagger()
         tagger.reset()
         channels = self.infer_channel_list_from_cfg(config)
+        
         if channels:
             [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
         with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
