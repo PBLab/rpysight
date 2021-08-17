@@ -127,7 +127,8 @@ pub fn load_timetagger_run_function(
         tt_starter = run_tt.getattr(TT_RUN_CLASS_NAME)?;
     };
     // Generate an owned object to be returned by value
-    Ok(tt_starter.to_object(py))
+    // Ok(tt_starter.to_object(py))
+    Ok(run_tt.to_object(py))
 }
 
 pub fn start_timetagger_with_python(

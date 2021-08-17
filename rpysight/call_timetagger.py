@@ -118,9 +118,8 @@ class TimeTaggerRunner:
         tagger = TimeTagger.createTimeTagger()
         tagger.reset()
         channels = infer_channel_list_from_cfg(config)
+        update_tt_triggers(channels, tagger)
         
-        if channels:
-            [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
         with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
             self.tagger = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
             measure_group.startFor(int(1_000_000e12))
@@ -143,6 +142,12 @@ def infer_channel_list_from_cfg(config: dict):
     ]
     channels = [ch for ch in relevant_channels if ch["channel"] != 0]
     return channels
+
+
+def update_tt_triggers(channels: list, tagger: TimeTagger):
+    if channels:
+        [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
+    
 
 
 def replay_existing(cfg: str):

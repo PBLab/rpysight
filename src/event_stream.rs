@@ -220,7 +220,7 @@ impl<'a> IntoIterator for &'a EventStream {
 
 pub fn send_arrays_over_ffi(tt_module: Py<PyAny>, sender: Sender<EventStream>, app_config: String) {
     Python::with_gil(|py| {
-        let tagger = tt_module
+        let mut tagger = tt_module
             .getattr(py, "TimeTagger")
             .unwrap()
             .getattr(py, "createTimeTagger")
@@ -232,28 +232,24 @@ pub fn send_arrays_over_ffi(tt_module: Py<PyAny>, sender: Sender<EventStream>, a
         let mut channel: DMatrix<i32>;
         let mut time: DMatrix<Picosecond>;
         debug!("Getting the tagger object from Python!");
-        let channels: Vec<HashMap<String, i32>> = tt_module
+        let app_config = tt_module.getattr(py, "toml").unwrap().call_method1(py, "loads", (app_config,)).unwrap();
+        let channels = tt_module
             .getattr(py, "infer_channel_list_from_cfg")
             .unwrap()
             .call1(py, (app_config,))
-            .unwrap()
-            .extract(py)
             .unwrap();
-
-        channels.iter().for_each(|ch| {
-            let args = (ch["channel"], ch["threshold"]);
-            tagger.call_method1(py, "setTriggerLevel", args).unwrap();
-        });
-
+        let chan2 = channels.clone();
+        tt_module.call_method1(py, "update_tt_triggers", (channels, &tagger)).unwrap();
         let mut previous_begin_time: Picosecond = 0;
         let mut current_begin_time: Picosecond;
-        let measure_group = tt_module
+        let sync_measure = tt_module
             .getattr(py, "TimeTagger")
             .unwrap()
             .getattr(py, "SynchronizedMeasurements")
             .unwrap()
-            .call_method1(py, "__enter__", (tagger,))
+            .call1(py, (&tagger,))
             .unwrap();
+        let measure_group = sync_measure.call_method0(py, "__enter__").unwrap();
         let rt_render = tt_module
             .getattr(py, "RealTimeRendering")
             .unwrap()
@@ -261,21 +257,25 @@ pub fn send_arrays_over_ffi(tt_module: Py<PyAny>, sender: Sender<EventStream>, a
                 py,
                 (
                     measure_group.call_method0(py, "getTagger").unwrap(),
-                    channels,
+                    chan2,
                     "a.txt".to_string(),
                 ),
             )
             .unwrap();
+        debug!("About to call start for");
         rt_render
             .call_method1(py, "startFor", (1_000_000e12 as i64,))
             .unwrap();
         loop {
             debug!("Starting FFI loop");
+            rt_render.call_method0(py, "waitUntilFinished").unwrap();
             current_begin_time = rt_render
                 .getattr(py, "begin_time")
                 .unwrap()
                 .extract(py)
                 .unwrap();
+            debug!("RT render: {:?}", rt_render);
+            debug!("current_begin_time: {}", current_begin_time);
             if previous_begin_time == current_begin_time {
                 debug!("Time hasn't changed, retrying!");
                 continue;
