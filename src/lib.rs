@@ -130,19 +130,22 @@ pub fn load_timetagger_run_function(
     Ok(tt_starter.to_object(py))
 }
 
-pub fn start_timetagger_with_python(app_config: &AppConfig, sender: Sender<EventStream>) -> PyResult<()> {
+pub fn start_timetagger_with_python(
+    app_config: &AppConfig,
+    sender: Sender<EventStream>,
+) -> PyResult<()> {
     debug!("Starting timetagger");
     let module_filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let tt_module = load_timetagger_run_function(module_filename, app_config.replay_existing)?;
     debug!("Module loaded!");
-    let tt_runner = tt_module
-        .call1(
-            Python::acquire_gil().python(),
-            (toml::to_string(app_config).expect("Unable to convert configuration to string"),),
-        )
-        .expect("Starting the TimeTagger failed, aborting!");
-    debug!("Called Python to start the TT business");
-    send_arrays_over_ffi(tt_runner, sender);
+    // let tt_runner = tt_module
+    // .call1(
+    // Python::acquire_gil().python(),
+    // (toml::to_string(app_config).expect("Unable to convert configuration to string"),),
+    // )
+    // .expect("Starting the TimeTagger failed, aborting!");
+    // debug!("Called Python to start the TT business");
+    send_arrays_over_ffi(tt_module, sender, toml::to_string(app_config).unwrap());
     Ok(())
 }
 

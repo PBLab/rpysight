@@ -117,7 +117,7 @@ class TimeTaggerRunner:
         config = toml.loads(cfg)
         tagger = TimeTagger.createTimeTagger()
         tagger.reset()
-        channels = self.infer_channel_list_from_cfg(config)
+        channels = infer_channel_list_from_cfg(config)
         
         if channels:
             [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
@@ -127,21 +127,22 @@ class TimeTaggerRunner:
             measure_group.waitUntilFinished()
         print("The TimeTagger has turned the measurement off")
 
-    def infer_channel_list_from_cfg(self, config: dict):
-        """Generates a list of channels to register with the TimeTagger based
-        on the inputs in the configuration object"""
-        relevant_channels = [
-            config['pmt1_ch'],
-            config['pmt2_ch'],
-            config['pmt3_ch'],
-            config['pmt4_ch'],
-            config['laser_ch'],
-            config['frame_ch'],
-            config['line_ch'],
-            config['taglens_ch'],
-        ]
-        channels = [ch for ch in relevant_channels if ch["channel"] != 0]
-        return channels
+
+def infer_channel_list_from_cfg(config: dict):
+    """Generates a list of channels to register with the TimeTagger based
+    on the inputs in the configuration object"""
+    relevant_channels = [
+        config['pmt1_ch'],
+        config['pmt2_ch'],
+        config['pmt3_ch'],
+        config['pmt4_ch'],
+        config['laser_ch'],
+        config['frame_ch'],
+        config['line_ch'],
+        config['taglens_ch'],
+    ]
+    channels = [ch for ch in relevant_channels if ch["channel"] != 0]
+    return channels
 
 
 def replay_existing(cfg: str):

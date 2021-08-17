@@ -1,6 +1,7 @@
 //! Objects and functions that deal directly with the data stream
 //! from the TimeTagger.
 
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::Result;
@@ -217,39 +218,79 @@ impl<'a> IntoIterator for &'a EventStream {
     }
 }
 
-pub fn send_arrays_over_ffi(tt_module: Py<PyAny>, sender: Sender<EventStream>) {
+pub fn send_arrays_over_ffi(tt_module: Py<PyAny>, sender: Sender<EventStream>, app_config: String) {
     Python::with_gil(|py| {
-        let tt_runner = tt_module.call1(py, toml::to_string())
+        let tagger = tt_module
+            .getattr(py, "TimeTagger")
+            .unwrap()
+            .getattr(py, "createTimeTagger")
+            .unwrap()
+            .call0(py)
+            .unwrap();
         let mut type_: DMatrix<u8>;
         let mut missed_events: DMatrix<u16>;
         let mut channel: DMatrix<i32>;
         let mut time: DMatrix<Picosecond>;
         debug!("Getting the tagger object from Python!");
-        let tagger = tt_runner.getattr(py, "tagger").unwrap();
+        let channels: Vec<HashMap<String, i32>> = tt_module
+            .getattr(py, "infer_channel_list_from_cfg")
+            .unwrap()
+            .call1(py, (app_config,))
+            .unwrap()
+            .extract(py)
+            .unwrap();
+
+        channels.iter().for_each(|ch| {
+            let args = (ch["channel"], ch["threshold"]);
+            tagger.call_method1(py, "setTriggerLevel", args).unwrap();
+        });
+
         let mut previous_begin_time: Picosecond = 0;
         let mut current_begin_time: Picosecond;
+        let measure_group = tt_module
+            .getattr(py, "TimeTagger")
+            .unwrap()
+            .getattr(py, "SynchronizedMeasurements")
+            .unwrap()
+            .call_method1(py, "__enter__", (tagger,))
+            .unwrap();
+        let rt_render = tt_module
+            .getattr(py, "RealTimeRendering")
+            .unwrap()
+            .call1(
+                py,
+                (
+                    measure_group.call_method0(py, "getTagger").unwrap(),
+                    channels,
+                    "a.txt".to_string(),
+                ),
+            )
+            .unwrap();
+        rt_render
+            .call_method1(py, "startFor", (1_000_000e12 as i64,))
+            .unwrap();
         loop {
             debug!("Starting FFI loop");
-            current_begin_time = tagger
+            current_begin_time = rt_render
                 .getattr(py, "begin_time")
                 .unwrap()
                 .extract(py)
                 .unwrap();
             if previous_begin_time == current_begin_time {
                 debug!("Time hasn't changed, retrying!");
-                continue
+                continue;
             } else {
                 trace!("Time has changed");
                 previous_begin_time = current_begin_time;
             }
             type_ = matrix_from_numpy(
                 py,
-                tagger.getattr(py, "type_").unwrap().extract(py).unwrap(),
+                rt_render.getattr(py, "type_").unwrap().extract(py).unwrap(),
             )
             .unwrap();
             missed_events = matrix_from_numpy(
                 py,
-                tagger
+                rt_render
                     .getattr(py, "missed_events")
                     .unwrap()
                     .extract(py)
@@ -258,22 +299,27 @@ pub fn send_arrays_over_ffi(tt_module: Py<PyAny>, sender: Sender<EventStream>) {
             .unwrap();
             channel = matrix_from_numpy(
                 py,
-                tagger.getattr(py, "channel").unwrap().extract(py).unwrap(),
+                rt_render
+                    .getattr(py, "channel")
+                    .unwrap()
+                    .extract(py)
+                    .unwrap(),
             )
             .unwrap();
-            time = matrix_from_numpy(py, tagger.getattr(py, "time").unwrap().extract(py).unwrap())
-                .unwrap();
-            match sender
-                .send(EventStream::from_stream(
-                    type_,
-                    missed_events,
-                    channel,
-                    time,
-                ))
-                {
-                    Ok(_) => trace!("Sent batch at time {}", current_begin_time),
-                    Err(e) => warn!("Error in sending a batch: {:?}", e),
-                }
+            time = matrix_from_numpy(
+                py,
+                rt_render.getattr(py, "time").unwrap().extract(py).unwrap(),
+            )
+            .unwrap();
+            match sender.send(EventStream::from_stream(
+                type_,
+                missed_events,
+                channel,
+                time,
+            )) {
+                Ok(_) => trace!("Sent batch at time {}", current_begin_time),
+                Err(e) => warn!("Error in sending a batch: {:?}", e),
+            }
         }
     })
 }
