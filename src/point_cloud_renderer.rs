@@ -215,6 +215,15 @@ impl<T: PointDisplay> AppState<T, File> {
         }
     }
 
+    /// Called when an event from the frame channel arrives
+    fn handle_frame_event(&mut self, time: Picosecond) -> ProcessedEvent {
+        debug!("A new frame due to a frame signal");
+        self.line_count = 0;
+        self.lines_vec.clear();
+        self.snake.update_snake_for_next_frame(time);
+        ProcessedEvent::FrameNewFrame
+    }
+
     /// One of the main functions of the app, responsible for iterating over
     /// data streams.
     ///
@@ -347,13 +356,13 @@ impl<T: PointDisplay> AppState<T, File> {
     /// detect the last of the photons or a new frame signal.
     pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
         self.acquire_stream_filehandle()?;
-        let mut events_after_newframe = None;
+        let mut events_after_newframe = self.advance_till_first_frame_line(None);
         for _ in 0..steps {
             debug!("Starting population");
-            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Calling render");
             self.channels.channel_merge.render();
+            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
         }
         info!("Acq loop done");
         Ok(())
@@ -434,12 +443,11 @@ impl<T: PointDisplay> AppState<T, File> {
                         _ => None,
                     });
             info!("Looking for the first line/frame in a newly acquired stream");
-            if frame_started.is_some() {
+            if let Some(started) = frame_started {
                 self.lines_vec.clear();
                 self.line_count = 1;
-                info!("Found the first line/frame: {}", frame_started.unwrap());
-                self.snake
-                    .update_snake_for_next_frame(frame_started.unwrap());
+                info!("Found the first line/frame: {}", started);
+                self.snake.update_snake_for_next_frame(started);
                 return Some(event_stream.iter().collect::<Vec<Event>>());
             }
         }
@@ -453,9 +461,8 @@ impl AppState<DisplayChannel, File> {
     /// detect the last of the photons or a new frame signal.
     pub fn start_inf_acq_loop(&mut self) -> Result<()> {
         self.acquire_stream_filehandle()?;
-        let mut events_after_newframe = None;
+        let mut events_after_newframe = self.advance_till_first_frame_line(None);
         while !self.channels.channel_merge.get_window().should_close() {
-            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
             info!("Starting the population of single frame");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Starting render");
@@ -464,6 +471,7 @@ impl AppState<DisplayChannel, File> {
             // self.channel3.render();
             // self.channel4.render();
             self.channels.channel_merge.render();
+            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
         }
         Ok(())
     }
@@ -511,7 +519,7 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
             DataType::Line => self.handle_line_event(event),
             DataType::TagLens => self.snake.new_taglens_period(event.time),
             DataType::Laser => self.snake.new_laser_event(event.time),
-            DataType::Frame => ProcessedEvent::NoOp,
+            DataType::Frame => self.handle_frame_event(event.time),
             DataType::Unwanted => ProcessedEvent::NoOp,
             DataType::Invalid => {
                 warn!("Unsupported event: {:?}", event);
