@@ -473,7 +473,7 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     fn acquire_stream_filehandle(&mut self) -> Result<()> {
         if self.data_stream.is_none() {
-            std::thread::sleep(std::time::Duration::from_secs(13));
+            std::thread::sleep(std::time::Duration::from_secs(11));
             debug!("Finished waiting");
             let mut reader =
                 File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
