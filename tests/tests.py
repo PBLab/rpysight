@@ -42,15 +42,15 @@ def test_ipc_written_in_pyarrow():
     ]
 
     batch = pa.record_batch(data, names=['f0', 'f1', 'f2'])
-    sink = pa.NativeFile("tests/data/a.t")
     writer = pa.ipc.new_stream("tests/data/a.t", batch.schema)
-    for i in range(10):
-        writer.write(batch)
+    while True:
+        for i in range(10):
+            writer.write(batch)
 
-    sleep(2)
+        sleep(2)
 
-    for i in range(10):
-        writer.write(batch)
+        for i in range(10):
+            writer.write(batch)
 
-    writer.write(batch[:0])
+        writer.write(batch[:0])
 

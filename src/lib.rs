@@ -6,6 +6,7 @@ pub mod gui;
 pub mod point_cloud_renderer;
 pub mod snakes;
 
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::{
     fs::{create_dir_all, read_to_string, write, File},
@@ -28,7 +29,7 @@ use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{AppState, Channels};
 
-const TT_DATA_STREAM: &str = "tt_data_stream.dat";
+const TT_DATA_STREAM: &str = "127.0.0.1:64444";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
 pub const DEFAULT_CONFIG_FNAME: &str = "default.toml";
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
@@ -236,7 +237,7 @@ pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let fr = (&cfg).frame_rate().round() as u64;
     let channels = generate_windows(cfg.rows, cfg.columns, fr);
     let mut app =
-        AppState::<DisplayChannel, File>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
+        AppState::<DisplayChannel, TcpStream>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")

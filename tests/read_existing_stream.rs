@@ -53,7 +53,8 @@ fn start_writer_and_write(stream_name: String, schema: Schema) {
 
 #[test]
 fn read_previous_data() {
-    let mut reader = File::open("tt_data_stream.dat").unwrap();
+    // let mut reader = File::open("tt_data_stream.dat").unwrap();
+    let mut reader = File::open("tests/data/a.t").unwrap();
     let meta = read_stream_metadata(&mut reader).unwrap();
     let mut stream = StreamReader::new(&mut reader, meta);
     let mut idx = 0;

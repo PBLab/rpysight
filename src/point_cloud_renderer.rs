@@ -1,12 +1,13 @@
 extern crate kiss3d;
 
-use std::fs::File;
 use std::io::Read;
+use std::net::TcpStream;
 use std::ops::{Index, IndexMut};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use arrow2::{
-    io::ipc::read::{read_stream_metadata, StreamReader},
+    io::ipc::read::{read_stream_metadata, StreamReader, StreamState},
     record_batch::RecordBatch,
 };
 use kiss3d::window::Window;
@@ -170,10 +171,10 @@ pub struct AppState<T: PointDisplay, R: Read> {
     batch_readout_count: u64,
 }
 
-impl<T: PointDisplay> AppState<T, File> {
+impl<T: PointDisplay> AppState<T, TcpStream> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(channels: Channels<T>, data_stream_fh: String, appconfig: AppConfig) -> Self {
-        let snake = AppState::<T, File>::choose_snake_variant(&appconfig);
+        let snake = AppState::<T, TcpStream>::choose_snake_variant(&appconfig);
         AppState {
             channels,
             data_stream_fh,
@@ -257,18 +258,32 @@ impl<T: PointDisplay> AppState<T, File> {
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
             let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => { 
+                Some(batch) => {
                     match batch {
-                        Ok(b) => { self.batch_readout_count += 1; b },
-                        Err(b) => { error!("In populate, batch couldn't be extracted. Num: {}, error: {:?}", self.batch_readout_count, b); continue },
+                        Ok(b) => {
+                            match b {
+                                StreamState::Some(x) => {
+                                    self.batch_readout_count += 1;
+                                    x
+                                }
+                                StreamState::Waiting => {
+                                    debug!("Waiting on new stream");
+                                    continue
+                                }
+                            }
+                        },
+                        Err(b) => {
+                            error!("In populate, batch couldn't be extracted. Num: {}, error: {:?}", self.batch_readout_count, b);
+                            std::thread::sleep(Duration::from_millis(10));
+                            continue
+                        },
                     }
                 }
                 None => {
                     debug!(
-                        "No batch received for some reason ({})",
-                        self.batch_readout_count
+                        "End of stream",
                     );
-                    continue
+                    break None
                 }
             };
             let event_stream = match self.get_event_stream(&batch) {
@@ -411,15 +426,24 @@ impl<T: PointDisplay> AppState<T, File> {
             let batch = match self.data_stream.as_mut().unwrap().next() {
                 Some(batch) => {
                     match batch {
-                        Ok(b) => { 
-                            self.batch_readout_count += 1; 
-                            b 
+                        Ok(b) => {
+                            match b {
+                                StreamState::Some(x) => {
+                                    self.batch_readout_count += 1;
+                                    x
+                                }
+                                StreamState::Waiting => {
+                                    debug!("Waiting on new stream");
+                                    continue
+                                }
+                            }
                         },
                         Err(b) => {
                             error!(
                                 "Couldn't extract batch from stream ({}): {:?}",
                                 self.batch_readout_count, b
                             );
+                            std::thread::sleep(Duration::from_millis(10));
                             continue
                         },
                     }
@@ -454,7 +478,7 @@ impl<T: PointDisplay> AppState<T, File> {
     }
 }
 
-impl AppState<DisplayChannel, File> {
+impl AppState<DisplayChannel, TcpStream> {
     /// Main loop of the app. Following a bit of a setup, during each frame
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
@@ -477,14 +501,14 @@ impl AppState<DisplayChannel, File> {
     }
 }
 
-impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, File> {
+impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, TcpStream> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     fn acquire_stream_filehandle(&mut self) -> Result<()> {
         if self.data_stream.is_none() {
             std::thread::sleep(std::time::Duration::from_secs(11));
             debug!("Finished waiting");
             let mut reader =
-                File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
+                TcpStream::connect(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
             let meta = read_stream_metadata(&mut reader).context("Can't read stream metadata")?;
             let stream = StreamReader::new(reader, meta);
             self.data_stream = Some(stream);
