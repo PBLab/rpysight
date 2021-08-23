@@ -3,7 +3,6 @@ extern crate kiss3d;
 use std::io::Read;
 use std::net::TcpStream;
 use std::ops::{Index, IndexMut};
-use std::time::Duration;
 
 use anyhow::{Context, Result};
 use arrow2::{
