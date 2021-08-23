@@ -392,12 +392,12 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         &mut self,
         event_stream: Option<Vec<Event>>,
     ) -> Option<Vec<Event>> {
-        if let Some(ref previous_events) = event_stream {
+        if let Some(previous_events) = event_stream {
             info!("Looking for the first line/frame in the previous event stream");
+            let mut previous_events_mut = previous_events.iter();
             let mut steps = 0;
             let frame_started =
-                previous_events
-                    .iter()
+                previous_events_mut
                     .find_map(|event| match self.inputs[event.channel] {
                         DataType::Line | DataType::Frame => Some(event.time),
                         _ => {
@@ -457,9 +457,9 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
                     continue;
                 }
             };
+            let mut leftover_event_stream = event_stream.iter();
             let frame_started =
-                event_stream
-                    .iter()
+                leftover_event_stream
                     // .find_map(|event| match self.inputs[event.channel] {
                     .find_map(|event| match self.inputs.get(event.channel) {
                         Some(DataType::Line) | Some(DataType::Frame) => Some(event.time),
