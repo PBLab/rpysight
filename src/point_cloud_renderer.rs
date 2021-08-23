@@ -1,8 +1,14 @@
 extern crate kiss3d;
 
+use std::io::Read;
+use std::net::TcpStream;
 use std::ops::{Index, IndexMut};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use arrow2::{
+    io::ipc::read::{read_stream_metadata, StreamReader, StreamState},
+    record_batch::RecordBatch,
+};
 use kiss3d::window::Window;
 use nalgebra::Point3;
 
@@ -149,9 +155,9 @@ impl DisplayChannel {
 
 /// Main struct that holds the renderers and the needed data streams for
 /// them
-pub struct AppState<T: PointDisplay, S: TimeTaggerIpcHandler> {
+pub struct AppState<T: PointDisplay, R: Read> {
     pub channels: Channels<T>,
-    pub stream: S,
+    pub data_stream: Option<StreamReader<R>>,
     snake: Box<dyn Snake>,
     inputs: Inputs,
     rows_per_frame: u32,
@@ -160,13 +166,13 @@ pub struct AppState<T: PointDisplay, S: TimeTaggerIpcHandler> {
     batch_readout_count: u64,
 }
 
-impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
+impl<T: PointDisplay> AppState<T, TcpStream> {
     /// Generates a new app from a renderer and a receiving end of a channel
-    pub fn new(channels: Channels<T>, stream: S, appconfig: AppConfig) -> Self {
-        let snake = AppState::<T, S>::choose_snake_variant(&appconfig);
+    pub fn new(channels: Channels<T>, data_stream_fh: String, appconfig: AppConfig) -> Self {
+        let snake = AppState::<T, TcpStream>::choose_snake_variant(&appconfig);
         AppState {
             channels,
-            stream,
+            data_stream: None,
             snake,
             inputs: Inputs::from_config(&appconfig),
             rows_per_frame: appconfig.rows,
@@ -212,39 +218,6 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
         ProcessedEvent::FrameNewFrame
     }
 
-    /// Convert a raw event tag to a coordinate which will be displayed on the
-    /// screen.
-    ///
-    /// This is the core of the rendering logic of this application, where all
-    /// metadata (row, column info) is used to decide where to place a given
-    /// event.
-    ///
-    /// None is returned if the tag isn't a time tag. When the tag is from a
-    /// non-imaging channel it's taken into account, but otherwise (i.e. in
-    /// cases of overflow it's discarded at the moment.
-    fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent {
-        if event.type_ != 0 {
-            warn!("Event type was not a time tag: {:?}", event);
-            return ProcessedEvent::NoOp;
-        }
-        // trace!("Received the following event: {:?}", event);
-        match self.inputs[event.channel] {
-            DataType::Pmt1 => self.snake.time_to_coord_linear(event.time, 0),
-            DataType::Pmt2 => self.snake.time_to_coord_linear(event.time, 1),
-            DataType::Pmt3 => self.snake.time_to_coord_linear(event.time, 2),
-            DataType::Pmt4 => self.snake.time_to_coord_linear(event.time, 3),
-            DataType::Line => self.handle_line_event(event.time),
-            DataType::TagLens => self.snake.new_taglens_period(event.time),
-            DataType::Laser => self.snake.new_laser_event(event.time),
-            DataType::Frame => self.handle_frame_event(event.time),
-            DataType::Unwanted => ProcessedEvent::NoOp,
-            DataType::Invalid => {
-                warn!("Unsupported event: {:?}", event);
-                ProcessedEvent::NoOp
-            }
-        }
-    }
-
     /// One of the main functions of the app, responsible for iterating over
     /// data streams.
     ///
@@ -277,17 +250,29 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
             // The following lines cannot be factored to a function due to
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
-            let batch = match self.stream.get_mut_data_stream().unwrap().next() {
-                Some(batch) => {
-                    self.batch_readout_count += 1;
-                    batch.expect("Couldn't extract batch from stream")
-                }
+            let batch = match self.data_stream.as_mut().unwrap().next() {
+                Some(batch) => match batch {
+                    Ok(b) => match b {
+                        StreamState::Some(x) => {
+                            self.batch_readout_count += 1;
+                            x
+                        }
+                        StreamState::Waiting => {
+                            debug!("Waiting on new stream");
+                            continue;
+                        }
+                    },
+                    Err(b) => {
+                        error!(
+                            "In populate, batch couldn't be extracted. Num: {}, error: {:?}",
+                            self.batch_readout_count, b
+                        );
+                        continue;
+                    }
+                },
                 None => {
-                    debug!(
-                        "No batch received for some reason ({})",
-                        self.batch_readout_count
-                    );
-                    continue
+                    debug!("End of stream",);
+                    break None;
                 }
             };
             let event_stream = match self.stream.get_event_stream(&batch) {
@@ -378,7 +363,7 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
     /// and then we iterate over all of the photons of that frame, until we
     /// detect the last of the photons or a new frame signal.
     pub fn start_acq_loop_for(&mut self, steps: usize) -> Result<()> {
-        self.stream.acquire_stream_filehandle()?;
+        self.acquire_stream_filehandle()?;
         let mut events_after_newframe = self.advance_till_first_frame_line(None);
         for _ in 0..steps {
             debug!("Starting population");
@@ -400,30 +385,36 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
         &mut self,
         event_stream: Option<Vec<Event>>,
     ) -> Option<Vec<Event>> {
-        if let Some(ref previous_events) = event_stream {
+        if let Some(previous_events) = event_stream {
             info!("Looking for the first line/frame in the previous event stream");
+            let mut previous_events_mut = previous_events.iter();
             let mut steps = 0;
             let frame_started =
-                previous_events
-                    .iter()
-                    .find_map(|event| match self.inputs.get(event.channel) {
-                        DataType::Line | DataType::Frame => Some(event.time),
-                        _ => {
-                            steps += 1;
-                            None
-                        }
-                    });
-            if frame_started.is_some() {
+                previous_events_mut.find_map(|event| match self.inputs[event.channel] {
+                    DataType::Line => Some((DataType::Line, event.time)),
+                    DataType::Frame => Some((DataType::Frame, event.time)),
+                    _ => {
+                        steps += 1;
+                        None
+                    }
+                });
+            if let Some(started) = frame_started {
                 self.lines_vec.clear();
-                self.line_count = 1;
+                match started.0 {
+                    DataType::Line => {
+                        self.line_count = 1;
+                    }
+                    DataType::Frame => {
+                        self.line_count = 0;
+                    }
+                    _ => {}
+                }
                 info!(
                     "Found the first line/frame in the previous event stream ({}) after {} steps",
-                    frame_started.unwrap(),
-                    steps
+                    started.1, steps
                 );
-                self.snake
-                    .update_snake_for_next_frame(frame_started.unwrap());
-                return Some(previous_events.iter().copied().collect::<Vec<Event>>());
+                self.snake.update_snake_for_next_frame(started.1);
+                return Some(previous_events_mut.copied().collect::<Vec<Event>>());
             };
         }
         // We'll look for the first line\frame indefinitely
@@ -432,19 +423,23 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
             let batch = match self.stream.get_mut_data_stream().unwrap().next() {
-                Some(batch) => {
-                    match batch {
-                        Ok(b) => {
+                Some(batch) => match batch {
+                    Ok(b) => match b {
+                        StreamState::Some(x) => {
                             self.batch_readout_count += 1;
-                            b
-                        },
-                        Err(b) => {
-                            error!(
-                                "Couldn't extract batch from stream ({}): {:?}",
-                                self.batch_readout_count, b
-                            );
-                            continue
-                        },
+                            x
+                        }
+                        StreamState::Waiting => {
+                            debug!("Waiting on new stream");
+                            continue;
+                        }
+                    },
+                    Err(b) => {
+                        error!(
+                            "Couldn't extract batch from stream ({}): {:?}",
+                            self.batch_readout_count, b
+                        );
+                        continue;
                     }
                 },
                 None => continue,
@@ -456,34 +451,41 @@ impl<T: PointDisplay, S: TimeTaggerIpcHandler> AppState<T, S> {
                     continue;
                 }
             };
-            let mut counter = 0i64;
-            let frame_started =
-                event_stream
-                    .iter()
-                    .find_map(|event| match self.inputs.get(event.channel) {
-                        DataType::Line | DataType::Frame => Some(event.time),
-                        _ => {counter += 1; None},
-                    });
-            info!("Looking for the first line/frame in a newly acquired stream (went over {} items)", counter);
-            if let Some(start_time) = frame_started {
+            let mut leftover_event_stream = event_stream.iter();
+            let frame_started = leftover_event_stream
+                // .find_map(|event| match self.inputs[event.channel] {
+                .find_map(|event| match self.inputs.get(event.channel) {
+                    Some(DataType::Line) => Some((DataType::Line, event.time)),
+                    Some(DataType::Frame) => Some((DataType::Frame, event.time)),
+                    None => {
+                        error!("Out of bounds access: {:?}", event);
+                        None
+                    }
+                    _ => None,
+                });
+            info!("Looking for the first line/frame in a newly acquired stream");
+            if let Some(started) = frame_started {
                 self.lines_vec.clear();
-                self.line_count = 1;
-                info!("Found the first line/frame in a newly acquired stream: {}", start_time);
-                self.snake
-                    .update_snake_for_next_frame(start_time);
-                return Some(event_stream.iter().collect::<Vec<Event>>())
-            };
+                match started.0 {
+                    DataType::Frame => self.line_count = 0,
+                    DataType::Line => self.line_count = 1,
+                    _ => {}
+                }
+                info!("Found the first line/frame: {}", started.1);
+                self.snake.update_snake_for_next_frame(started.1);
+                return Some(leftover_event_stream.collect::<Vec<Event>>());
+            }
         }
     }
 }
 
-impl<S: TimeTaggerIpcHandler> AppState<DisplayChannel, S> {
+impl AppState<DisplayChannel, TcpStream> {
     /// Main loop of the app. Following a bit of a setup, during each frame
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
     /// detect the last of the photons or a new frame signal.
     pub fn start_inf_acq_loop(&mut self) -> Result<()> {
-        self.stream.acquire_stream_filehandle()?;
+        self.acquire_stream_filehandle()?;
         let mut events_after_newframe = self.advance_till_first_frame_line(None);
         while !self.channels.channel_merge.get_window().should_close() {
             info!("Starting the population of single frame");
@@ -498,5 +500,73 @@ impl<S: TimeTaggerIpcHandler> AppState<DisplayChannel, S> {
         }
         info!("We're done!");
         Ok(())
+    }
+}
+
+impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, TcpStream> {
+    /// Instantiate an IPC StreamReader using an existing file handle.
+    fn acquire_stream_filehandle(&mut self) -> Result<()> {
+        if self.data_stream.is_none() {
+            std::thread::sleep(std::time::Duration::from_secs(11));
+            debug!("Finished waiting");
+            let mut reader = TcpStream::connect(&self.data_stream_fh)
+                .context("Can't open stream file, exiting.")?;
+            let meta = read_stream_metadata(&mut reader).context("Can't read stream metadata")?;
+            let stream = StreamReader::new(reader, meta);
+            self.data_stream = Some(stream);
+            debug!("File handle for stream acquired!");
+        } else {
+            debug!("File handle already acquired.");
+        }
+        Ok(())
+    }
+
+    /// Convert a raw event tag to a coordinate which will be displayed on the
+    /// screen.
+    ///
+    /// This is the core of the rendering logic of this application, where all
+    /// metadata (row, column info) is used to decide where to place a given
+    /// event.
+    ///
+    /// None is returned if the tag isn't a time tag. When the tag is from a
+    /// non-imaging channel it's taken into account, but otherwise (i.e. in
+    /// cases of overflow it's discarded at the moment.
+    fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent {
+        if event.type_ != 0 {
+            warn!("Event type was not a time tag: {:?}", event);
+            return ProcessedEvent::NoOp;
+        }
+        trace!("Received the following event: {:?}", event);
+        match self.inputs[event.channel] {
+            DataType::Pmt1 => self.snake.time_to_coord_linear(event.time, 0),
+            DataType::Pmt2 => self.snake.time_to_coord_linear(event.time, 1),
+            DataType::Pmt3 => self.snake.time_to_coord_linear(event.time, 2),
+            DataType::Pmt4 => self.snake.time_to_coord_linear(event.time, 3),
+            DataType::Line => self.handle_line_event(event),
+            DataType::TagLens => self.snake.new_taglens_period(event.time),
+            DataType::Laser => self.snake.new_laser_event(event.time),
+            DataType::Frame => self.handle_frame_event(event.time),
+            DataType::Unwanted => ProcessedEvent::NoOp,
+            DataType::Invalid => {
+                warn!("Unsupported event: {:?}", event);
+                ProcessedEvent::NoOp
+            }
+        }
+    }
+
+    /// Generates an EventStream instance from the loaded record batch
+    #[inline]
+    fn get_event_stream<'b>(&mut self, batch: &'b RecordBatch) -> Option<EventStream<'b>> {
+        debug!(
+            "When generating the EventStream we received {} rows",
+            batch.num_rows()
+        );
+        let event_stream = EventStream::from_streamed_batch(batch);
+        if event_stream.num_rows() == 0 {
+            info!("A batch with 0 rows was received");
+            None
+        } else {
+            Some(event_stream)
+        }
     }
 }

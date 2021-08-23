@@ -14,6 +14,8 @@ it work once, and it did, which is great.
 """
 import pathlib
 from typing import Optional
+import socket
+from time import sleep
 
 import numpy as np
 import pyarrow as pa
@@ -27,17 +29,19 @@ except ModuleNotFoundError:
     import TimeTagger
 
 
-TT_DATA_STREAM = "tt_data_stream.dat"
+TT_DATA_STREAM = "tt_data_stream.arrow_stream"
+HOST = '127.0.0.1'
+PORT = 64444
 
 
 class RealTimeRendering(TimeTagger.CustomMeasurement):
     """Process the photon stream live and render it in 2D/3D.
 
     This class streams the live tag data arriving from the TimeTagger to an
-    external Rust app named RPySight that parses the individual events and
+    external Rust app named rPySight that parses the individual events and
     renders them in 2D or 3D.
 
-    This class is always instatiated by that Rust process and should not be
+    This class is always instantiated by that Rust process and should not be
     used independently of it.
     """
 
@@ -66,8 +70,21 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
             names=["type_", "missed_events", "channel", "time"],
         )
         self.schema = test_batch.schema
-        pathlib.Path(TT_DATA_STREAM).unlink(missing_ok=True)
-        self.stream = pa.ipc.new_stream(TT_DATA_STREAM, self.schema)
+        print("Starting socketing")
+
+        self.socket = socket.socket()
+        print("got me socketing")
+        self.socket.bind((HOST, PORT))
+        print("Bound")
+        self.socket.listen()
+        print("listening")
+        self.conn, addr = self.socket.accept()
+        print("accepted")
+        self.socketfile = self.conn.makefile('wb')
+        print("makefile done")
+        opts = pa.ipc.IpcWriteOptions(allow_64bit=True)
+        self.stream = pa.ipc.new_stream(self.socketfile, self.schema, options=opts)
+        print('self.stream done')
         self.stream.write(test_batch)
 
     def __del__(self):

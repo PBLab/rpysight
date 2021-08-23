@@ -884,10 +884,10 @@ impl Snake for TwoDimensionalSnake {
         let mut coord = None;
         for pair in &self.data[self.last_accessed_idx..] {
             if time <= pair.end_time {
-                // trace!(
-                //     "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}; Channel: {}",
-                //     pair, time, additional_steps_taken, ch
-                // );
+                trace!(
+                    "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}; Channel: {}",
+                    pair, time, additional_steps_taken, ch
+                );
                 self.last_accessed_idx += additional_steps_taken;
                 coord = Some(pair.coord);
                 break;
@@ -916,6 +916,10 @@ impl Snake for TwoDimensionalSnake {
     /// data quality, i.e. we don't do any error checking what-so-ever, we
     /// simply trust in the data being not faulty.
     fn update_snake_for_next_frame(&mut self, next_frame_at: Picosecond) {
+        if next_frame_at == self.earliest_frame_time {
+            info!("Already updated the next frame");
+            return
+        }
         self.last_accessed_idx = 0;
         let offset = next_frame_at - self.earliest_frame_time;
         for pair in self.data.iter_mut() {

@@ -3,17 +3,19 @@ use std::fs::File;
 use std::sync::Arc;
 
 use arrow2::datatypes::{DataType, Field, Schema};
-use arrow2::io::ipc::write::StreamWriter;
 use arrow2::io::csv::read::Reader;
+use arrow2::io::ipc::write::StreamWriter;
 use log::*;
 use nalgebra::Point3;
 use ron::de::from_reader;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use librpysight::configuration::{InputChannel, AppConfig, AppConfigBuilder, Bidirectionality, Period};
-use librpysight::point_cloud_renderer::{AppState, PointDisplay, Channels, ChannelNames};
-use librpysight::snakes::{Picosecond, TimeCoordPair};
+use librpysight::configuration::{
+    AppConfig, AppConfigBuilder, Bidirectionality, InputChannel, Period,
+};
 use librpysight::event_stream::{ArrowIpcStream, TimeTaggerIpcHandler};
+use librpysight::point_cloud_renderer::{AppState, ChannelNames, Channels, PointDisplay};
+use librpysight::snakes::{Picosecond, TimeCoordPair};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
 const SHORT_BATCH_DATA: &'static str = "tests/data/short_record_batch.csv";
@@ -33,7 +35,10 @@ struct PointLogger {
 
 impl PointLogger {
     fn new() -> Self {
-        PointLogger { rendered_events_loc: Vec::<TimeCoordPair>::new(), rendered_events_color: Vec::<TimeCoordPair>::new() }
+        PointLogger {
+            rendered_events_loc: Vec::<TimeCoordPair>::new(),
+            rendered_events_color: Vec::<TimeCoordPair>::new(),
+        }
     }
 }
 
@@ -41,14 +46,14 @@ impl PointDisplay for PointLogger {
     fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond) {
         let contains_nan = p.iter().any(|x| x.is_nan());
         if contains_nan {
-            return
+            return;
         };
         self.rendered_events_loc.push(TimeCoordPair::new(time, p));
         self.rendered_events_color.push(TimeCoordPair::new(time, c));
     }
 
-    fn render(&mut self) { }
-    fn hide(&mut self) { }
+    fn render(&mut self) {}
+    fn hide(&mut self) {}
 }
 
 /// Run once to generate .dat file which behave as streams
