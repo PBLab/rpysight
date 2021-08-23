@@ -274,7 +274,6 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
                         },
                         Err(b) => {
                             error!("In populate, batch couldn't be extracted. Num: {}, error: {:?}", self.batch_readout_count, b);
-                            std::thread::sleep(Duration::from_millis(10));
                             continue
                         },
                     }
@@ -399,23 +398,28 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             let frame_started =
                 previous_events_mut
                     .find_map(|event| match self.inputs[event.channel] {
-                        DataType::Line | DataType::Frame => Some(event.time),
+                        DataType::Line => Some((DataType::Line, event.time)),
+                        DataType::Frame => Some((DataType::Frame, event.time)),
                         _ => {
                             steps += 1;
                             None
                         }
                     });
-            if frame_started.is_some() {
+            if let Some(started) = frame_started {
                 self.lines_vec.clear();
-                self.line_count = 1;
+                match started.0 {
+                    DataType::Line => {self.line_count = 1;},
+                    DataType::Frame => {self.line_count = 0;},
+                    _ => {},
+                }
                 info!(
                     "Found the first line/frame in the previous event stream ({}) after {} steps",
-                    frame_started.unwrap(),
+                    started.1,
                     steps
                 );
                 self.snake
-                    .update_snake_for_next_frame(frame_started.unwrap());
-                return Some(previous_events.iter().copied().collect::<Vec<Event>>());
+                    .update_snake_for_next_frame(started.1);
+                return Some(previous_events_mut.copied().collect::<Vec<Event>>());
             };
         }
         // We'll look for the first line\frame indefinitely
@@ -443,7 +447,6 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
                                 "Couldn't extract batch from stream ({}): {:?}",
                                 self.batch_readout_count, b
                             );
-                            std::thread::sleep(Duration::from_millis(10));
                             continue
                         },
                     }
@@ -462,17 +465,22 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
                 leftover_event_stream
                     // .find_map(|event| match self.inputs[event.channel] {
                     .find_map(|event| match self.inputs.get(event.channel) {
-                        Some(DataType::Line) | Some(DataType::Frame) => Some(event.time),
+                        Some(DataType::Line) => Some((DataType::Line, event.time)),
+                        Some(DataType::Frame) => Some((DataType::Frame, event.time)),
                         None => { error!("Out of bounds access: {:?}", event); None },
                         _ => None,
                     });
             info!("Looking for the first line/frame in a newly acquired stream");
             if let Some(started) = frame_started {
                 self.lines_vec.clear();
-                self.line_count = 1;
-                info!("Found the first line/frame: {}", started);
-                self.snake.update_snake_for_next_frame(started);
-                return Some(event_stream.iter().collect::<Vec<Event>>());
+                match started.0 {
+                    DataType::Frame => {self.line_count = 0},
+                    DataType::Line => {self.line_count = 1},
+                    _ => {},
+                }
+                info!("Found the first line/frame: {}", started.1);
+                self.snake.update_snake_for_next_frame(started.1);
+                return Some(leftover_event_stream.collect::<Vec<Event>>());
             }
         }
     }
@@ -534,7 +542,7 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, TcpStream> {
             warn!("Event type was not a time tag: {:?}", event);
             return ProcessedEvent::NoOp;
         }
-        // trace!("Received the following event: {:?}", event);
+        trace!("Received the following event: {:?}", event);
         match self.inputs[event.channel] {
             DataType::Pmt1 => self.snake.time_to_coord_linear(event.time, 0),
             DataType::Pmt2 => self.snake.time_to_coord_linear(event.time, 1),
