@@ -161,7 +161,7 @@ impl Inputs {
         inps
     }
 
-    /// An safer indexing-like method
+
     pub fn get(&self, channel: i32) -> &DataType {
         let actual_idx = (MAX_TIMETAGGER_INPUTS + channel) as usize;
         if actual_idx >= self.0.len() {
@@ -303,6 +303,13 @@ impl AppConfig {
             period: self.calc_frame_duration(),
         }
         .to_hz()
+    }
+
+    pub fn get_num_pixels(&self) -> usize {
+        let planes = self.planes.max(1);
+        let rows = self.rows.max(1);
+        let columns = self.columns.max(1);
+        (planes * columns * rows) as usize
     }
 }
 

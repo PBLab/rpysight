@@ -164,12 +164,14 @@ pub struct AppState<T: PointDisplay, R: Read> {
     line_count: u32,
     lines_vec: Vec<Picosecond>,
     batch_readout_count: u64,
+    frame_buffer: Vec<u16>,
 }
 
 impl<T: PointDisplay> AppState<T, TcpStream> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(channels: Channels<T>, data_stream_fh: String, appconfig: AppConfig) -> Self {
         let snake = AppState::<T, TcpStream>::choose_snake_variant(&appconfig);
+        let pixel_num = appconfig.get_num_pixels();
         AppState {
             channels,
             data_stream: None,
@@ -179,6 +181,7 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             line_count: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
             batch_readout_count: 0,
+            frame_buffer: Vec::<u16>::with_capacity(pixel_num),
         }
     }
 
@@ -251,31 +254,28 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
             let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => {
-                    match batch {
-                        Ok(b) => {
-                            match b {
-                                StreamState::Some(x) => {
-                                    self.batch_readout_count += 1;
-                                    x
-                                }
-                                StreamState::Waiting => {
-                                    debug!("Waiting on new stream");
-                                    continue
-                                }
-                            }
-                        },
-                        Err(b) => {
-                            error!("In populate, batch couldn't be extracted. Num: {}, error: {:?}", self.batch_readout_count, b);
-                            continue
-                        },
+                Some(batch) => match batch {
+                    Ok(b) => match b {
+                        StreamState::Some(x) => {
+                            self.batch_readout_count += 1;
+                            x
+                        }
+                        StreamState::Waiting => {
+                            debug!("Waiting on new stream");
+                            continue;
+                        }
+                    },
+                    Err(b) => {
+                        error!(
+                            "In populate, batch couldn't be extracted. Num: {}, error: {:?}",
+                            self.batch_readout_count, b
+                        );
+                        continue;
                     }
                 },
                 None => {
-                    debug!(
-                        "End of stream",
-                    );
-                    break None
+                    debug!("End of stream",);
+                    break None;
                 }
             };
             let event_stream = match self.stream.get_event_stream(&batch) {
@@ -393,29 +393,30 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             let mut previous_events_mut = previous_events.iter();
             let mut steps = 0;
             let frame_started =
-                previous_events_mut
-                    .find_map(|event| match self.inputs[event.channel] {
-                        DataType::Line => Some((DataType::Line, event.time)),
-                        DataType::Frame => Some((DataType::Frame, event.time)),
-                        _ => {
-                            steps += 1;
-                            None
-                        }
-                    });
+                previous_events_mut.find_map(|event| match self.inputs[event.channel] {
+                    DataType::Line => Some((DataType::Line, event.time)),
+                    DataType::Frame => Some((DataType::Frame, event.time)),
+                    _ => {
+                        steps += 1;
+                        None
+                    }
+                });
             if let Some(started) = frame_started {
                 self.lines_vec.clear();
                 match started.0 {
-                    DataType::Line => {self.line_count = 1;},
-                    DataType::Frame => {self.line_count = 0;},
-                    _ => {},
+                    DataType::Line => {
+                        self.line_count = 1;
+                    }
+                    DataType::Frame => {
+                        self.line_count = 0;
+                    }
+                    _ => {}
                 }
                 info!(
                     "Found the first line/frame in the previous event stream ({}) after {} steps",
-                    started.1,
-                    steps
+                    started.1, steps
                 );
-                self.snake
-                    .update_snake_for_next_frame(started.1);
+                self.snake.update_snake_for_next_frame(started.1);
                 return Some(previous_events_mut.copied().collect::<Vec<Event>>());
             };
         }
@@ -425,27 +426,23 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
             let batch = match self.data_stream.as_mut().unwrap().next() {
-                Some(batch) => {
-                    match batch {
-                        Ok(b) => {
-                            match b {
-                                StreamState::Some(x) => {
-                                    self.batch_readout_count += 1;
-                                    x
-                                }
-                                StreamState::Waiting => {
-                                    debug!("Waiting on new stream");
-                                    continue
-                                }
-                            }
-                        },
-                        Err(b) => {
-                            error!(
-                                "Couldn't extract batch from stream ({}): {:?}",
-                                self.batch_readout_count, b
-                            );
-                            continue
-                        },
+                Some(batch) => match batch {
+                    Ok(b) => match b {
+                        StreamState::Some(x) => {
+                            self.batch_readout_count += 1;
+                            x
+                        }
+                        StreamState::Waiting => {
+                            debug!("Waiting on new stream");
+                            continue;
+                        }
+                    },
+                    Err(b) => {
+                        error!(
+                            "Couldn't extract batch from stream ({}): {:?}",
+                            self.batch_readout_count, b
+                        );
+                        continue;
                     }
                 },
                 None => continue,
@@ -458,22 +455,24 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
                 }
             };
             let mut leftover_event_stream = event_stream.iter();
-            let frame_started =
-                leftover_event_stream
-                    // .find_map(|event| match self.inputs[event.channel] {
-                    .find_map(|event| match self.inputs.get(event.channel) {
-                        Some(DataType::Line) => Some((DataType::Line, event.time)),
-                        Some(DataType::Frame) => Some((DataType::Frame, event.time)),
-                        None => { error!("Out of bounds access: {:?}", event); None },
-                        _ => None,
-                    });
+            let frame_started = leftover_event_stream
+                // .find_map(|event| match self.inputs[event.channel] {
+                .find_map(|event| match self.inputs.get(event.channel) {
+                    Some(DataType::Line) => Some((DataType::Line, event.time)),
+                    Some(DataType::Frame) => Some((DataType::Frame, event.time)),
+                    None => {
+                        error!("Out of bounds access: {:?}", event);
+                        None
+                    }
+                    _ => None,
+                });
             info!("Looking for the first line/frame in a newly acquired stream");
             if let Some(started) = frame_started {
                 self.lines_vec.clear();
                 match started.0 {
-                    DataType::Frame => {self.line_count = 0},
-                    DataType::Line => {self.line_count = 1},
-                    _ => {},
+                    DataType::Frame => self.line_count = 0,
+                    DataType::Line => self.line_count = 1,
+                    _ => {}
                 }
                 info!("Found the first line/frame: {}", started.1);
                 self.snake.update_snake_for_next_frame(started.1);
@@ -513,8 +512,8 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, TcpStream> {
         if self.data_stream.is_none() {
             std::thread::sleep(std::time::Duration::from_secs(11));
             debug!("Finished waiting");
-            let mut reader =
-                TcpStream::connect(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
+            let mut reader = TcpStream::connect(&self.data_stream_fh)
+                .context("Can't open stream file, exiting.")?;
             let meta = read_stream_metadata(&mut reader).context("Can't read stream metadata")?;
             let stream = StreamReader::new(reader, meta);
             self.data_stream = Some(stream);
