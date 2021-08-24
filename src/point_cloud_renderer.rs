@@ -87,6 +87,10 @@ impl<T: PointDisplay> Channels<T> {
         self.channel4.hide();
         self.channel_merge.hide();
     }
+
+    pub fn render(&mut self, frame_buffer: &Vec<u16>) {
+        self.channel_merge.render();
+    }
 }
 
 pub enum ChannelNames {
@@ -190,11 +194,17 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         }
     }
 
+    /// Decide on 2D or 3D rendering based on the configuration.
     fn choose_snake_variant(config: &AppConfig) -> Box<dyn Snake + 'static> {
         match config.planes {
             0 | 1 => Box::new(TwoDimensionalSnake::from_acq_params(config, 0)),
             2..=u32::MAX => Box::new(ThreeDimensionalSnake::from_acq_params(config, 0)),
         }
+    }
+
+    /// Render the data to the screen
+    fn render(&mut self) {
+        self.channels.render(&self.frame_buffer);
     }
 
     /// Called when an event from the line channel arrives to the event stream.
@@ -371,7 +381,7 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         self.acquire_stream_filehandle()?;
         let mut events_after_newframe = self.advance_till_first_frame_line(None);
         let rolling_avg = rolling_avg as usize;
-        let frame_number = 1usize;
+        let mut frame_number = 1usize;
         for _ in 0..steps {
             debug!("Starting population");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
@@ -487,6 +497,49 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             }
         }
     }
+}
+
+impl AppState<DisplayChannel, TcpStream> {
+    /// Main loop of the app. Following a bit of a setup, during each frame
+    /// loop we advance the photon stream iterator until the first line event,
+    /// and then we iterate over all of the photons of that frame, until we
+    /// detect the last of the photons or a new frame signal.
+    pub fn start_inf_acq_loop(&mut self, rolling_avg: u16) -> Result<()> {
+        self.acquire_stream_filehandle()?;
+        let mut events_after_newframe = self.advance_till_first_frame_line(None);
+        let mut frame_number = 1usize;
+        let rolling_avg = rolling_avg as usize;
+        while !self.channels.channel_merge.get_window().should_close() {
+            info!("Starting the population of single frame");
+            events_after_newframe = self.populate_single_frame(events_after_newframe);
+            debug!("Starting render");
+            if frame_number % rolling_avg == 0 {
+                self.render();
+            };
+            frame_number += 1;
+            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
+        }
+        Ok(())
+    }
+}
+
+impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, TcpStream> {
+    /// Instantiate an IPC StreamReader using an existing file handle.
+    fn acquire_stream_filehandle(&mut self) -> Result<()> {
+        if self.data_stream.is_none() {
+            std::thread::sleep(std::time::Duration::from_secs(11));
+            debug!("Finished waiting");
+            let mut reader = TcpStream::connect(&self.data_stream_fh)
+                .context("Can't open stream file, exiting.")?;
+            let meta = read_stream_metadata(&mut reader).context("Can't read stream metadata")?;
+            let stream = StreamReader::new(reader, meta);
+            self.data_stream = Some(stream);
+            debug!("File handle for stream acquired!");
+        } else {
+            debug!("File handle already acquired.");
+        }
+        Ok(())
+    }
 
     /// Convert a raw event tag to a coordinate which will be displayed on the
     /// screen.
@@ -519,53 +572,6 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
                 ProcessedEvent::NoOp
             }
         }
-    }
-}
-
-impl AppState<DisplayChannel, TcpStream> {
-    /// Main loop of the app. Following a bit of a setup, during each frame
-    /// loop we advance the photon stream iterator until the first line event,
-    /// and then we iterate over all of the photons of that frame, until we
-    /// detect the last of the photons or a new frame signal.
-    pub fn start_inf_acq_loop(&mut self, rolling_avg: u16) -> Result<()> {
-        self.acquire_stream_filehandle()?;
-        let mut events_after_newframe = self.advance_till_first_frame_line(None);
-        let mut frame_number = 1usize;
-        let rolling_avg = rolling_avg as usize;
-        while !self.channels.channel_merge.get_window().should_close() {
-            info!("Starting the population of single frame");
-            events_after_newframe = self.populate_single_frame(events_after_newframe);
-            debug!("Starting render");
-            // self.channel1.render();
-            // self.channel2.render();
-            // self.channel3.render();
-            // self.channel4.render();
-            if frame_number % rolling_avg == 0 {
-                self.channels.channel_merge.render();
-            };
-            frame_number += 1;
-            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
-        }
-        Ok(())
-    }
-}
-
-impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, TcpStream> {
-    /// Instantiate an IPC StreamReader using an existing file handle.
-    fn acquire_stream_filehandle(&mut self) -> Result<()> {
-        if self.data_stream.is_none() {
-            std::thread::sleep(std::time::Duration::from_secs(11));
-            debug!("Finished waiting");
-            let mut reader = TcpStream::connect(&self.data_stream_fh)
-                .context("Can't open stream file, exiting.")?;
-            let meta = read_stream_metadata(&mut reader).context("Can't read stream metadata")?;
-            let stream = StreamReader::new(reader, meta);
-            self.data_stream = Some(stream);
-            debug!("File handle for stream acquired!");
-        } else {
-            debug!("File handle already acquired.");
-        }
-        Ok(())
     }
 
     /// Generates an EventStream instance from the loaded record batch
