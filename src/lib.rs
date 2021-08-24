@@ -236,13 +236,18 @@ pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok(); // errors are logged and quite irrelevant
     let fr = (&cfg).frame_rate().round() as u64;
     let channels = generate_windows(cfg.rows, cfg.columns, fr);
-    let mut app =
-        AppState::<DisplayChannel, TcpStream>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
+    let rolling_avg: u16 = cfg.rolling_avg;
+    let mut app = AppState::<DisplayChannel, TcpStream>::new(
+        channels,
+        TT_DATA_STREAM.to_string(),
+        cfg.clone(),
+    );
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
-    app.start_inf_acq_loop().expect("Some error during acq");
+    app.start_inf_acq_loop(rolling_avg)
+        .expect("Some error during acq");
 }
 
 /// Saves the current configuration to disk.

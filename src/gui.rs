@@ -28,6 +28,8 @@ pub struct MainAppGui {
     tag_period_input: text_input::State,
     tag_period_value: String,
     bidirectional: bool,
+    rolling_avg_input: text_input::State,
+    rolling_avg_value: String,
     fill_fraction_input: text_input::State,
     fill_fraction_value: String,
     frame_dead_time_input: text_input::State,
@@ -200,6 +202,10 @@ impl MainAppGui {
     pub(crate) fn get_line_shift(&self) -> &str {
         &self.line_shift_value
     }
+
+    pub(crate) fn get_rolling_avg(&self) -> u16 {
+        self.rolling_avg_value.parse::<u16>().unwrap_or(1)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -240,6 +246,7 @@ pub enum Message {
     ReplayExistingChanged(bool),
     IgnoredChannelsChanged(String),
     LineShiftChanged(String),
+    RollingAvgChanged(String),
     ButtonPressed,
     StartedAcquistion(()),
 }
@@ -590,6 +597,10 @@ impl Application for MainAppGui {
                 self.line_shift_value = line_shift;
                 Command::none()
             }
+            Message::RollingAvgChanged(rolling_avg) => {
+                self.rolling_avg_value = rolling_avg;
+                Command::none()
+            }
             Message::ButtonPressed => Command::perform(
                 start_acquisition(
                     PathBuf::from(DEFAULT_CONFIG_FNAME),
@@ -715,6 +726,21 @@ impl Application for MainAppGui {
             .push(fillfrac_label)
             .push(fillfrac);
 
+        let rolling_avg = TextInput::new(
+            &mut self.rolling_avg_input,
+            "Rolling Average [# frames]",
+            &self.rolling_avg_value,
+            Message::RollingAvgChanged,
+        )
+        .padding(10)
+        .size(20);
+        let rolling_avg_label = Text::new("Rolling Average");
+        let rolling_avg_row = Row::new()
+            .spacing(10)
+            .align_items(Align::Center)
+            .push(rolling_avg_label)
+            .push(rolling_avg);
+
         let deadtime = TextInput::new(
             &mut self.frame_dead_time_input,
             "Frame Dead Time [ms]",
@@ -791,7 +817,6 @@ impl Application for MainAppGui {
             .push(pmt1_edge)
             .push(pmt1_thresh);
 
-        //TODO: Keep on convering thresh and rows
         let pmt2 = PickList::new(
             &mut self.pmt2_pick_list,
             &ChannelNumber::ALL[..],
@@ -1047,7 +1072,8 @@ impl Application for MainAppGui {
             .push(frame_row)
             .push(line_row)
             .push(taglens_row)
-            .push(ignored_row);
+            .push(ignored_row)
+            .push(rolling_avg_row);
 
         let content = Column::new()
             .spacing(20)
