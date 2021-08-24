@@ -21,13 +21,13 @@ use anyhow::Result;
 use directories::ProjectDirs;
 use iced::Settings;
 use nalgebra::Point3;
-use point_cloud_renderer::DisplayChannel;
 use pyo3::prelude::*;
 use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
+use crate::event_stream::ArrowIpcStream;
 use crate::gui::{ChannelNumber, EdgeDetected};
-use crate::point_cloud_renderer::{AppState, Channels};
+use crate::point_cloud_renderer::{AppState, Channels, DisplayChannel};
 
 const TT_DATA_STREAM: &str = "127.0.0.1:64444";
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";

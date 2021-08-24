@@ -161,12 +161,13 @@ impl Inputs {
         inps
     }
 
-    pub fn get(&self, channel: i32) -> Option<&DataType> {
-        let modified_idx = (MAX_TIMETAGGER_INPUTS + channel) as usize;
-        if modified_idx >= self.0.len() {
-            None
+
+    pub fn get(&self, channel: i32) -> &DataType {
+        let actual_idx = (MAX_TIMETAGGER_INPUTS + channel) as usize;
+        if actual_idx >= self.0.len() {
+            &DataType::Invalid
         } else {
-            Some(&self.0[modified_idx])
+            &self.0[actual_idx]
         }
     }
 }

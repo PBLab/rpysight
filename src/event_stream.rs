@@ -1,6 +1,15 @@
+//! Objects and functions that deal directly with the data stream
+//! from the TimeTagger.
+
+use std::fmt::Debug;
+use std::fs::File;
+
+use anyhow::{Context, Result};
 use arrow2::array::{Array, Int32Array, Int64Array, UInt16Array, UInt8Array};
 use arrow2::datatypes::DataType;
 use arrow2::record_batch::RecordBatch;
+use arrow2::io::ipc::read::{read_stream_metadata, StreamReader};
+use arrow2::error::ArrowError;
 use lazy_static::lazy_static;
 use pyo3::prelude::*;
 
@@ -15,6 +24,96 @@ lazy_static! {
         channel: &CHANNEL,
         time: &TIME,
     };
+}
+
+/// A protocol for handling the IPC portion of the app.
+///
+/// This trait's implementers are objects designed to read data from the TT and
+/// write it back to the Rust app. This task can be done in several ways, so it
+/// was factored out into a trait that can be implemented by the different
+/// implementors. The two main examples are the Arrow IPC handler and the TT's
+/// own Network class.
+pub trait TimeTaggerIpcHandler {
+    /// The type the stream has, e.g. RecordBatch
+    type InnerItem;
+    /// The type of error that creating the iterator may return, e.g. an
+    /// ArrowError
+    type IterError: Debug;
+    /// The iterator's type containing the stream of data, e.g.
+    /// StreamReader<File>.
+    type StreamIterator: Iterator<Item = Result<Self::InnerItem, Self::IterError>>;
+
+    /// Populate the `data_stream` attribute of the implementing struct by
+    /// opening the filehandle of the stream and asserting that something's
+    /// there.
+    fn acquire_stream_filehandle(&mut self) -> Result<()>;
+    /// Get a consuming iterator that we can parse into the event stream.
+    fn get_mut_data_stream(&mut self) -> Option<&mut Self::StreamIterator>;
+    /// Generate the `EventStream` struct from the item we're iterating over.
+    /// `EventStream` is used in the downstream processing of this data.
+    fn get_event_stream<'a>(&mut self, batch: &'a Self::InnerItem) -> Option<EventStream<'a>>;
+}
+
+/// An Apache Arrow based data stream.
+///
+/// Data is streamed using their IPC format - it's converted on the TT side to
+/// a pyarrow record batch, and read as a Rust RecordBatch on the other side.
+pub struct ArrowIpcStream {
+    pub data_stream_fh: String,
+    data_stream: Option<StreamReader<File>>,
+}
+
+impl ArrowIpcStream {
+    pub fn new(data_stream_fh: String) -> Self {
+        Self {
+            data_stream_fh,
+            data_stream: None,
+        }
+    }
+}
+
+impl TimeTaggerIpcHandler for ArrowIpcStream {
+    type InnerItem = RecordBatch;
+    type IterError = ArrowError;
+    type StreamIterator = StreamReader<File>;
+
+    /// Instantiate an IPC StreamReader using an existing file handle.
+    fn acquire_stream_filehandle(&mut self) -> Result<()> {
+        if self.data_stream.is_none() {
+            std::thread::sleep(std::time::Duration::from_secs(11));
+            debug!("Finished waiting");
+            let mut reader =
+                File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
+            let meta = read_stream_metadata(&mut reader).context("Can't read stream metadata")?;
+            let stream = StreamReader::new(reader, meta);
+            self.data_stream = Some(stream);
+            debug!("File handle for stream acquired!");
+        } else {
+            debug!("File handle already acquired.");
+        }
+        Ok(())
+    }
+
+    /// Generates an EventStream instance from the loaded record batch
+    #[inline]
+    fn get_event_stream<'b>(&mut self, batch: &'b RecordBatch) -> Option<EventStream<'b>> {
+        debug!(
+            "When generating the EventStream we received {} rows",
+            batch.num_rows()
+        );
+        let event_stream = EventStream::from_streamed_batch(batch);
+        if event_stream.num_rows() == 0 {
+            info!("A batch with 0 rows was received");
+            None
+        } else {
+            Some(event_stream)
+        }
+    }
+
+    /// Get a consuming iterator.
+    fn get_mut_data_stream(&mut self) -> Option<&mut StreamReader<File>> {
+        self.data_stream.as_mut()
+    }
 }
 
 /// A single tag\event that arrives from the Time Tagger.

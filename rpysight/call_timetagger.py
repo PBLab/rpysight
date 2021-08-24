@@ -152,8 +152,9 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         end_time
             End timestamp of the of the current data block.
         """
-        batch = self.convert_tags_to_recordbatch(incoming_tags)
-        self.stream.write(batch)
+        if len(incoming_tags) > 0:
+            batch = self.convert_tags_to_recordbatch(incoming_tags)
+            self.stream.write(batch)
         # Saving the data to an npy file for future-proofing purposes
         # np.save(self.filehandle, incoming_tags)
 
@@ -215,5 +216,23 @@ def replay_existing(cfg: str):
     tagger.waitForCompletion(timeout=-1)
 
 
+def setup_server_tt():
+    tagger = TimeTagger.createTimeTagger()
+    tagger.reset()
+    tagger.setTestSignal(1, True)
+    tagger.startServer(51085, [1])
+    return tagger
+
+
+def setup_client_tt():
+    tagger = TimeTagger.createTimeTaggerNetwork()
+    tagger.connect(domain="127.0.0.1", port=51085)
+    return tagger
+
+
 if __name__ == '__main__':
-    print("Imports are working")
+    server = setup_server_tt()
+    tagger = setup_client_tt()
+    hist = TimeTagger.Correlation(tagger, 1, binwidth=2, n_bins=2000)
+    hist.startFor(int(10e12), clear=True)
+    hist.waitUntilFinished()
