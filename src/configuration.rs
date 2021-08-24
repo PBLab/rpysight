@@ -163,7 +163,7 @@ impl Inputs {
 
     pub fn get(&self, channel: i32) -> Option<&DataType> {
         let modified_idx = (MAX_TIMETAGGER_INPUTS + channel) as usize;
-        if  modified_idx >= self.0.len() {
+        if modified_idx >= self.0.len() {
             None
         } else {
             Some(&self.0[modified_idx])
@@ -302,6 +302,13 @@ impl AppConfig {
             period: self.calc_frame_duration(),
         }
         .to_hz()
+    }
+
+    pub fn get_num_pixels(&self) -> usize {
+        let planes = self.planes.max(1);
+        let rows = self.rows.max(1);
+        let columns = self.columns.max(1);
+        (planes * columns * rows) as usize
     }
 }
 
