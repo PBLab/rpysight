@@ -37,7 +37,7 @@ const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 
 lazy_static! {
     /// GREEN, MAGENTA, CYAN, GRAY
-    static ref DISPLAY_COLORS: [Point3<f32>; 4] = [Point3::<f32>::new(0.0, 1.0, 0.0), Point3::<f32>::new(1.0, 0.0, 1.0), Point3::<f32>::new(0.0, 1.0, 1.0), Point3::<f32>::new(1.0, 1.0, 1.0)];
+    static ref DISPLAY_COLOR: Point3<f32> = Point3::<f32>::new(0.1, 0.1, 0.1);
 }
 
 /// Load an existing configuration file or generate a new one with default

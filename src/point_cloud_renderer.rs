@@ -9,17 +9,19 @@ use arrow2::{
     io::ipc::read::{read_stream_metadata, StreamReader, StreamState},
     record_batch::RecordBatch,
 };
+use hashbrown::HashMap;
 use kiss3d::window::Window;
 use nalgebra::Point3;
+use ordered_float::OrderedFloat;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::event_stream::{Event, EventStream};
-use crate::snakes::{Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake};
+use crate::snakes::{Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
 /// requires.
-pub type ImageCoor = Point3<f32>;
+pub type ImageCoor = Point3<Coordinate>;
 
 /// A handler of streaming time tagger data
 pub trait TimeTaggerIpcHandler {
@@ -36,7 +38,7 @@ pub trait TimeTaggerIpcHandler {
 #[derive(Debug, Clone, Copy)]
 pub enum ProcessedEvent {
     /// Contains the coordinates in image space and the color
-    Displayed(Point3<f32>, Point3<f32>),
+    Displayed(Point3<Coordinate>, Point3<f32>),
     /// Nothing to do with this event
     NoOp,
     /// A new frame signal
@@ -54,7 +56,10 @@ pub enum ProcessedEvent {
 
 /// Implemented by Apps who wish to display points
 pub trait PointDisplay {
-    fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond);
+    /// Add the point to the renderer. This is where the ordered_float
+    /// abstraction "leaks" and we have to use the native type that the
+    /// underlying library expects.
+    fn display_point(&mut self, p: &Point3<Coordinate>, c: &Point3<f32>, time: Picosecond);
     fn render(&mut self);
     fn hide(&mut self);
 }
@@ -88,7 +93,10 @@ impl<T: PointDisplay> Channels<T> {
         self.channel_merge.hide();
     }
 
-    pub fn render(&mut self, frame_buffer: &Vec<u16>) {
+    pub fn render(&mut self, frame_buffer: &HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) {
+        frame_buffer
+            .iter()
+            .for_each(|(k, v)| self.channel_merge.display_point(&k, &v, 0));
         self.channel_merge.render();
     }
 }
@@ -135,8 +143,9 @@ pub struct DisplayChannel {
 
 impl PointDisplay for DisplayChannel {
     #[inline]
-    fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, _time: Picosecond) {
-        self.window.draw_point(&p, &c)
+    fn display_point(&mut self, p: &Point3<Coordinate>, c: &Point3<f32>, _time: Picosecond) {
+        let p0: &Point3<f32> = &Point3::new(*p.x, *p.y, *p.z);
+        self.window.draw_point(p0, c)
     }
 
     fn render(&mut self) {
@@ -172,14 +181,13 @@ pub struct AppState<T: PointDisplay, R: Read> {
     line_count: u32,
     lines_vec: Vec<Picosecond>,
     batch_readout_count: u64,
-    frame_buffer: Vec<u16>,
+    frame_buffer: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
 }
 
 impl<T: PointDisplay> AppState<T, TcpStream> {
     /// Generates a new app from a renderer and a receiving end of a channel
     pub fn new(channels: Channels<T>, data_stream_fh: String, appconfig: AppConfig) -> Self {
         let snake = AppState::<T, TcpStream>::choose_snake_variant(&appconfig);
-        let pixel_num = appconfig.get_num_pixels();
         AppState {
             channels,
             data_stream_fh,
@@ -190,7 +198,7 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             line_count: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
             batch_readout_count: 0,
-            frame_buffer: Vec::<u16>::with_capacity(pixel_num),
+            frame_buffer: HashMap::with_capacity(10000),
         }
     }
 
@@ -338,6 +346,13 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         }
     }
 
+    fn draw(&mut self, point: ImageCoor, color: Point3<f32>) {
+        self.frame_buffer
+            .entry(point)
+            .and_modify(|c| c.apply(|d| d + 0.1))
+            .or_insert(color);
+    }
+
     /// The function called on each event in the processed batch.
     ///
     /// It first finds what type of event has it received (a photon that needs
@@ -346,8 +361,8 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
     /// halts only when Some(val) is returned.
     fn act_on_single_event(&mut self, event: Event) -> Option<i8> {
         match self.event_to_coordinate(event) {
-            ProcessedEvent::Displayed(p, c) => {
-                self.channels.channel_merge.display_point(p, c, event.time);
+            ProcessedEvent::Displayed(point, color) => {
+                self.draw(point, color);
                 None
             }
             ProcessedEvent::NoOp => None,
