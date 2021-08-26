@@ -409,6 +409,7 @@ impl Application for MainAppGui {
             replay_existing: prev_config.replay_existing,
             ignored_channels_value: vec_to_comma_sep_string(&prev_config.ignored_channels),
             line_shift_value: prev_config.line_shift.to_string(),
+            rolling_avg_value: prev_config.rolling_avg.to_string(),
             ..Default::default()
         };
         let pmt1 = channel_value_to_pair(prev_config.pmt1_ch);
@@ -758,13 +759,13 @@ impl Application for MainAppGui {
 
         let line_shift = TextInput::new(
             &mut self.line_shift_input,
-            "Line Shift [us]",
+            "Line Shift [ps]",
             &self.line_shift_value,
             Message::LineShiftChanged,
         )
         .padding(10)
         .size(20);
-        let line_shift_label = Text::new("Line Shift [us]");
+        let line_shift_label = Text::new("Line Shift [ps]");
         let line_shift_row = Row::new()
             .spacing(10)
             .align_items(Align::Center)
