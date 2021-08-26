@@ -16,6 +16,13 @@ use crate::configuration::{AppConfig, Bidirectionality, Period};
 use crate::point_cloud_renderer::{ImageCoor, ProcessedEvent};
 use crate::DISPLAY_COLOR;
 
+/// The image bounds as the renderer requires - start, center and end
+const RENDERING_BOUNDS: (OrderedFloat<f32>, OrderedFloat<f32>, OrderedFloat<f32>) =
+    (OrderedFloat(-0.5), OrderedFloat(0.0), OrderedFloat(0.5));
+/// Step size between planes is affected by the total "length" or span of the rendered
+/// volume.
+const RENDERING_SPAN: OrderedFloat<f32> = OrderedFloat(1.0);
+
 /// TimeTagger absolute times are i64 values that represent the number of
 /// picoseconds since the start of the experiment
 pub type Picosecond = i64;
@@ -43,19 +50,19 @@ pub struct VoxelDelta<T: ImageDelta> {
 
 impl VoxelDelta<Coordinate> {
     pub(crate) fn from_config(config: &AppConfig) -> VoxelDelta<Coordinate> {
-        let jump_between_columns = 2.0f32 / (config.columns as f32 - 1.0);
-        let jump_between_rows = 2.0f32 / (config.rows as f32 - 1.0);
-        let jump_between_planes: f32;
+        let jump_between_columns = RENDERING_SPAN / OrderedFloat(config.columns as f32 - 1.0);
+        let jump_between_rows = RENDERING_SPAN / OrderedFloat(config.rows as f32 - 1.0);
+        let jump_between_planes: OrderedFloat<f32>;
         if config.planes > 1 {
-            jump_between_planes = 2.0f32 / (config.planes as f32 - 1.0);
+            jump_between_planes = RENDERING_SPAN / OrderedFloat(config.planes as f32 - 1.0);
         } else {
-            jump_between_planes = 2.0;
+            jump_between_planes = RENDERING_SPAN;
         }
 
         VoxelDelta {
-            column: OrderedFloat(jump_between_columns),
-            row: OrderedFloat(jump_between_rows),
-            plane: OrderedFloat(jump_between_planes),
+            column: jump_between_columns,
+            row: jump_between_rows,
+            plane: jump_between_planes,
             frame: OrderedFloat::nan(),
         }
     }
@@ -144,11 +151,13 @@ struct IntervalToCoordMap {
 }
 
 impl IntervalToCoordMap {
+    /// Creata a new map with the given two sets of data
     pub fn new(im_vec: DVector<Coordinate>, time_vec: DVector<Picosecond>) -> Self {
         assert_eq!(im_vec.len(), time_vec.len());
         Self { im_vec, time_vec }
     }
 
+    /// Create an empty map, possibly for naive instatiation
     pub fn empty() -> Self {
         Self {
             im_vec: DVector::from_vec(vec![OrderedFloat(0.0f32)]),
@@ -251,7 +260,7 @@ pub trait Snake {
         // The events during mirror rotation will be discarded - The NaN takes
         // care of that
         let column_deltas_imagespace = column_deltas_imagespace
-            .add_scalar(OrderedFloat(-1.0))
+            .add_scalar(RENDERING_BOUNDS.0)
             .insert_rows(num_columns, 1, OrderedFloat(f32::NAN));
         column_deltas_imagespace
     }
@@ -318,7 +327,7 @@ pub trait Snake {
     ///
     /// In the 2D case this method should be left unimplemented.
     fn update_z_coord(&self, _coord: ImageCoor, _time: Picosecond) -> ImageCoor {
-        ImageCoor::new(OrderedFloat(0.0), OrderedFloat(0.0), OrderedFloat(0.0))
+        ImageCoor::new(RENDERING_BOUNDS.1, RENDERING_BOUNDS.1, RENDERING_BOUNDS.1)
     }
 
     /// Handles a new TAG lens start-of-cycle event
@@ -475,7 +484,7 @@ impl TwoDimensionalSnake {
         let mut row_coord: Coordinate;
         for row in (0..config.rows).step_by(2) {
             // Start with the unidir row
-            row_coord = (OrderedFloat(row as f32) * self.voxel_delta_im.row) - 1.0;
+            row_coord = (OrderedFloat(row as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             TwoDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace,
@@ -485,7 +494,8 @@ impl TwoDimensionalSnake {
             );
             line_offset += deadtime_during_rotation;
             // Now the bidir row
-            row_coord = (OrderedFloat((row + 1) as f32) * self.voxel_delta_im.row) - 1.0;
+            row_coord =
+                (OrderedFloat((row + 1) as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             TwoDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace_rev,
@@ -546,7 +556,8 @@ impl TwoDimensionalSnake {
         let offset_per_row = column_deltas_ps[line_len - 1];
         let mut line_offset: Picosecond = offset;
         for row in 0..config.rows {
-            let row_coord = (OrderedFloat(row as f32) * self.voxel_delta_im.row) - 1.0;
+            let row_coord =
+                (OrderedFloat(row as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             TwoDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace,
@@ -626,25 +637,25 @@ impl ThreeDimensionalSnake {
     /// The rising part (up to pi/2), the decending part (pi/2, 3pi/2) and the
     // last rise (3pi/2, 2pi).
     fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<Coordinate> {
-        let step_size = OrderedFloat(2.0f32 / (planes as f32));
+        let step_size = RENDERING_SPAN / OrderedFloat(planes as f32);
         let half_planes = planes / 2 + 1;
         let phase_limits_0_to_1 = DVector::<Coordinate>::from_iterator(
             half_planes,
-            linspace::<Coordinate>(OrderedFloat(0.0), OrderedFloat(1.0), half_planes),
+            linspace::<Coordinate>(RENDERING_BOUNDS.1, RENDERING_BOUNDS.2, half_planes),
         );
         let phase_limits_1_to_m1 = DVector::<Coordinate>::from_iterator(
             planes - 1,
             linspace::<Coordinate>(
-                OrderedFloat(1.0) - step_size,
-                OrderedFloat(-1.0) + step_size,
+                RENDERING_BOUNDS.2 - step_size,
+                RENDERING_BOUNDS.0 + step_size,
                 planes - 1,
             ),
         );
         let phase_limits_m1_to_0 = DVector::<Coordinate>::from_iterator(
             half_planes - 1,
             linspace::<Coordinate>(
-                OrderedFloat(-1.0),
-                OrderedFloat(0.0) - step_size,
+                RENDERING_BOUNDS.0,
+                RENDERING_BOUNDS.1 - step_size,
                 half_planes - 1,
             ),
         );
@@ -733,11 +744,12 @@ impl ThreeDimensionalSnake {
         let deadtime_during_rotation = column_deltas_ps[column_deltas_ps.len() - 1];
         let mut line_offset: Picosecond = offset;
         let column_deltas_imagespace_rev = self.reverse_row_imagespace(column_deltas_imagespace);
-        let column_deltas_ps_bidir = self.reverse_row_picosecond(column_deltas_ps, -2000000);
+        let column_deltas_ps_bidir =
+            self.reverse_row_picosecond(column_deltas_ps, config.line_shift);
         let mut row_coord: Coordinate;
         for row in (0..config.rows).step_by(2) {
             // Start with the unidir row
-            row_coord = (OrderedFloat(row as f32) * self.voxel_delta_im.row) - 1.0;
+            row_coord = (OrderedFloat(row as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             ThreeDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace,
@@ -747,7 +759,8 @@ impl ThreeDimensionalSnake {
             );
             line_offset += deadtime_during_rotation;
             // Now the bidir row
-            row_coord = (OrderedFloat((row + 1) as f32) * self.voxel_delta_im.row) - 1.0;
+            row_coord =
+                (OrderedFloat((row + 1) as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             ThreeDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace_rev,
@@ -788,7 +801,8 @@ impl ThreeDimensionalSnake {
         let offset_per_row = column_deltas_ps[line_len - 1];
         let mut line_offset: Picosecond = offset;
         for row in 0..config.rows {
-            let row_coord = (OrderedFloat(row as f32) * self.voxel_delta_im.row) - 1.0;
+            let row_coord =
+                (OrderedFloat(row as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             ThreeDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace,
