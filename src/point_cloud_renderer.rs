@@ -93,9 +93,9 @@ impl<T: PointDisplay> Channels<T> {
         self.channel_merge.hide();
     }
 
-    pub fn render(&mut self, frame_buffer: &HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) {
+    pub fn render(&mut self, frame_buffer: &mut HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) {
         frame_buffer
-            .iter()
+            .drain()
             .for_each(|(k, v)| self.channel_merge.display_point(&k, &v, 0));
         self.channel_merge.render();
     }
@@ -212,7 +212,7 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
 
     /// Render the data to the screen
     fn render(&mut self) {
-        self.channels.render(&self.frame_buffer);
+        self.channels.render(&mut self.frame_buffer);
     }
 
     /// Called when an event from the line channel arrives to the event stream.
@@ -525,6 +525,7 @@ impl AppState<DisplayChannel, TcpStream> {
         let mut frame_number = 1usize;
         let rolling_avg = rolling_avg as usize;
         while !self.channels.channel_merge.get_window().should_close() {
+            // self.reset_frame_buffer();
             info!("Starting the population of single frame");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             debug!("Starting render");
@@ -542,7 +543,7 @@ impl<T: PointDisplay> TimeTaggerIpcHandler for AppState<T, TcpStream> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     fn acquire_stream_filehandle(&mut self) -> Result<()> {
         if self.data_stream.is_none() {
-            std::thread::sleep(std::time::Duration::from_secs(11));
+            std::thread::sleep(std::time::Duration::from_secs(9));
             debug!("Finished waiting");
             let mut reader = TcpStream::connect(&self.data_stream_fh)
                 .context("Can't open stream file, exiting.")?;

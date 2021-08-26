@@ -70,21 +70,16 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
             names=["type_", "missed_events", "channel", "time"],
         )
         self.schema = test_batch.schema
-        print("Starting socketing")
 
         self.socket = socket.socket()
-        print("got me socketing")
         self.socket.bind((HOST, PORT))
-        print("Bound")
         self.socket.listen()
-        print("listening")
-        self.conn, addr = self.socket.accept()
-        print("accepted")
+        self.conn, _ = self.socket.accept()
         self.socketfile = self.conn.makefile('wb')
-        print("makefile done")
         opts = pa.ipc.IpcWriteOptions(allow_64bit=True)
-        self.stream = pa.ipc.new_stream(self.socketfile, self.schema, options=opts)
-        print('self.stream done')
+        self.stream = pa.ipc.new_stream(
+            self.socketfile, self.schema, options=opts
+        )
         self.stream.write(test_batch)
 
     def __del__(self):
@@ -203,7 +198,6 @@ def run_tagger(cfg: str):
         _ = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
         measure_group.startFor(int(1_000_000e12))
         measure_group.waitUntilFinished()
-    print("TimeTagger has turned the measurement off")
 
 
 def replay_existing(cfg: str):
