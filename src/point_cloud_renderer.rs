@@ -59,7 +59,7 @@ pub trait PointDisplay {
     /// Add the point to the renderer. This is where the ordered_float
     /// abstraction "leaks" and we have to use the native type that the
     /// underlying library expects.
-    fn display_point(&mut self, p: &Point3<Coordinate>, c: &Point3<f32>, time: Picosecond);
+    fn display_point(&mut self, p: &ImageCoor, c: &Point3<f32>, time: Picosecond);
     fn render(&mut self);
     fn hide(&mut self);
 }
@@ -143,7 +143,7 @@ pub struct DisplayChannel {
 
 impl PointDisplay for DisplayChannel {
     #[inline]
-    fn display_point(&mut self, p: &Point3<Coordinate>, c: &Point3<f32>, _time: Picosecond) {
+    fn display_point(&mut self, p: &ImageCoor, c: &Point3<f32>, _time: Picosecond) {
         let p0: &Point3<f32> = &Point3::new(*p.x, *p.y, *p.z);
         self.window.draw_point(p0, c)
     }

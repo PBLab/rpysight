@@ -3,18 +3,20 @@ use std::fs::File;
 use std::sync::Arc;
 
 use arrow2::datatypes::{DataType, Field, Schema};
-use arrow2::io::csv::read::Reader;
+use arrow2::io::csv::read::{Reader, ReaderBuilder};
 use arrow2::io::ipc::write::StreamWriter;
 use log::*;
 use nalgebra::Point3;
+use ordered_float::OrderedFloat;
 use ron::de::from_reader;
 use serde::{Deserialize, Serialize};
 
 use librpysight::configuration::{
     AppConfig, AppConfigBuilder, Bidirectionality, InputChannel, Period,
 };
-use librpysight::event_stream::{ArrowIpcStream, TimeTaggerIpcHandler};
-use librpysight::point_cloud_renderer::{AppState, ChannelNames, Channels, PointDisplay};
+use librpysight::point_cloud_renderer::{
+    AppState, ChannelNames, Channels, ImageCoor, PointDisplay, TimeTaggerIpcHandler,
+};
 use librpysight::snakes::{Picosecond, TimeCoordPair};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
@@ -43,13 +45,16 @@ impl PointLogger {
 }
 
 impl PointDisplay for PointLogger {
-    fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond) {
+    fn display_point(&mut self, p: &ImageCoor, c: &Point3<f32>, time: Picosecond) {
         let contains_nan = p.iter().any(|x| x.is_nan());
         if contains_nan {
             return;
         };
-        self.rendered_events_loc.push(TimeCoordPair::new(time, p));
-        self.rendered_events_color.push(TimeCoordPair::new(time, c));
+        self.rendered_events_loc.push(TimeCoordPair::new(time, *p));
+        self.rendered_events_color.push(TimeCoordPair::new(
+            time,
+            Point3::new(c.x.into(), c.y.into(), c.z.into()),
+        ));
     }
 
     fn render(&mut self) {}
@@ -82,17 +87,11 @@ fn test_file_to_stream() {
     ) {
         let stream_file = File::create(stream).unwrap();
         let mut stream_writer = StreamWriter::try_new(stream_file, &schema).unwrap();
-        let mut r = Reader::new(
-            File::open(data).unwrap(),
-            Arc::new(schema.clone()),
-            true,
-            None,
-            1024,
-            None,
-            None,
-        );
+        let mut reader = ReaderBuilder::new().from_path(data).unwrap();
         info!("Reader initialized, writing data");
-        stream_writer.write(&r.next().unwrap().unwrap()).unwrap();
+        stream_writer
+            .write(&reader.records().next().unwrap().unwrap())
+            .unwrap();
     }
 }
 
@@ -123,15 +122,14 @@ pub fn setup_logger() {
 
 /// Start a logger, generate a default config file (if given none) and generate
 /// a data stream from one of the CSV files.
-fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, ArrowIpcStream> {
+fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, StreamReader<File>> {
     setup_logger();
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
     let channels = generate_mock_channels();
     info!("{:?}", channels);
-    let stream = ArrowIpcStream::new(csv_to_stream.to_string());
-    let mut app = AppState::new(channels, stream, cfg);
-    app.stream.acquire_stream_filehandle().unwrap();
+    let mut app = AppState::new(channels, csv_to_stream.to_string(), cfg);
+    app.acquire_stream_filehandle().unwrap();
     app.channels.hide_all();
     app
 }
