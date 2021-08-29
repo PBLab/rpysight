@@ -144,6 +144,7 @@ pub struct DisplayChannel {
 impl PointDisplay for DisplayChannel {
     #[inline]
     fn display_point(&mut self, p: &ImageCoor, c: &Point3<f32>, _time: Picosecond) {
+        // Convert the point to ScanImage's FOV (and to f32)
         let p0: &Point3<f32> = &Point3::new(-*p.y, -*p.x, *p.z);
         self.window.draw_point(p0, c)
     }

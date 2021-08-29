@@ -1,9 +1,13 @@
 extern crate log;
 use std::fs::File;
+use std::io::Read;
 use std::sync::Arc;
 
 use arrow2::datatypes::{DataType, Field, Schema};
-use arrow2::io::csv::read::{Reader, ReaderBuilder};
+use arrow2::io::csv::read::{
+    deserialize_batch, deserialize_column, read_rows, Reader, ReaderBuilder,
+};
+use arrow2::io::ipc::read::StreamReader;
 use arrow2::io::ipc::write::StreamWriter;
 use log::*;
 use nalgebra::Point3;
@@ -89,9 +93,10 @@ fn test_file_to_stream() {
         let mut stream_writer = StreamWriter::try_new(stream_file, &schema).unwrap();
         let mut reader = ReaderBuilder::new().from_path(data).unwrap();
         info!("Reader initialized, writing data");
-        stream_writer
-            .write(&reader.records().next().unwrap().unwrap())
-            .unwrap();
+        let rows = Vec::new();
+        let _ = read_rows(&mut reader, 0, &mut rows);
+        let batch = deserialize_batch(&rows, schema.fields(), None, 0, deserialize_column).unwrap();
+        stream_writer.write(&batch);
     }
 }
 
@@ -122,7 +127,10 @@ pub fn setup_logger() {
 
 /// Start a logger, generate a default config file (if given none) and generate
 /// a data stream from one of the CSV files.
-fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, StreamReader<File>> {
+fn setup<R: Read>(
+    csv_to_stream: &str,
+    cfg: Option<AppConfig>,
+) -> AppState<PointLogger, StreamReader<File>> {
     setup_logger();
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
