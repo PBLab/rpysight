@@ -1271,22 +1271,40 @@ mod tests {
         let snake = TwoDimensionalSnake::from_acq_params(&config, 0);
         assert_eq!(
             snake.data[1],
-            TimeCoordPair::new(25, ImageCoor::new(-1.0, -1.0, 0.0)),
+            TimeCoordPair::new(
+                25,
+                ImageCoor::new(RENDERING_BOUNDS.0, RENDERING_BOUNDS.0, RENDERING_BOUNDS.1)
+            ),
         );
         assert_eq!(
             snake.data[12],
-            TimeCoordPair::new(1275, ImageCoor::new(-1.0 + (2.0 / 9.0f32), -1.0, 0.0)),
+            TimeCoordPair::new(
+                1275,
+                ImageCoor::new(
+                    RENDERING_BOUNDS.0 + (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.0,
+                    RENDERING_BOUNDS.1
+                )
+            ),
         );
         assert_eq!(
             snake.data[35],
             TimeCoordPair::new(
                 3800,
-                ImageCoor::new(-1.0 + 3.0 * (2.0 / 9.0f32), -1.0 + (2.0 / 9.0f32), 0.0)
+                ImageCoor::new(
+                    RENDERING_BOUNDS.0
+                        + OrderedFloat(3.0) * (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.0 + (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.1
+                )
             ),
         );
         assert_eq!(
             snake.data[snake.data.len() - 1],
-            TimeCoordPair::new(11500, ImageCoor::new(1.0, 1.0, 0.0))
+            TimeCoordPair::new(
+                11500,
+                ImageCoor::new(RENDERING_BOUNDS.2, RENDERING_BOUNDS.2, RENDERING_BOUNDS.2)
+            )
         );
         assert_eq!(snake.data.len() + 1, snake.data.capacity());
         assert_eq!(snake.data.len() + 1, snake.data.capacity());
@@ -1368,7 +1386,7 @@ mod tests {
         let _ = sine
             .iter()
             .zip(truth.iter())
-            .map(|x| assert_approx_eq!(x.0, x.1, 0.001f32));
+            .map(|x| assert_approx_eq!(x.0, x.1, OrderedFloat(0.001f32)));
     }
 
     #[test]
@@ -1393,13 +1411,23 @@ mod tests {
     #[test]
     #[should_panic]
     fn setup_interval_coord_map_incorrectly() {
-        let im = DVector::from_vec(vec![-1.0f32, -0.5, 0.0, 0.5, 1.0]);
+        let im = DVector::from_vec(
+            vec![-1.0f32, -0.5, 0.0, 0.5, 1.0]
+                .iter()
+                .map(|x| OrderedFloat(*x))
+                .collect(),
+        );
         let time = DVector::from_vec(vec![0i64, 10, 20, 30, 40, 50]);
         IntervalToCoordMap::new(im, time);
     }
 
     fn setup_interval_coord_map_correctly() -> IntervalToCoordMap {
-        let im = DVector::from_vec(vec![-1.0f32, -0.6, -0.2, 0.2, 0.6, 1.0]);
+        let im = DVector::from_vec(
+            vec![-0.5f32, -0.3, -0.1, 0.1, 0.3, 0.5]
+                .iter()
+                .map(|x| OrderedFloat(*x))
+                .collect(),
+        );
         let time = DVector::from_vec(vec![0i64, 10, 20, 30, 40, 50]);
         IntervalToCoordMap::new(im, time)
     }
@@ -1407,8 +1435,8 @@ mod tests {
     #[test]
     fn interval_index() {
         let interval = setup_interval_coord_map_correctly();
-        assert_eq!(interval[9], -0.6f32);
-        assert_eq!(interval[50], 1.0f32);
+        assert_eq!(interval[9], -0.3f32);
+        assert_eq!(interval[50], 0.5f32);
         assert_eq!(interval[500], 0.0f32);
     }
 }
