@@ -34,10 +34,11 @@ const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
 pub const DEFAULT_CONFIG_FNAME: &str = "default.toml";
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
+const GRAYSCALE_STEP: f32 = 0.01;
 
 lazy_static! {
     /// GREEN, MAGENTA, CYAN, GRAY
-    static ref DISPLAY_COLOR: Point3<f32> = Point3::<f32>::new(0.1, 0.1, 0.1);
+    static ref DISPLAY_COLOR: Point3<f32> = Point3::<f32>::new(GRAYSCALE_STEP, GRAYSCALE_STEP, GRAYSCALE_STEP);
 }
 
 /// Load an existing configuration file or generate a new one with default

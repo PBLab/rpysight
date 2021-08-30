@@ -1020,10 +1020,6 @@ impl Snake for ThreeDimensionalSnake {
         let mut coord = None;
         for pair in &self.data[self.last_accessed_idx..] {
             if time <= pair.end_time {
-                trace!(
-                    "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}; Channel: {}",
-                    pair, time, additional_steps_taken, ch
-                );
                 self.last_accessed_idx += additional_steps_taken;
                 coord = Some(self.update_z_coord(pair.coord, time));
                 break;
@@ -1033,6 +1029,7 @@ impl Snake for ThreeDimensionalSnake {
         // Makes sure that we indeed captured some cell. This can be avoided in
         // principle but I'm still not confident enough in this implementation.
         if let Some(coord) = coord {
+            trace!("Found a point on the snake! Time: {}; Additional steps taken: {}; Channel: {}. The coord we're sending is: {:?}", time, additional_steps_taken, ch, coord);
             ProcessedEvent::Displayed(coord, *DISPLAY_COLOR)
         } else {
             error!(
@@ -1045,7 +1042,7 @@ impl Snake for ThreeDimensionalSnake {
     }
 
     fn update_z_coord(&self, coord: ImageCoor, time: Picosecond) -> ImageCoor {
-        let tag_delta = self.last_taglens_time - time;
+        let tag_delta = time - self.last_taglens_time;
         ImageCoor::new(coord.x, coord.y, self.tag_deltas_to_coord[tag_delta])
     }
 

@@ -17,6 +17,7 @@ use ordered_float::OrderedFloat;
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::event_stream::{Event, EventStream};
 use crate::snakes::{Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake};
+use crate::GRAYSCALE_STEP;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -347,9 +348,14 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
     }
 
     fn draw(&mut self, point: ImageCoor, color: Point3<f32>) {
+        let corrected_z = if point.z == OrderedFloat(0.0) {
+            OrderedFloat(1.0 / 0.1f32)
+        } else {
+            OrderedFloat(1.0 / point.z.abs())
+        };
         self.frame_buffer
             .entry(point)
-            .and_modify(|c| c.apply(|d| d + 0.1))
+            .and_modify(|c| c.apply(|d| d + (GRAYSCALE_STEP * corrected_z.into_inner())))
             .or_insert(color);
     }
 
