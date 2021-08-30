@@ -29,15 +29,23 @@ use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{AppState, Channels};
 
+/// The port we use to transfer data from the Python process controlling the TT
+/// to the renderer.
 const TT_DATA_STREAM: &str = "127.0.0.1:64444";
+/// Filename with the code running the TT
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
+/// Default configuration filename
 pub const DEFAULT_CONFIG_FNAME: &str = "default.toml";
+/// The function name that runs the TT with new data
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
+/// The function name that runs the TT in replay mode
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
+/// The gray level step that each photon adds to the current pixel. This is a
+/// poor man's brightness normalization mechanism
 const GRAYSCALE_STEP: f32 = 0.01;
 
 lazy_static! {
-    /// GREEN, MAGENTA, CYAN, GRAY
+    /// The currently rendered channel
     static ref DISPLAY_COLOR: Point3<f32> = Point3::<f32>::new(GRAYSCALE_STEP, GRAYSCALE_STEP, GRAYSCALE_STEP);
 }
 
