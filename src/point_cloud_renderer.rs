@@ -63,6 +63,7 @@ pub trait PointDisplay {
     fn display_point(&mut self, p: &ImageCoor, c: &Point3<f32>, time: Picosecond);
     fn render(&mut self);
     fn hide(&mut self);
+    fn get_window(&mut self) -> &mut Window;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -157,6 +158,10 @@ impl PointDisplay for DisplayChannel {
     fn hide(&mut self) {
         self.window.hide();
     }
+
+    fn get_window(&mut self) -> &mut Window {
+        &mut self.window
+    }
 }
 
 impl DisplayChannel {
@@ -164,10 +169,6 @@ impl DisplayChannel {
         let mut window = Window::new_with_size(title, width, height);
         window.set_framerate_limit(Some(frame_rate));
         Self { window }
-    }
-
-    pub fn get_window(&mut self) -> &mut Window {
-        &mut self.window
     }
 }
 
@@ -498,7 +499,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     }
 }
 
-impl AppState<DisplayChannel, TcpStream> {
+impl<T: PointDisplay> AppState<T, TcpStream> {
     /// Main loop of the app. Following a bit of a setup, during each frame
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
@@ -522,31 +523,6 @@ impl AppState<DisplayChannel, TcpStream> {
         Ok(())
     }
 
-    /// Main loop of the app. Following a bit of a setup, during each frame
-    /// loop we advance the photon stream iterator until the first line event,
-    /// and then we iterate over all of the photons of that frame, until we
-    /// detect the last of the photons or a new frame signal.
-    pub fn start_acq_loop_for(&mut self, steps: usize, rolling_avg: u16) -> Result<()> {
-        self.acquire_stream_filehandle()?;
-        let mut events_after_newframe = self.advance_till_first_frame_line(None);
-        let rolling_avg = rolling_avg as usize;
-        let mut frame_number = 1usize;
-        for _ in 0..steps {
-            debug!("Starting population");
-            events_after_newframe = self.populate_single_frame(events_after_newframe);
-            if frame_number % rolling_avg == 0 {
-                debug!("Calling render");
-                self.channels.channel_merge.render();
-            };
-            frame_number += 1;
-            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
-        }
-        info!("Acq loop done");
-        Ok(())
-    }
-}
-
-impl<T: PointDisplay> AppState<T, TcpStream> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     fn acquire_stream_filehandle(&mut self) -> Result<()> {
         if self.data_stream.is_none() {
@@ -569,7 +545,7 @@ impl<T: PointDisplay> AppState<T, File> {
     /// Instantiate an IPC StreamReader using an existing file handle.
     ///
     /// Used for testing purposes.
-    pub fn acquire_file_filehandle(&mut self) -> Result<()> {
+    pub fn acquire_filehandle(&mut self) -> Result<()> {
         if self.data_stream.is_none() {
             let mut reader =
                 File::open(&self.data_stream_fh).context("Can't open stream file, exiting.")?;
@@ -580,6 +556,29 @@ impl<T: PointDisplay> AppState<T, File> {
         } else {
             debug!("File handle already acquired.");
         }
+        Ok(())
+    }
+
+    /// Main loop of the app. Following a bit of a setup, during each frame
+    /// loop we advance the photon stream iterator until the first line event,
+    /// and then we iterate over all of the photons of that frame, until we
+    /// detect the last of the photons or a new frame signal.
+    pub fn start_acq_loop_for(&mut self, steps: usize, rolling_avg: u16) -> Result<()> {
+        self.acquire_filehandle()?;
+        let mut events_after_newframe = self.advance_till_first_frame_line(None);
+        let rolling_avg = rolling_avg as usize;
+        let mut frame_number = 1usize;
+        for _ in 0..steps {
+            debug!("Starting population");
+            events_after_newframe = self.populate_single_frame(events_after_newframe);
+            if frame_number % rolling_avg == 0 {
+                debug!("Calling render");
+                self.channels.channel_merge.render();
+            };
+            frame_number += 1;
+            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
+        }
+        info!("Acq loop done");
         Ok(())
     }
 }

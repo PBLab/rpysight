@@ -197,6 +197,7 @@ def run_tagger(cfg: str):
     channels = infer_channel_list_from_cfg(config)
     if channels:
         [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
+
     int_channels = [channel['channel'] for channel in channels]
     with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
         rt = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
