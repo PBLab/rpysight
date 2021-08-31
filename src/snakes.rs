@@ -1376,14 +1376,40 @@ mod tests {
         let config = setup_image_scanning_config().with_planes(10).build();
         let snake = ThreeDimensionalSnake::naive_init(&config);
         let sine = snake.create_planes_snake_imagespace(config.planes as usize);
-        let truth = DVector::from_vec(vec![
-            0.0f32, 0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0, -0.2, -0.4, -0.6, -0.8, -1.0,
-            -0.8, -0.6, -0.4, -0.2,
+        let truth: DVector<f32> = DVector::from_vec(vec![
+            0.0f32, 0.1, 0.2, 0.3, 0.4, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, -0.1, -0.2, -0.3, -0.4, -0.5,
+            -0.4, -0.3, -0.2, -0.1,
         ]);
         let _ = sine
             .iter()
             .zip(truth.iter())
-            .map(|x| assert_approx_eq!(x.0, x.1, OrderedFloat(0.001f32)));
+            .map(|x| assert_approx_eq!(x.0.into_inner(), x.1, 0.001f32));
+    }
+
+    #[test]
+    fn create_sine_imagespace_many_planes_2() {
+        let config = setup_image_scanning_config().with_planes(13).build();
+        let snake = ThreeDimensionalSnake::naive_init(&config);
+        let sine = snake.create_planes_snake_imagespace(config.planes as usize);
+        let truth: DVector<f32> = DVector::from_vec(vec![
+            -0.5,
+            -0.41666667,
+            -0.33333333,
+            -0.25,
+            -0.16666667,
+            -0.08333333,
+            0.,
+            0.08333333,
+            0.16666667,
+            0.25,
+            0.33333333,
+            0.41666667,
+            0.5,
+        ]);
+        let _ = sine
+            .iter()
+            .zip(truth.iter())
+            .map(|x| assert_approx_eq!(x.0.into_inner(), x.1, 0.001f32));
     }
 
     #[test]
