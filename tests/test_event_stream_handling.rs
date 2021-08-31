@@ -1,13 +1,15 @@
 extern crate log;
 use std::fs::File;
+use std::marker::PhantomData;
+use std::sync::{Mutex, RwLock};
 
-use lazy_static::lazy_static;
 use arrow2::datatypes::{DataType, Field, Schema};
 use arrow2::io::csv::read::{
     deserialize_batch, deserialize_column, read_rows, Reader, ReaderBuilder,
 };
 use arrow2::io::ipc::write::StreamWriter;
 use kiss3d::window::Window;
+use lazy_static::lazy_static;
 use log::*;
 use nalgebra::Point3;
 use ron::de::from_reader;
@@ -61,7 +63,7 @@ impl PointDisplay for PointLogger {
 
     fn render(&mut self) {}
     fn hide(&mut self) {}
-    fn get_window(&mut self) -> &mut Window { 
+    fn get_window(&mut self) -> &mut Window {
         &mut self.window
     }
 }
