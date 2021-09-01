@@ -42,7 +42,7 @@ const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 /// The gray level step that each photon adds to the current pixel. This is a
 /// poor man's brightness normalization mechanism
-const GRAYSCALE_STEP: f32 = 0.01;
+const GRAYSCALE_STEP: f32 = 0.05;
 
 lazy_static! {
     /// The currently rendered channel
