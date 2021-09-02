@@ -202,7 +202,8 @@ def run_tagger(cfg: str):
     with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
         rt = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
         fw = FileWriter(measure_group.getTagger(), config['filename'], int_channels)
-        measure_group.startFor(int(1_000_000e12))
+        # measure_group.startFor(int(1_000_000e12))
+        measure_group.startFor(int(900e12))
         measure_group.waitUntilFinished()
 
 

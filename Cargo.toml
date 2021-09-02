@@ -37,6 +37,6 @@ name = "librpysight"
 crate-type = ["cdylib", "rlib"]
 
 [package.metadata.maturin]
-requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=5.0.0", "toml>=0.10",]
+requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=5.0.0", "toml>=0.10", "docopt>=0.6"]
 classifier = ["Programming Language :: Python", "Programming Language :: Rust"]
 maintainer = "Hagai Har-Gil"
