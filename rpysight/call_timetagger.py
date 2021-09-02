@@ -18,8 +18,11 @@ import socket
 from time import sleep
 
 import numpy as np
+from numpy.testing._private.utils import measure
 import pyarrow as pa
 import toml
+
+from TimeTagger import FileWriter
 
 try:
     import TimeTagger
@@ -70,21 +73,16 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
             names=["type_", "missed_events", "channel", "time"],
         )
         self.schema = test_batch.schema
-        print("Starting socketing")
 
         self.socket = socket.socket()
-        print("got me socketing")
         self.socket.bind((HOST, PORT))
-        print("Bound")
         self.socket.listen()
-        print("listening")
-        self.conn, addr = self.socket.accept()
-        print("accepted")
+        self.conn, _ = self.socket.accept()
         self.socketfile = self.conn.makefile('wb')
-        print("makefile done")
         opts = pa.ipc.IpcWriteOptions(allow_64bit=True)
-        self.stream = pa.ipc.new_stream(self.socketfile, self.schema, options=opts)
-        print('self.stream done')
+        self.stream = pa.ipc.new_stream(
+            self.socketfile, self.schema, options=opts
+        )
         self.stream.write(test_batch)
 
     def __del__(self):
@@ -200,11 +198,14 @@ def run_tagger(cfg: str):
     channels = infer_channel_list_from_cfg(config)
     if channels:
         [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
+
+    int_channels = [channel['channel'] for channel in channels]
     with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
-        _ = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
-        measure_group.startFor(int(1_000_000e12))
+        rt = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
+        fw = FileWriter(measure_group.getTagger(), config['filename'], int_channels)
+        # measure_group.startFor(int(1_000_000e12))
+        measure_group.startFor(int(900e12))
         measure_group.waitUntilFinished()
-    print("TimeTagger has turned the measurement off")
 
 
 def replay_existing(cfg: str):

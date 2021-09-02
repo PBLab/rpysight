@@ -10,7 +10,7 @@ edition = "2018"
 kiss3d = "0.31"
 nalgebra = { version = "0.26", features = ["serde-serialize"] }
 pyo3 = { version = "0.14", features = ["extension-module", "auto-initialize"] }
-arrow2 = { git = "https://github.com/jorgecarleitao/arrow2" }
+arrow2 = "0.4"
 thiserror = "1.0"
 anyhow = "1.0"
 iced = { version = "0.3", features = ["image"] }
@@ -24,6 +24,9 @@ lazy_static = "1.4"
 futures = "0.3"
 itertools-num = "0.1"
 assert_approx_eq = "1.1.0"
+hashbrown = "0.11"
+ordered-float = { version = "2.7", features = ["serde"] }
+num-traits = "0.2"
 
 [dev-dependencies]
 ron = "0.6"
@@ -34,6 +37,6 @@ name = "librpysight"
 crate-type = ["cdylib", "rlib"]
 
 [package.metadata.maturin]
-requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=5.0.0", "toml>=0.10",]
+requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=5.0.0", "toml>=0.10", "docopt>=0.6"]
 classifier = ["Programming Language :: Python", "Programming Language :: Rust"]
 maintainer = "Hagai Har-Gil"

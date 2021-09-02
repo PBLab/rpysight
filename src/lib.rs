@@ -29,15 +29,24 @@ use crate::event_stream::ArrowIpcStream;
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{AppState, Channels, DisplayChannel};
 
+/// The port we use to transfer data from the Python process controlling the TT
+/// to the renderer.
 const TT_DATA_STREAM: &str = "127.0.0.1:64444";
+/// Filename with the code running the TT
 const CALL_TIMETAGGER_SCRIPT_NAME: &str = "rpysight/call_timetagger.py";
+/// Default configuration filename
 pub const DEFAULT_CONFIG_FNAME: &str = "default.toml";
+/// The function name that runs the TT with new data
 const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
+/// The function name that runs the TT in replay mode
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
+/// The gray level step that each photon adds to the current pixel. This is a
+/// poor man's brightness normalization mechanism
+const GRAYSCALE_STEP: f32 = 0.05;
 
 lazy_static! {
-    /// GREEN, MAGENTA, CYAN, GRAY
-    static ref DISPLAY_COLORS: [Point3<f32>; 4] = [Point3::<f32>::new(0.0, 1.0, 0.0), Point3::<f32>::new(1.0, 0.0, 1.0), Point3::<f32>::new(0.0, 1.0, 1.0), Point3::<f32>::new(1.0, 1.0, 1.0)];
+    /// The currently rendered channel
+    static ref DISPLAY_COLOR: Point3<f32> = Point3::<f32>::new(GRAYSCALE_STEP, GRAYSCALE_STEP, GRAYSCALE_STEP);
 }
 
 /// Load an existing configuration file or generate a new one with default
@@ -236,13 +245,18 @@ pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
     let _ = save_cfg(Some(config_name), &cfg).ok(); // errors are logged and quite irrelevant
     let fr = (&cfg).frame_rate().round() as u64;
     let channels = generate_windows(cfg.rows, cfg.columns, fr);
-    let mut app =
-        AppState::<DisplayChannel, TcpStream>::new(channels, TT_DATA_STREAM.to_string(), cfg.clone());
+    let rolling_avg: u16 = cfg.rolling_avg;
+    let mut app = AppState::<DisplayChannel, TcpStream>::new(
+        channels,
+        TT_DATA_STREAM.to_string(),
+        cfg.clone(),
+    );
     debug!("Renderer set up correctly");
     std::thread::spawn(move || {
         start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
     });
-    app.start_inf_acq_loop().expect("Some error during acq");
+    app.start_inf_acq_loop(rolling_avg)
+        .expect("Some error during acq");
 }
 
 /// Saves the current configuration to disk.

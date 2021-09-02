@@ -1,10 +1,15 @@
 extern crate log;
 use std::fs::File;
-use std::sync::Arc;
+use std::marker::PhantomData;
+use std::sync::{Mutex, RwLock};
 
 use arrow2::datatypes::{DataType, Field, Schema};
-use arrow2::io::csv::read::Reader;
+use arrow2::io::csv::read::{
+    deserialize_batch, deserialize_column, read_rows, Reader, ReaderBuilder,
+};
 use arrow2::io::ipc::write::StreamWriter;
+use kiss3d::window::Window;
+use lazy_static::lazy_static;
 use log::*;
 use nalgebra::Point3;
 use ron::de::from_reader;
@@ -13,8 +18,9 @@ use serde::{Deserialize, Serialize};
 use librpysight::configuration::{
     AppConfig, AppConfigBuilder, Bidirectionality, InputChannel, Period,
 };
-use librpysight::event_stream::{ArrowIpcStream, TimeTaggerIpcHandler};
-use librpysight::point_cloud_renderer::{AppState, ChannelNames, Channels, PointDisplay};
+use librpysight::point_cloud_renderer::{
+    AppState, ChannelNames, Channels, ImageCoor, PointDisplay,
+};
 use librpysight::snakes::{Picosecond, TimeCoordPair};
 
 const FULL_BATCH_DATA: &'static str = "tests/data/real_record_batch.csv";
@@ -43,17 +49,23 @@ impl PointLogger {
 }
 
 impl PointDisplay for PointLogger {
-    fn display_point(&mut self, p: Point3<f32>, c: Point3<f32>, time: Picosecond) {
+    fn display_point(&mut self, p: &ImageCoor, c: &Point3<f32>, time: Picosecond) {
         let contains_nan = p.iter().any(|x| x.is_nan());
         if contains_nan {
             return;
         };
-        self.rendered_events_loc.push(TimeCoordPair::new(time, p));
-        self.rendered_events_color.push(TimeCoordPair::new(time, c));
+        self.rendered_events_loc.push(TimeCoordPair::new(time, *p));
+        self.rendered_events_color.push(TimeCoordPair::new(
+            time,
+            Point3::new(c.x.into(), c.y.into(), c.z.into()),
+        ));
     }
 
     fn render(&mut self) {}
     fn hide(&mut self) {}
+    fn get_window(&mut self) -> &mut Window {
+        &mut self.window
+    }
 }
 
 /// Run once to generate .dat file which behave as streams
@@ -82,17 +94,12 @@ fn test_file_to_stream() {
     ) {
         let stream_file = File::create(stream).unwrap();
         let mut stream_writer = StreamWriter::try_new(stream_file, &schema).unwrap();
-        let mut r = Reader::new(
-            File::open(data).unwrap(),
-            Arc::new(schema.clone()),
-            true,
-            None,
-            1024,
-            None,
-            None,
-        );
+        let mut reader = ReaderBuilder::new().from_path(data).unwrap();
         info!("Reader initialized, writing data");
-        stream_writer.write(&r.next().unwrap().unwrap()).unwrap();
+        let mut rows = Vec::new();
+        let _ = read_rows(&mut reader, 0, &mut rows);
+        let batch = deserialize_batch(&rows, schema.fields(), None, 0, deserialize_column).unwrap();
+        stream_writer.write(&batch);
     }
 }
 
@@ -123,15 +130,14 @@ pub fn setup_logger() {
 
 /// Start a logger, generate a default config file (if given none) and generate
 /// a data stream from one of the CSV files.
-fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, ArrowIpcStream> {
+fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, File> {
     setup_logger();
     test_file_to_stream();
     let cfg = cfg.unwrap_or(AppConfigBuilder::default().with_planes(1).build());
     let channels = generate_mock_channels();
     info!("{:?}", channels);
-    let stream = ArrowIpcStream::new(csv_to_stream.to_string());
-    let mut app = AppState::new(channels, stream, cfg);
-    app.stream.acquire_stream_filehandle().unwrap();
+    let mut app = AppState::new(channels, csv_to_stream.to_string(), cfg);
+    app.acquire_filehandle().unwrap();
     app.channels.hide_all();
     app
 }
@@ -140,7 +146,7 @@ fn setup(csv_to_stream: &str, cfg: Option<AppConfig>) -> AppState<PointLogger, A
 fn assert_full_stream_exists() {
     test_file_to_stream();
     let mut app = setup(FULL_BATCH_STREAM, None);
-    if let Some(batch) = app.stream.get_mut_data_stream().unwrap().next() {
+    if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
     }
@@ -150,7 +156,7 @@ fn assert_full_stream_exists() {
 fn assert_short_stream_exists() {
     test_file_to_stream();
     let mut app = setup(SHORT_BATCH_STREAM, None);
-    if let Some(batch) = app.stream.get_mut_data_stream().unwrap().next() {
+    if let Some(batch) = app.data_stream.as_mut().unwrap().next() {
         let _ = batch.unwrap();
         assert!(true)
     }
@@ -167,7 +173,7 @@ fn stepwise_short_bidir_single_frame() {
         .with_line_ch(InputChannel::new(9, 0.0))
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
-    app.start_acq_loop_for(1).unwrap();
+    app.start_acq_loop_for(1, 1).unwrap();
     // to_writer_pretty(File::create("tests/data/short_batch_bidir_valid.ron").unwrap(), &app.channels[ChannelNames::ChannelMerge], PrettyConfig::new()).unwrap();
     let original: PointLogger =
         from_reader(File::open("tests/data/short_batch_bidir_valid.ron").unwrap()).unwrap();
@@ -185,7 +191,7 @@ fn stepwise_short_unidir_single_frame() {
         .with_bidir(Bidirectionality::Unidir)
         .build();
     let mut app = setup(SHORT_BATCH_STREAM, Some(cfg));
-    app.start_acq_loop_for(1).unwrap();
+    app.start_acq_loop_for(1, 1).unwrap();
     // to_writer_pretty(File::create("tests/data/short_batch_unidir_valid.ron").unwrap(), &app.channels[ChannelNames::ChannelMerge], PrettyConfig::new()).unwrap();
     let original: PointLogger =
         from_reader(File::open("tests/data/short_batch_unidir_valid.ron").unwrap()).unwrap();

@@ -199,6 +199,7 @@ pub struct AppConfig {
     pub(crate) fill_fraction: f32, // (0..100)
     pub(crate) frame_dead_time: Picosecond,
     pub(crate) replay_existing: bool,
+    pub(crate) rolling_avg: u16,
     pub(crate) line_shift: Picosecond,
     pub(crate) bidir: Bidirectionality,
     pub(crate) point_color: Point3<f32>,
@@ -283,6 +284,7 @@ impl AppConfig {
                 user_input.get_tag_channel(),
             ))
             .with_replay_existing(user_input.get_replay_existing())
+            .with_rolling_avg(user_input.get_rolling_avg())
             .with_ignored_channels(convert_ignored_to_vec(user_input.get_ignored_channels()))
             .with_line_shift(user_input.get_line_shift().parse::<Picosecond>().unwrap())
             .build())
@@ -388,6 +390,7 @@ pub struct AppConfigBuilder {
     fill_fraction: f32, // (0..100)
     frame_dead_time: Picosecond,
     replay_existing: bool,
+    rolling_avg: u16,
     line_shift: Picosecond,
     pmt1_ch: InputChannel,
     pmt2_ch: InputChannel,
@@ -414,6 +417,7 @@ impl AppConfigBuilder {
             tag_period: Period::from_freq(189800.0),
             bidir: Bidirectionality::Bidir,
             replay_existing: false,
+            rolling_avg: 1,
             fill_fraction: 71.0,
             frame_dead_time: 1_310_000_000,
             line_shift: 0,
@@ -439,6 +443,7 @@ impl AppConfigBuilder {
             scan_period: self.scan_period,
             tag_period: self.tag_period,
             bidir: self.bidir,
+            rolling_avg: self.rolling_avg,
             fill_fraction: self.fill_fraction,
             frame_dead_time: self.frame_dead_time,
             pmt1_ch: self.pmt1_ch,
@@ -495,6 +500,11 @@ impl AppConfigBuilder {
 
     pub fn with_bidir<T: Into<Bidirectionality>>(&mut self, bidir: T) -> &mut Self {
         self.bidir = bidir.into();
+        self
+    }
+
+    pub fn with_rolling_avg(&mut self, rolling_avg: u16) -> &mut Self {
+        self.rolling_avg = rolling_avg;
         self
     }
 
@@ -590,6 +600,7 @@ mod tests {
             .with_scan_period(Period::from_freq(7926.17))
             .with_tag_period(Period::from_freq(189800))
             .with_bidir(Bidirectionality::Bidir)
+            .with_rolling_avg(1)
             .with_fill_fraction(71.3)
             .with_frame_dead_time(8 * *Period::from_freq(7926.17))
             .with_pmt1_ch(InputChannel::new(-1, 0.0))

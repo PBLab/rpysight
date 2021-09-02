@@ -7,23 +7,35 @@ use std::f32::consts::PI;
 use std::ops::Index;
 
 use itertools_num::linspace;
-use nalgebra::{DVector, Point3};
+use nalgebra::DVector;
+use num_traits::{FromPrimitive, ToPrimitive};
+use ordered_float::{Float, OrderedFloat};
 use serde::{Deserialize, Serialize};
 
 use crate::configuration::{AppConfig, Bidirectionality, Period};
 use crate::point_cloud_renderer::{ImageCoor, ProcessedEvent};
-use crate::DISPLAY_COLORS;
+use crate::DISPLAY_COLOR;
+
+/// The image bounds as the renderer requires - start, center and end
+const RENDERING_BOUNDS: (OrderedFloat<f32>, OrderedFloat<f32>, OrderedFloat<f32>) =
+    (OrderedFloat(-0.5), OrderedFloat(0.0), OrderedFloat(0.5));
+/// Step size between planes is affected by the total "length" or span of the rendered
+/// volume.
+const RENDERING_SPAN: OrderedFloat<f32> = OrderedFloat(1.0);
 
 /// TimeTagger absolute times are i64 values that represent the number of
 /// picoseconds since the start of the experiment
 pub type Picosecond = i64;
+/// Image coordinates are floating point values in the range [-1, 1]. We use
+/// OrderedFloat to allow them to be hashed and compared.
+pub type Coordinate = OrderedFloat<f32>;
 
 /// Marker trait to allow specific types to be used as deltas between pixels -
 /// for the image space rendering case the deltas are in f32, while for the
 /// rendering the deltas are in Picoseconds.
 pub trait ImageDelta {}
 
-impl ImageDelta for f32 {}
+impl ImageDelta for Coordinate {}
 impl ImageDelta for Picosecond {}
 
 /// Data regarding the step size, either in image space or in picoseconds, that
@@ -36,22 +48,22 @@ pub struct VoxelDelta<T: ImageDelta> {
     frame: T,
 }
 
-impl VoxelDelta<f32> {
-    pub(crate) fn from_config(config: &AppConfig) -> VoxelDelta<f32> {
-        let jump_between_columns = 2.0f32 / (config.columns as f32 - 1.0);
-        let jump_between_rows = 2.0f32 / (config.rows as f32 - 1.0);
-        let jump_between_planes: f32;
+impl VoxelDelta<Coordinate> {
+    pub(crate) fn from_config(config: &AppConfig) -> VoxelDelta<Coordinate> {
+        let jump_between_columns = RENDERING_SPAN / OrderedFloat(config.columns as f32 - 1.0);
+        let jump_between_rows = RENDERING_SPAN / OrderedFloat(config.rows as f32 - 1.0);
+        let jump_between_planes: OrderedFloat<f32>;
         if config.planes > 1 {
-            jump_between_planes = 2.0f32 / (config.planes as f32 - 1.0);
+            jump_between_planes = RENDERING_SPAN / OrderedFloat(config.planes as f32 - 1.0);
         } else {
-            jump_between_planes = 2.0;
+            jump_between_planes = RENDERING_SPAN;
         }
 
         VoxelDelta {
             column: jump_between_columns,
             row: jump_between_rows,
             plane: jump_between_planes,
-            frame: f32::NAN,
+            frame: OrderedFloat::nan(),
         }
     }
 }
@@ -134,32 +146,34 @@ impl TimeCoordPair {
 /// could potentially be faster.
 #[derive(Clone, Debug)]
 struct IntervalToCoordMap {
-    im_vec: DVector<f32>,
+    im_vec: DVector<Coordinate>,
     time_vec: DVector<Picosecond>,
 }
 
 impl IntervalToCoordMap {
-    pub fn new(im_vec: DVector<f32>, time_vec: DVector<Picosecond>) -> Self {
+    /// Creata a new map with the given two sets of data
+    pub fn new(im_vec: DVector<Coordinate>, time_vec: DVector<Picosecond>) -> Self {
         assert_eq!(im_vec.len(), time_vec.len());
         Self { im_vec, time_vec }
     }
 
+    /// Create an empty map, possibly for naive instatiation
     pub fn empty() -> Self {
         Self {
-            im_vec: DVector::from_vec(vec![0.0f32]),
+            im_vec: DVector::from_vec(vec![OrderedFloat(0.0f32)]),
             time_vec: DVector::from_vec(vec![0i64]),
         }
     }
 }
 
 impl Index<Picosecond> for IntervalToCoordMap {
-    type Output = f32;
+    type Output = Coordinate;
 
     fn index(&self, time: Picosecond) -> &Self::Output {
         let idx = self.time_vec.iter().position(|x| time <= *x);
         match idx {
             Some(loc) => &self.im_vec[loc],
-            None => &0.0f32,
+            None => &OrderedFloat(0.0f32),
         }
     }
 }
@@ -238,16 +252,16 @@ pub trait Snake {
     fn construct_row_im_snake(
         &self,
         num_columns: usize,
-        voxel_delta_im: &VoxelDelta<f32>,
-    ) -> DVector<f32> {
-        let column_deltas_imagespace =
-            DVector::<f32>::from_fn(num_columns, |i, _| ((i as f32) * voxel_delta_im.column));
+        voxel_delta_im: &VoxelDelta<Coordinate>,
+    ) -> DVector<Coordinate> {
+        let column_deltas_imagespace = DVector::<Coordinate>::from_fn(num_columns, |i, _| {
+            OrderedFloat::<f32>::from_usize(i).unwrap() * voxel_delta_im.column
+        });
         // The events during mirror rotation will be discarded - The NaN takes
         // care of that
-        let column_deltas_imagespace =
-            column_deltas_imagespace
-                .add_scalar(-1.0)
-                .insert_rows(num_columns, 1, f32::NAN);
+        let column_deltas_imagespace = column_deltas_imagespace
+            .add_scalar(RENDERING_BOUNDS.0)
+            .insert_rows(num_columns, 1, OrderedFloat(f32::NAN));
         column_deltas_imagespace
     }
 
@@ -255,12 +269,15 @@ pub trait Snake {
     ///
     /// The odd rows should have the order of the cells in their snakes
     /// reversed.
-    fn reverse_row_imagespace(&self, column_deltas_imagespace: &DVector<f32>) -> DVector<f32> {
-        let mut column_deltas_imagespace_rev: Vec<f32> = (column_deltas_imagespace
+    fn reverse_row_imagespace(
+        &self,
+        column_deltas_imagespace: &DVector<Coordinate>,
+    ) -> DVector<Coordinate> {
+        let mut column_deltas_imagespace_rev: Vec<Coordinate> = (column_deltas_imagespace
             .iter()
             .rev()
             .copied()
-            .collect::<Vec<f32>>())
+            .collect::<Vec<Coordinate>>())
         .clone();
         let nan = column_deltas_imagespace_rev.remove(0);
         column_deltas_imagespace_rev.push(nan);
@@ -310,7 +327,7 @@ pub trait Snake {
     ///
     /// In the 2D case this method should be left unimplemented.
     fn update_z_coord(&self, _coord: ImageCoor, _time: Picosecond) -> ImageCoor {
-        ImageCoor::new(0.0, 0.0, 0.0)
+        ImageCoor::new(RENDERING_BOUNDS.1, RENDERING_BOUNDS.1, RENDERING_BOUNDS.1)
     }
 
     /// Handles a new TAG lens start-of-cycle event
@@ -375,7 +392,7 @@ pub struct TwoDimensionalSnake {
     /// Deltas in ps of consecutive pixels, lines, etc.
     voxel_delta_ps: VoxelDelta<Picosecond>,
     /// Deltas in image space of consecutive pixels, lines, etc.
-    voxel_delta_im: VoxelDelta<f32>,
+    voxel_delta_im: VoxelDelta<Coordinate>,
     /// The earliest time of the first voxel
     earliest_frame_time: Picosecond,
     /// The time it takes the software to finish a full frame, not including
@@ -402,7 +419,7 @@ pub struct ThreeDimensionalSnake {
     /// Deltas in ps of consecutive pixels, lines, etc.
     voxel_delta_ps: VoxelDelta<Picosecond>,
     /// Deltas in image space of consecutive pixels, lines, etc.
-    voxel_delta_im: VoxelDelta<f32>,
+    voxel_delta_im: VoxelDelta<Coordinate>,
     /// The earliest time of the first voxel
     earliest_frame_time: Picosecond,
     /// The time it takes the software to finish a full frame, not including
@@ -423,7 +440,7 @@ impl TwoDimensionalSnake {
     /// initialize this object is using the "from_acq_params" function.
     pub fn naive_init(config: &AppConfig) -> Self {
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
-        let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
+        let voxel_delta_im = VoxelDelta::<Coordinate>::from_config(&config);
 
         Self {
             data: Vec::new(),
@@ -455,7 +472,7 @@ impl TwoDimensionalSnake {
         mut self,
         config: &AppConfig,
         column_deltas_ps: &mut DVector<Picosecond>,
-        column_deltas_imagespace: &DVector<f32>,
+        column_deltas_imagespace: &DVector<Coordinate>,
         offset: Picosecond,
     ) -> TwoDimensionalSnake {
         // Add the cell capturing all photons arriving between frames
@@ -464,10 +481,10 @@ impl TwoDimensionalSnake {
         let column_deltas_imagespace_rev = self.reverse_row_imagespace(column_deltas_imagespace);
         let column_deltas_ps_bidir =
             self.reverse_row_picosecond(column_deltas_ps, config.line_shift);
-        let mut row_coord: f32;
+        let mut row_coord: Coordinate;
         for row in (0..config.rows).step_by(2) {
             // Start with the unidir row
-            row_coord = ((row as f32) * self.voxel_delta_im.row) - 1.0;
+            row_coord = (OrderedFloat(row as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             TwoDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace,
@@ -477,7 +494,8 @@ impl TwoDimensionalSnake {
             );
             line_offset += deadtime_during_rotation;
             // Now the bidir row
-            row_coord = (((row + 1) as f32) * self.voxel_delta_im.row) - 1.0;
+            row_coord =
+                (OrderedFloat((row + 1) as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             TwoDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace_rev,
@@ -509,16 +527,16 @@ impl TwoDimensionalSnake {
     /// paraneters.
     fn push_pair_unidir(
         snake: &mut Vec<TimeCoordPair>,
-        column_deltas_imagespace: &DVector<f32>,
+        column_deltas_imagespace: &DVector<Coordinate>,
         column_deltas_ps: &DVector<Picosecond>,
-        row_coord: f32,
+        row_coord: Coordinate,
         line_offset: Picosecond,
     ) {
         for (column_delta_im, column_delta_ps) in column_deltas_imagespace
             .into_iter()
             .zip(column_deltas_ps.into_iter())
         {
-            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.0);
+            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, OrderedFloat(0.0));
             snake.push(TimeCoordPair::new(
                 column_delta_ps + line_offset,
                 cur_imcoor,
@@ -530,7 +548,7 @@ impl TwoDimensionalSnake {
         mut self,
         config: &AppConfig,
         column_deltas_ps: &mut DVector<Picosecond>,
-        column_deltas_imagespace: &DVector<f32>,
+        column_deltas_imagespace: &DVector<Coordinate>,
         offset: Picosecond,
     ) -> TwoDimensionalSnake {
         // Add the cell capturing all photons arriving between frames
@@ -538,7 +556,8 @@ impl TwoDimensionalSnake {
         let offset_per_row = column_deltas_ps[line_len - 1];
         let mut line_offset: Picosecond = offset;
         for row in 0..config.rows {
-            let row_coord = ((row as f32) * self.voxel_delta_im.row) - 1.0;
+            let row_coord =
+                (OrderedFloat(row as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             TwoDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace,
@@ -577,7 +596,7 @@ impl ThreeDimensionalSnake {
     /// initialize this object is using the "from_acq_params" function.
     fn naive_init(config: &AppConfig) -> Self {
         let voxel_delta_ps = VoxelDelta::<Picosecond>::from_config(&config);
-        let voxel_delta_im = VoxelDelta::<f32>::from_config(&config);
+        let voxel_delta_im = VoxelDelta::<Coordinate>::from_config(&config);
 
         Self {
             data: Vec::new(),
@@ -594,16 +613,16 @@ impl ThreeDimensionalSnake {
 
     fn push_pair_unidir(
         snake: &mut Vec<TimeCoordPair>,
-        column_deltas_imagespace: &DVector<f32>,
+        column_deltas_imagespace: &DVector<Coordinate>,
         column_deltas_ps: &DVector<Picosecond>,
-        row_coord: f32,
+        row_coord: Coordinate,
         line_offset: Picosecond,
     ) {
         for (column_delta_im, column_delta_ps) in column_deltas_imagespace
             .into_iter()
             .zip(column_deltas_ps.into_iter())
         {
-            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, 0.0);
+            let cur_imcoor = ImageCoor::new(row_coord, *column_delta_im, OrderedFloat(0.0));
             snake.push(TimeCoordPair::new(
                 column_delta_ps + line_offset,
                 cur_imcoor,
@@ -617,20 +636,33 @@ impl ThreeDimensionalSnake {
     /// dividing the Z axis into three parts, in accordance with a sine curve:
     /// The rising part (up to pi/2), the decending part (pi/2, 3pi/2) and the
     // last rise (3pi/2, 2pi).
-    fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<f32> {
-        let step_size = 2.0f32 / (planes as f32);
+    fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<Coordinate> {
+        let step_size = RENDERING_SPAN / OrderedFloat(planes as f32);
         let half_planes = planes / 2 + 1;
-        let phase_limits_0_to_1 =
-            DVector::<f32>::from_iterator(half_planes, linspace::<f32>(0.0, 1.0, half_planes));
-        let phase_limits_1_to_m1 = DVector::<f32>::from_iterator(
+        let phase_limits_0_to_1 = DVector::<Coordinate>::from_iterator(
+            half_planes,
+            linspace::<Coordinate>(RENDERING_BOUNDS.1, RENDERING_BOUNDS.2, half_planes),
+        );
+        let phase_limits_1_to_m1 = DVector::<Coordinate>::from_iterator(
             planes - 1,
-            linspace::<f32>(1.0 - step_size, -1.0 + step_size, planes - 1),
+            linspace::<Coordinate>(
+                RENDERING_BOUNDS.2 - step_size,
+                RENDERING_BOUNDS.0 + step_size,
+                planes - 1,
+            ),
         );
-        let phase_limits_m1_to_0 = DVector::<f32>::from_iterator(
+        let phase_limits_m1_to_0 = DVector::<Coordinate>::from_iterator(
             half_planes - 1,
-            linspace::<f32>(-1.0, 0.0 - step_size, half_planes - 1),
+            linspace::<Coordinate>(
+                RENDERING_BOUNDS.0,
+                RENDERING_BOUNDS.1 - step_size,
+                half_planes - 1,
+            ),
         );
-        let mut all_phases = DVector::<f32>::repeat(half_planes + half_planes + planes - 2, 0.0f32);
+        let mut all_phases = DVector::<Coordinate>::repeat(
+            half_planes + half_planes + planes - 2,
+            OrderedFloat(0.0f32),
+        );
         all_phases
             .rows_mut(0, phase_limits_0_to_1.len())
             .set_column(0, &phase_limits_0_to_1);
@@ -638,7 +670,10 @@ impl ThreeDimensionalSnake {
             .rows_mut(phase_limits_0_to_1.len(), phase_limits_1_to_m1.len())
             .set_column(0, &phase_limits_1_to_m1);
         all_phases
-            .rows_mut(phase_limits_0_to_1.len() + phase_limits_1_to_m1.len(), phase_limits_m1_to_0.len())
+            .rows_mut(
+                phase_limits_0_to_1.len() + phase_limits_1_to_m1.len(),
+                phase_limits_m1_to_0.len(),
+            )
             .set_column(0, &phase_limits_m1_to_0);
         all_phases
     }
@@ -651,16 +686,16 @@ impl ThreeDimensionalSnake {
     // last rise (3pi/2, 2pi).
     fn create_planes_snake_ps(
         &self,
-        planes: &DVector<f32>,
+        planes: &DVector<Coordinate>,
         period: Picosecond,
     ) -> DVector<Picosecond> {
-        let quarter_period = (period / 4) as f32;
+        let quarter_period = OrderedFloat::from_i64(period / 4).unwrap();
         let num_planes = planes.len();
         let firstq = num_planes / 4;
         let half = num_planes / 2;
         let lastq = 3 * num_planes / 4;
         let mut asin = planes.map(|x| x.asin() / (PI / 2.0));
-        let mut sine_ps = DVector::<f32>::repeat(num_planes, quarter_period);
+        let mut sine_ps = DVector::<Coordinate>::repeat(num_planes, quarter_period);
         // First quarter of phase
         sine_ps
             .rows_mut(0, firstq)
@@ -668,23 +703,19 @@ impl ThreeDimensionalSnake {
         // Middle two quarters
         sine_ps
             .rows_mut(firstq, half)
-            .component_mul_assign(
-                &asin
-                    .rows_mut(firstq, half)
-                    .map(|x| 1.0 - x),
-            );
-        sine_ps.rows_mut(firstq, half).add_scalar_mut(quarter_period);
+            .component_mul_assign(&asin.rows_mut(firstq, half).map(|x| OrderedFloat(1.0) - x));
+        sine_ps
+            .rows_mut(firstq, half)
+            .add_scalar_mut(quarter_period);
         // Last quarter
         sine_ps
             .rows_mut(lastq, firstq)
-            .component_mul_assign(
-                &asin
-                    .rows_mut(lastq, firstq)
-                    .map(|x| 1.0 + x),
-            );
-        sine_ps.rows_mut(lastq, firstq).add_scalar_mut(3.0 * quarter_period);
+            .component_mul_assign(&asin.rows_mut(lastq, firstq).map(|x| OrderedFloat(1.0) + x));
+        sine_ps
+            .rows_mut(lastq, firstq)
+            .add_scalar_mut(OrderedFloat(3.0) * quarter_period);
 
-        sine_ps.map(|x| (x as Picosecond))
+        sine_ps.map(|x| x.to_i64().unwrap())
     }
 
     /// Constructs the 1D vector mapping the time of arrival to image-space
@@ -706,18 +737,19 @@ impl ThreeDimensionalSnake {
         mut self,
         config: &AppConfig,
         column_deltas_ps: &mut DVector<Picosecond>,
-        column_deltas_imagespace: &DVector<f32>,
+        column_deltas_imagespace: &DVector<Coordinate>,
         offset: Picosecond,
     ) -> Self {
         // Add the cell capturing all photons arriving between frames
         let deadtime_during_rotation = column_deltas_ps[column_deltas_ps.len() - 1];
         let mut line_offset: Picosecond = offset;
         let column_deltas_imagespace_rev = self.reverse_row_imagespace(column_deltas_imagespace);
-        let column_deltas_ps_bidir = self.reverse_row_picosecond(column_deltas_ps, -2000000);
-        let mut row_coord: f32;
+        let column_deltas_ps_bidir =
+            self.reverse_row_picosecond(column_deltas_ps, config.line_shift);
+        let mut row_coord: Coordinate;
         for row in (0..config.rows).step_by(2) {
             // Start with the unidir row
-            row_coord = ((row as f32) * self.voxel_delta_im.row) - 1.0;
+            row_coord = (OrderedFloat(row as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             ThreeDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace,
@@ -727,7 +759,8 @@ impl ThreeDimensionalSnake {
             );
             line_offset += deadtime_during_rotation;
             // Now the bidir row
-            row_coord = (((row + 1) as f32) * self.voxel_delta_im.row) - 1.0;
+            row_coord =
+                (OrderedFloat((row + 1) as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             ThreeDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace_rev,
@@ -760,7 +793,7 @@ impl ThreeDimensionalSnake {
         mut self,
         config: &AppConfig,
         column_deltas_ps: &mut DVector<Picosecond>,
-        column_deltas_imagespace: &DVector<f32>,
+        column_deltas_imagespace: &DVector<Coordinate>,
         offset: Picosecond,
     ) -> ThreeDimensionalSnake {
         // Add the cell capturing all photons arriving between frames
@@ -768,7 +801,8 @@ impl ThreeDimensionalSnake {
         let offset_per_row = column_deltas_ps[line_len - 1];
         let mut line_offset: Picosecond = offset;
         for row in 0..config.rows {
-            let row_coord = ((row as f32) * self.voxel_delta_im.row) - 1.0;
+            let row_coord =
+                (OrderedFloat(row as f32) * self.voxel_delta_im.row) + RENDERING_BOUNDS.0;
             ThreeDimensionalSnake::push_pair_unidir(
                 &mut self.data,
                 &column_deltas_imagespace,
@@ -816,7 +850,11 @@ impl Snake for TwoDimensionalSnake {
         twod_snake.data = twod_snake.allocate_snake(&config);
         twod_snake.data.push(TimeCoordPair::new(
             offset,
-            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
+            ImageCoor::new(
+                OrderedFloat(f32::NAN),
+                OrderedFloat(f32::NAN),
+                OrderedFloat(f32::NAN),
+            ),
         ));
         let num_columns = config.columns as usize;
         let mut column_deltas_ps =
@@ -897,7 +935,7 @@ impl Snake for TwoDimensionalSnake {
         // Makes sure that we indeed captured some cell. This can be avoided in
         // principle but I'm still not confident enough in this implementation.
         if let Some(coord) = coord {
-            ProcessedEvent::Displayed(coord, DISPLAY_COLORS[ch])
+            ProcessedEvent::Displayed(coord, *DISPLAY_COLOR)
         } else {
             error!(
                 "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
@@ -918,7 +956,7 @@ impl Snake for TwoDimensionalSnake {
     fn update_snake_for_next_frame(&mut self, next_frame_at: Picosecond) {
         if next_frame_at == self.earliest_frame_time {
             info!("Already updated the next frame");
-            return
+            return;
         }
         self.last_accessed_idx = 0;
         let offset = next_frame_at - self.earliest_frame_time;
@@ -938,7 +976,11 @@ impl Snake for ThreeDimensionalSnake {
         threed_snake.data = threed_snake.allocate_snake(&config);
         threed_snake.data.push(TimeCoordPair::new(
             offset,
-            ImageCoor::new(f32::NAN, f32::NAN, f32::NAN),
+            ImageCoor::new(
+                OrderedFloat(f32::NAN),
+                OrderedFloat(f32::NAN),
+                OrderedFloat(f32::NAN),
+            ),
         ));
         let num_columns = config.columns as usize;
         let mut column_deltas_ps =
@@ -978,10 +1020,6 @@ impl Snake for ThreeDimensionalSnake {
         let mut coord = None;
         for pair in &self.data[self.last_accessed_idx..] {
             if time <= pair.end_time {
-                trace!(
-                    "Found a point on the snake! Pair: {:?}; Time: {}; Additional steps taken: {}; Channel: {}",
-                    pair, time, additional_steps_taken, ch
-                );
                 self.last_accessed_idx += additional_steps_taken;
                 coord = Some(self.update_z_coord(pair.coord, time));
                 break;
@@ -991,7 +1029,8 @@ impl Snake for ThreeDimensionalSnake {
         // Makes sure that we indeed captured some cell. This can be avoided in
         // principle but I'm still not confident enough in this implementation.
         if let Some(coord) = coord {
-            ProcessedEvent::Displayed(coord, DISPLAY_COLORS[ch])
+            trace!("Found a point on the snake! Time: {}; Additional steps taken: {}; Channel: {}. The coord we're sending is: {:?}", time, additional_steps_taken, ch, coord);
+            ProcessedEvent::Displayed(coord, *DISPLAY_COLOR)
         } else {
             error!(
                 "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
@@ -1002,8 +1041,8 @@ impl Snake for ThreeDimensionalSnake {
         }
     }
 
-    fn update_z_coord(&self, coord: ImageCoor, time: Picosecond) -> Point3<f32> {
-        let tag_delta = self.last_taglens_time - time;
+    fn update_z_coord(&self, coord: ImageCoor, time: Picosecond) -> ImageCoor {
+        let tag_delta = time - self.last_taglens_time;
         ImageCoor::new(coord.x, coord.y, self.tag_deltas_to_coord[tag_delta])
     }
 
@@ -1031,8 +1070,8 @@ impl Snake for ThreeDimensionalSnake {
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::Point3;
     use assert_approx_eq::assert_approx_eq;
+    use nalgebra::Point3;
 
     use super::*;
     use crate::configuration::{AppConfigBuilder, InputChannel, Period};
@@ -1162,7 +1201,7 @@ mod tests {
             .with_columns(5)
             .with_planes(2)
             .build();
-        let vd = VoxelDelta::<f32>::from_config(&config);
+        let vd = VoxelDelta::<Coordinate>::from_config(&config);
         assert_eq!(vd.row, 1.0);
         assert_eq!(vd.column, 0.5);
         assert_eq!(vd.plane, 2.0);
@@ -1184,22 +1223,39 @@ mod tests {
         let snake = TwoDimensionalSnake::from_acq_params(&config, 0);
         assert_eq!(
             snake.data[1],
-            TimeCoordPair::new(25, ImageCoor::new(-1.0, -1.0, 0.0)),
+            TimeCoordPair::new(
+                25,
+                ImageCoor::new(OrderedFloat(-1.0), OrderedFloat(-1.0), OrderedFloat(0.0))
+            ),
         );
         assert_eq!(
             snake.data[12],
-            TimeCoordPair::new(525, ImageCoor::new(-1.0 + (2.0 / 9.0f32), 1.0, 0.0)),
+            TimeCoordPair::new(
+                525,
+                ImageCoor::new(
+                    OrderedFloat(-1.0 + (2.0 / 9.0f32)),
+                    OrderedFloat(1.0),
+                    OrderedFloat(0.0)
+                )
+            ),
         );
         assert_eq!(
             snake.data[35],
             TimeCoordPair::new(
                 1550,
-                ImageCoor::new(-1.0 + 3.0 * (2.0 / 9.0f32), 1.0 - (2.0 / 9.0f32), 0.0)
+                ImageCoor::new(
+                    OrderedFloat(-1.0 + 3.0 * (2.0 / 9.0f32)),
+                    OrderedFloat(1.0 - (2.0 / 9.0f32)),
+                    OrderedFloat(0.0)
+                )
             ),
         );
         assert_eq!(
             snake.data[snake.data.len() - 1],
-            TimeCoordPair::new(4750, ImageCoor::new(1.0, -1.0, 0.0))
+            TimeCoordPair::new(
+                4750,
+                ImageCoor::new(OrderedFloat(1.0), OrderedFloat(-1.0), OrderedFloat(0.0))
+            )
         );
         assert_eq!(snake.data.len() + 1, snake.data.capacity());
     }
@@ -1212,22 +1268,40 @@ mod tests {
         let snake = TwoDimensionalSnake::from_acq_params(&config, 0);
         assert_eq!(
             snake.data[1],
-            TimeCoordPair::new(25, ImageCoor::new(-1.0, -1.0, 0.0)),
+            TimeCoordPair::new(
+                25,
+                ImageCoor::new(RENDERING_BOUNDS.0, RENDERING_BOUNDS.0, RENDERING_BOUNDS.1)
+            ),
         );
         assert_eq!(
             snake.data[12],
-            TimeCoordPair::new(1275, ImageCoor::new(-1.0 + (2.0 / 9.0f32), -1.0, 0.0)),
+            TimeCoordPair::new(
+                1275,
+                ImageCoor::new(
+                    RENDERING_BOUNDS.0 + (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.0,
+                    RENDERING_BOUNDS.1
+                )
+            ),
         );
         assert_eq!(
             snake.data[35],
             TimeCoordPair::new(
                 3800,
-                ImageCoor::new(-1.0 + 3.0 * (2.0 / 9.0f32), -1.0 + (2.0 / 9.0f32), 0.0)
+                ImageCoor::new(
+                    RENDERING_BOUNDS.0
+                        + OrderedFloat(3.0) * (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.0 + (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.1
+                )
             ),
         );
         assert_eq!(
             snake.data[snake.data.len() - 1],
-            TimeCoordPair::new(11500, ImageCoor::new(1.0, 1.0, 0.0))
+            TimeCoordPair::new(
+                11500,
+                ImageCoor::new(RENDERING_BOUNDS.2, RENDERING_BOUNDS.2, RENDERING_BOUNDS.2)
+            )
         );
         assert_eq!(snake.data.len() + 1, snake.data.capacity());
         assert_eq!(snake.data.len() + 1, snake.data.capacity());
@@ -1302,11 +1376,40 @@ mod tests {
         let config = setup_image_scanning_config().with_planes(10).build();
         let snake = ThreeDimensionalSnake::naive_init(&config);
         let sine = snake.create_planes_snake_imagespace(config.planes as usize);
-        let truth = DVector::from_vec(vec![
-            0.0f32, 0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0, -0.2, -0.4, -0.6, -0.8,
-            -1.0, -0.8, -0.6, -0.4, -0.2
+        let truth: DVector<f32> = DVector::from_vec(vec![
+            0.0f32, 0.1, 0.2, 0.3, 0.4, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, -0.1, -0.2, -0.3, -0.4, -0.5,
+            -0.4, -0.3, -0.2, -0.1,
         ]);
-        let _ = sine.iter().zip(truth.iter()).map(|x| assert_approx_eq!(x.0, x.1, 0.001f32));
+        let _ = sine
+            .iter()
+            .zip(truth.iter())
+            .map(|x| assert_approx_eq!(x.0.into_inner(), x.1, 0.001f32));
+    }
+
+    #[test]
+    fn create_sine_imagespace_many_planes_2() {
+        let config = setup_image_scanning_config().with_planes(13).build();
+        let snake = ThreeDimensionalSnake::naive_init(&config);
+        let sine = snake.create_planes_snake_imagespace(config.planes as usize);
+        let truth: DVector<f32> = DVector::from_vec(vec![
+            -0.5,
+            -0.41666667,
+            -0.33333333,
+            -0.25,
+            -0.16666667,
+            -0.08333333,
+            0.,
+            0.08333333,
+            0.16666667,
+            0.25,
+            0.33333333,
+            0.41666667,
+            0.5,
+        ]);
+        let _ = sine
+            .iter()
+            .zip(truth.iter())
+            .map(|x| assert_approx_eq!(x.0.into_inner(), x.1, 0.001f32));
     }
 
     #[test]
@@ -1317,26 +1420,37 @@ mod tests {
         let sine = snake.create_planes_snake_imagespace(planes);
         let sine_ps = snake.create_planes_snake_ps(&sine, 1000);
         let truth = DVector::from_vec(vec![
-            0i64, 32, 65, 102,
-            147, 250, 352, 397,
-            434, 467, 500, 532,
-            565, 602, 647, 750,
-            852, 897, 934, 967,
+            0i64, 32, 65, 102, 147, 250, 352, 397, 434, 467, 500, 532, 565, 602, 647, 750, 852,
+            897, 934, 967,
         ]);
-        let c = sine_ps.iter().zip(truth.iter()).filter(|(a, b)| a == b).count();
+        let c = sine_ps
+            .iter()
+            .zip(truth.iter())
+            .filter(|(a, b)| a == b)
+            .count();
         assert_eq!(c, sine_ps.len());
     }
 
     #[test]
     #[should_panic]
     fn setup_interval_coord_map_incorrectly() {
-        let im = DVector::from_vec(vec![-1.0f32, -0.5, 0.0, 0.5, 1.0]);
+        let im = DVector::from_vec(
+            vec![-1.0f32, -0.5, 0.0, 0.5, 1.0]
+                .iter()
+                .map(|x| OrderedFloat(*x))
+                .collect(),
+        );
         let time = DVector::from_vec(vec![0i64, 10, 20, 30, 40, 50]);
         IntervalToCoordMap::new(im, time);
     }
 
     fn setup_interval_coord_map_correctly() -> IntervalToCoordMap {
-        let im = DVector::from_vec(vec![-1.0f32, -0.6, -0.2, 0.2, 0.6, 1.0]);
+        let im = DVector::from_vec(
+            vec![-0.5f32, -0.3, -0.1, 0.1, 0.3, 0.5]
+                .iter()
+                .map(|x| OrderedFloat(*x))
+                .collect(),
+        );
         let time = DVector::from_vec(vec![0i64, 10, 20, 30, 40, 50]);
         IntervalToCoordMap::new(im, time)
     }
@@ -1344,8 +1458,8 @@ mod tests {
     #[test]
     fn interval_index() {
         let interval = setup_interval_coord_map_correctly();
-        assert_eq!(interval[9], -0.6f32);
-        assert_eq!(interval[50], 1.0f32);
+        assert_eq!(interval[9], -0.3f32);
+        assert_eq!(interval[50], 0.5f32);
         assert_eq!(interval[500], 0.0f32);
     }
 }
