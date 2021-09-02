@@ -47,35 +47,66 @@ def convert_ttbin(input_fname: str, output_fname: Optional[str], config_fname: s
     loop_over_ttbins(input_fname, config, output_fname)
 
 
-def get_overflow_indices(event_type: np.ndarray):
+def get_overflow_indices(event_type: np.ndarray) -> np.ndarray:
     overflow_indices_start = np.where(event_type == 2)[0]
-    if len(overflow_indices_start) > 0:
+    total_length = len(event_type) 
+    starts_len = len(overflow_indices_start)
+    if starts_len > 0:
         overflow_indices_end = np.where(event_type == 3)[0]
-        if len(overflow_indices_end) == len(overflow_indices_start):
-            return even_overflows(overflow_indices_start, overflow_indices_end)
-        elif len(overflow_indices_end) < len(overflow_indices_start):
+        ends_len = len(overflow_indices_end)
+        if ends_len == starts_len:
+            return even_overflows(overflow_indices_start, overflow_indices_end, total_length)
+        elif ends_len < starts_len:
             # We have a missed events situation between reads
-            less_end_overflows(overflow_indices_start, overflow_indices_end)
+            assert ends_len + 1 == starts_len
+            less_end_overflows(overflow_indices_start, overflow_indices_end, total_length)
         else:
-            assert len(overflow_indices_end) == len(overflow_indices_start) + 1
-            more_end_overflows(overflow_indices_start, overflow_indices_end)
+            assert ends_len == starts_len + 1
+            more_end_overflows(overflow_indices_start, overflow_indices_end, total_length)
     else:
-        return slice(None)
+        return np.full_like(event_type, False)
+
+
+def _iter_over_start_end_pairs(starts: np.ndarray, ends: np.ndarray, overflows: np.ndarray):
+    for st, en in zip(starts, ends):
+        overflows[st:en] = True
+    return overflows
+
+
+def even_overflows(starts: np.ndarray, ends: np.ndarray, length: int) -> np.ndarray:
+    """Deals with the case where the number of starts and ends is identical"""
+    overflows = np.full(length, False)
+    overflows = _iter_over_start_end_pairs(starts, ends, overflows)
+    return overflows
+
+
+def less_end_overflows(starts: np.ndarray, ends: np.ndarray, length: int) -> np.ndarray:
+    """Deals with the case where the overflow went on by to the next batch"""
+    overflows = np.full(length, False)
+    overflows = _iter_over_start_end_pairs(starts, ends, overflows)
+    overflows[starts[-1]:] = True
+    return overflows
 
     
+def more_end_overflows(starts: np.ndarray, ends: np.ndarray, length: int) -> np.ndarray:
+    """Deals with the case where the overflow continues from the previous batch"""
+    overflows = np.full(length, False)
+    overflows = _iter_over_start_end_pairs(starts, ends[1:], overflows)
+    overflows[:ends[0]] = True
+    return overflows
 
 
 def loop_over_ttbins(input_fname, config, output_fname):
     reader = FileReader(input_fname)
     while reader.hasData():
         data = reader.getData(EVENTS_PER_BATCH)
-        timestamps = data.getTimestamps()
-        channels = data.getChannels()
+        timestamps = data.getTimestamps().astype(np.uint64)
+        channels = data.getChannels().astype(np.uint64)
         event_type = data.getEventTypes()
         overflow_indices = get_overflow_indices(event_type)
-        if len(overflow_indices) > 0: 
-            timestamps = timestamps[~overflow_indices]
-            channels = channels[~overflow_indices]
+        timestamps = timestamps[~overflow_indices]
+        channels = channels[~overflow_indices]
+
         
         
 
