@@ -25,7 +25,6 @@ use pyo3::prelude::*;
 use thiserror::Error;
 
 use crate::configuration::{AppConfig, AppConfigBuilder, InputChannel};
-use crate::event_stream::ArrowIpcStream;
 use crate::gui::{ChannelNumber, EdgeDetected};
 use crate::point_cloud_renderer::{AppState, Channels, DisplayChannel};
 

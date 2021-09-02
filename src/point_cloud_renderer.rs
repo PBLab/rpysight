@@ -55,10 +55,6 @@ pub enum ProcessedEvent {
     Error,
 }
 
-/// A simple flag showing whether a new frame was detected in the last photon
-/// stream
-type NewFrameDetected = bool;
-
 /// Implemented by Apps who wish to display points
 pub trait PointDisplay {
     /// Add the point to the renderer. This is where the ordered_float
@@ -180,6 +176,7 @@ impl DisplayChannel {
 /// them
 pub struct AppState<T: PointDisplay, R: Read> {
     pub channels: Channels<T>,
+    data_stream_fh: String,
     pub data_stream: Option<StreamReader<R>>,
     snake: Box<dyn Snake>,
     inputs: Inputs,
@@ -196,6 +193,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
         let snake = AppState::<T, R>::choose_snake_variant(&appconfig);
         AppState {
             channels,
+            data_stream_fh,
             data_stream: None,
             snake,
             inputs: Inputs::from_config(&appconfig),
@@ -306,7 +304,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                     break None;
                 }
             };
-            let event_stream = match self.stream.get_event_stream(&batch) {
+            let event_stream = match self.get_event_stream(&batch) {
                 Some(stream) => stream,
                 None => {
                     debug!("Couldn't get event stream");
@@ -374,30 +372,26 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                 self.draw(point, color);
                 None
             }
-            ProcessedEvent::NoOp => false,
+            ProcessedEvent::NoOp => None,
             ProcessedEvent::FrameNewFrame => {
                 info!("New frame due to frame signal");
-                true
+                Some(0)
             }
             ProcessedEvent::PhotonNewFrame => {
                 info!(
                     "New frame due to photon {} while we had {} lines",
                     event.time, self.line_count
                 );
-                true
+                Some(0)
             }
             ProcessedEvent::LineNewFrame => {
                 info!("New frame due to line");
-                true
+                Some(0)
             }
             ProcessedEvent::Error => {
                 error!("Received an erroneuous event: {:?}", event);
-                false
+                None
             }
-        };
-        match new_frame_detected {
-            true => Some(new_frame_detected),
-            false => None,
         }
     }
 
@@ -469,7 +463,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                 },
                 None => continue,
             };
-            let event_stream = match self.stream.get_event_stream(&batch) {
+            let event_stream = match self.get_event_stream(&batch) {
                 Some(stream) => stream,
                 None => {
                     info!("No stream found, restarting loop");
@@ -480,9 +474,9 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             let frame_started = leftover_event_stream
                 // .find_map(|event| match self.inputs[event.channel] {
                 .find_map(|event| match self.inputs.get(event.channel) {
-                    Some(DataType::Line) => Some((DataType::Line, event.time)),
-                    Some(DataType::Frame) => Some((DataType::Frame, event.time)),
-                    None => {
+                    &DataType::Line => Some((DataType::Line, event.time)),
+                    &DataType::Frame => Some((DataType::Frame, event.time)),
+                    &DataType::Invalid => {
                         error!("Out of bounds access: {:?}", event);
                         None
                     }
@@ -611,7 +605,7 @@ impl<T: PointDisplay, R: Read> EventStreamHandler for AppState<T, R> {
             DataType::Pmt2 => self.snake.time_to_coord_linear(event.time, 1),
             DataType::Pmt3 => self.snake.time_to_coord_linear(event.time, 2),
             DataType::Pmt4 => self.snake.time_to_coord_linear(event.time, 3),
-            DataType::Line => self.handle_line_event(event),
+            DataType::Line => self.handle_line_event(event.time),
             DataType::TagLens => self.snake.new_taglens_period(event.time),
             DataType::Laser => self.snake.new_laser_event(event.time),
             DataType::Frame => self.handle_frame_event(event.time),
