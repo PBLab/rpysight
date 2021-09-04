@@ -7,10 +7,10 @@ import pickle
 import glob
 
 print("")
-data_directory = r'E:\Lior' + os.sep + '2021_08_29' + os.sep + 'sample' + os.sep
+data_directory = r'E:\Lior' + os.sep + '2021_08_31' + os.sep
 
-file_wile_card = data_directory + '*.ttbin'
-discarded_file_wile_card = data_directory + '*zzzzzzzzzzzzz.?.ttbin' # remove the list arising from this wild card from the list above
+file_wile_card = data_directory + '*[a-z].ttbin'
+discarded_file_wile_card = data_directory + '*[0-9].ttbin' # remove the list arising from this wild card from the list above
 
 unfiltered_fn_list = glob.glob(file_wile_card)
 discarded_fn_list = glob.glob(discarded_file_wile_card)
@@ -24,8 +24,8 @@ print(str(len(keep_this_fn_list)) + ' files found')
 LINE_START_CH = 1 # Rising edge on input 1
 TAG_SYNC_CH = 5  # Rising edge on input 2
 TA1000_CH = 8 # Falling edge on TA1000 PMT channel fed to input 3
-TD2000_CH = -3 # Falling edge on TD2000 PMT channel fed to input 8
-LASER_CH = 6  # Rising edge on input 6
+TD2000_CH = -6 # Falling edge on TD2000 PMT channel fed to input 8
+LASER_CH = 3  # Rising edge on input 6
 TREADMILL_CH = 2 # Rising edge on input 5
 
 LINE_END_CH = -LINE_START_CH
@@ -53,8 +53,6 @@ for fnum, fname in enumerate(keep_this_fn_list):
     
 
     while file_reader.hasData():
-
-
 
         data = file_reader.getData(n_events)
         channel = data.getChannels()
