@@ -342,6 +342,8 @@ pub trait Snake {
     fn dump(&self, _time: Picosecond) -> ProcessedEvent {
         ProcessedEvent::NoOp
     }
+
+    fn get_voxel_im_vec(&self) -> &VoxelDelta<OrderedFloat<f32>>;
 }
 
 /// Data and logic for finding the image-space coordinates for the given

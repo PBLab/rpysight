@@ -10,9 +10,10 @@ use arrow2::{
     io::ipc::read::{read_stream_metadata, StreamReader, StreamState},
     record_batch::RecordBatch,
 };
+use crossbeam::channel::{unbounded, Receiver};
 use hashbrown::HashMap;
 use kiss3d::window::Window;
-use nalgebra::Point3;
+use nalgebra::{DMatrix, Point3};
 use ordered_float::OrderedFloat;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
@@ -508,12 +509,15 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         let mut events_after_newframe = self.advance_till_first_frame_line(None);
         let mut frame_number = 1usize;
         let rolling_avg = rolling_avg as usize;
+        let (sender, receiver) = unbounded();
+        std::thread::spawn(move || serialize_data(receiver));
         while !self.channels.channel_merge.get_window().should_close() {
             // self.reset_frame_buffer();
             info!("Starting the population of single frame");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
-            debug!("Starting render");
             if frame_number % rolling_avg == 0 {
+                sender.send(self.frame_buffer.clone()).unwrap();
+                debug!("Starting render");
                 self.render();
             };
             frame_number += 1;
@@ -633,3 +637,43 @@ impl<T: PointDisplay, R: Read> EventStreamHandler for AppState<T, R> {
         }
     }
 }
+
+pub struct DataSerializer {
+    receiver: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>,
+}
+
+impl DataSerializer {
+    pub fn new<T: Snake>(
+        receiver: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>,
+        snake: T,
+    ) {
+    }
+}
+
+struct CoordToIndex {
+    row_coords: Vec<Coordinate>,
+    row_indices: Vec<usize>,
+    column_coords: Vec<Coordinate>,
+    column_indices: Vec<usize>,
+    plane_coords: Vec<Coordinate>,
+    plane_indices: Vec<usize>,
+}
+
+/// Write the data to disk in a tabular format.
+///
+/// This function will take the per-frame data, convert it to a clearer
+/// serialization format and finally write it to disk.
+fn serialize_data(recv: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>) {
+    let mut frame_data = Vec::<(u16, u16, u16, f32)>::with_capacity(10_000);
+    let mut new_data;
+    let mut formatted_data;
+    loop {
+        match recv.recv() {
+            Ok(new_data) => frame_data.append(convert_to_table(new_data)),
+            Err(e) => break,
+        };
+    }
+    write_table_to_disk(frame_data);
+}
+
+fn convert_to_table(inp: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) -> (u16, u16, u16, f32) {}
