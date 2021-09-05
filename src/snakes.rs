@@ -3,6 +3,7 @@
 //! moment.
 
 extern crate log;
+use std::collections::BTreeMap;
 use std::f32::consts::PI;
 use std::ops::Index;
 
@@ -30,6 +31,23 @@ pub type Picosecond = i64;
 /// OrderedFloat to allow them to be hashed and compared.
 pub type Coordinate = OrderedFloat<f32>;
 
+/// Pixelization of the rendered volume
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct VolumeSize {
+    rows: u32,
+    columns: u32,
+    planes: u32,
+}
+
+impl VolumeSize {
+    pub fn from_config(config: &AppConfig) -> Self {
+        Self {
+            rows: config.rows,
+            columns: config.columns,
+            planes: config.planes,
+        }
+    }
+}
 /// Marker trait to allow specific types to be used as deltas between pixels -
 /// for the image space rendering case the deltas are in f32, while for the
 /// rendering the deltas are in Picoseconds.
@@ -46,6 +64,7 @@ pub struct VoxelDelta<T: ImageDelta> {
     row: T,
     plane: T,
     frame: T,
+    volsize: VolumeSize,
 }
 
 impl VoxelDelta<Coordinate> {
@@ -64,7 +83,49 @@ impl VoxelDelta<Coordinate> {
             row: jump_between_rows,
             plane: jump_between_planes,
             frame: OrderedFloat::nan(),
+            volsize: VolumeSize::from_config(config),
         }
+    }
+
+    /// Match between a coodinate and its index in an equvilanet array.
+    ///
+    /// The purpose is to create a mapping between the generated coordinates,
+    /// which are in imagespace - i.e. GPU world, in which the coords are
+    /// confined between [-0.5, 0.5], and the outside world, where array
+    /// indexing uses the actual index of the array. This is helpful when we
+    /// wish to render the data elsewhere - giving it a coordinate in the range
+    /// [-0.5, 0.5] isn't as helpful as giving it a number between 0 and the
+    /// size of the array.
+    pub(crate) fn map_coord_to_index(
+        &self,
+    ) -> (
+        BTreeMap<OrderedFloat<f32>, usize>,
+        BTreeMap<OrderedFloat<f32>, usize>,
+        BTreeMap<OrderedFloat<f32>, usize>,
+    ) {
+        let coord_to_index_rows =
+            VoxelDelta::create_single_coord_idx_mapping(self.volsize.rows, self.row);
+        let coord_to_index_cols =
+            VoxelDelta::create_single_coord_idx_mapping(self.volsize.columns, self.column);
+        let coord_to_index_planes =
+            VoxelDelta::create_single_coord_idx_mapping(self.volsize.planes, self.plane);
+        (
+            coord_to_index_rows,
+            coord_to_index_rows,
+            coord_to_index_planes,
+        )
+    }
+
+    /// Create a single mapping between a coordinate vector and its index
+    fn create_single_coord_idx_mapping(
+        num: u32,
+        step: OrderedFloat<f32>,
+    ) -> BTreeMap<OrderedFloat<f32>, usize> {
+        let mut tree = BTreeMap::<OrderedFloat<f32>, usize>::new();
+        let mut current_step = RENDERING_BOUNDS.0;
+        (0..num as usize)
+            .map(|idx| tree.insert(current_step + (OrderedFloat::<f32>(idx as f32) * step), idx));
+        tree
     }
 }
 
@@ -79,6 +140,7 @@ impl VoxelDelta<Picosecond> {
             row: time_between_rows,
             plane: time_between_planes,
             frame: time_between_frames,
+            volsize: VolumeSize::from_config(config),
         }
     }
 
@@ -342,8 +404,6 @@ pub trait Snake {
     fn dump(&self, _time: Picosecond) -> ProcessedEvent {
         ProcessedEvent::NoOp
     }
-
-    fn get_voxel_im_vec(&self) -> &VoxelDelta<OrderedFloat<f32>>;
 }
 
 /// Data and logic for finding the image-space coordinates for the given
@@ -522,11 +582,11 @@ impl TwoDimensionalSnake {
         }
     }
 
-    /// Update the time -> coordinate snake when we're scanning unidirectionally.
+    /// Update the time -> coordinate snake when we're scanning.
     ///
     /// This method is also used in the bidirectional case, except it's used
     /// once for the even ones and again for the odd ones with different
-    /// paraneters.
+    /// parameters.
     fn push_pair_unidir(
         snake: &mut Vec<TimeCoordPair>,
         column_deltas_imagespace: &DVector<Coordinate>,

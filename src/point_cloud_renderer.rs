@@ -510,7 +510,7 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         let mut frame_number = 1usize;
         let rolling_avg = rolling_avg as usize;
         let (sender, receiver) = unbounded();
-        std::thread::spawn(move || serialize_data(receiver));
+        std::thread::spawn(move || serialize_data(receiver, self.snake.voxel_delta_im));
         while !self.channels.channel_merge.get_window().should_close() {
             // self.reset_frame_buffer();
             info!("Starting the population of single frame");
@@ -663,7 +663,10 @@ struct CoordToIndex {
 ///
 /// This function will take the per-frame data, convert it to a clearer
 /// serialization format and finally write it to disk.
-fn serialize_data(recv: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>) {
+fn serialize_data(
+    recv: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>,
+    voxel_delta: VoxelDelta<Coordinate>,
+) {
     let mut frame_data = Vec::<(u16, u16, u16, f32)>::with_capacity(10_000);
     let mut new_data;
     let mut formatted_data;
