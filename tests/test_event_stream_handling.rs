@@ -1,15 +1,11 @@
 extern crate log;
 use std::fs::File;
-use std::marker::PhantomData;
-use std::sync::{Mutex, RwLock};
 
 use arrow2::datatypes::{DataType, Field, Schema};
 use arrow2::io::csv::read::{
     deserialize_batch, deserialize_column, read_rows, Reader, ReaderBuilder,
 };
 use arrow2::io::ipc::write::StreamWriter;
-use kiss3d::window::Window;
-use lazy_static::lazy_static;
 use log::*;
 use nalgebra::Point3;
 use ron::de::from_reader;
@@ -63,8 +59,8 @@ impl PointDisplay for PointLogger {
 
     fn render(&mut self) {}
     fn hide(&mut self) {}
-    fn get_window(&mut self) -> &mut Window {
-        &mut self.window
+    fn should_close(&self) -> bool {
+        false
     }
 }
 
@@ -99,7 +95,7 @@ fn test_file_to_stream() {
         let mut rows = Vec::new();
         let _ = read_rows(&mut reader, 0, &mut rows);
         let batch = deserialize_batch(&rows, schema.fields(), None, 0, deserialize_column).unwrap();
-        stream_writer.write(&batch);
+        stream_writer.write(&batch).unwrap();
     }
 }
 

@@ -750,7 +750,11 @@ impl ThreeDimensionalSnake {
     /// This method assigns the Picosecond value to each plane of the volume by
     /// dividing the Z axis into three parts, in accordance with a sine curve:
     /// The rising part (up to pi/2), the decending part (pi/2, 3pi/2) and the
-    // last rise (3pi/2, 2pi).
+    /// last rise (3pi/2, 2pi).
+    /// 
+    /// The Planes imagespace vector is multiplied by 2 before the computation
+    /// because the way this arcsine function works is with the planes
+    /// given between [-1.0, 1.0] rather than [-0.5, 0.5].
     fn create_planes_snake_ps(
         &self,
         planes: &DVector<Coordinate>,
@@ -761,7 +765,7 @@ impl ThreeDimensionalSnake {
         let firstq = num_planes / 4;
         let half = num_planes / 2;
         let lastq = 3 * num_planes / 4;
-        let mut asin = planes.map(|x| x.asin() / (PI / 2.0));
+        let mut asin = planes.map(|x| x * OrderedFloat(2.0)).map(|x| x.asin() / (PI / 2.0));
         let mut sine_ps = DVector::<Coordinate>::repeat(num_planes, quarter_period);
         // First quarter of phase
         sine_ps
@@ -1278,25 +1282,39 @@ mod tests {
             .with_planes(2)
             .build();
         let vd = VoxelDelta::<Coordinate>::from_config(&config);
-        assert_eq!(vd.row, 1.0);
-        assert_eq!(vd.column, 0.5);
-        assert_eq!(vd.plane, 2.0);
+        assert_eq!(vd.row, RENDERING_SPAN / OrderedFloat(2.0));
+        assert_eq!(vd.column, RENDERING_SPAN / OrderedFloat(4.0));
+        assert_eq!(vd.plane, RENDERING_SPAN);
     }
 
     #[test]
     fn voxel_delta_im_map_coord_2d_default() {
-        let config = setup_default_config().build();
+        let config = setup_default_config().with_rows(5).build();
         let vd = VoxelDelta::<Coordinate>::from_config(&config);
-        let map = VoxelDelta::create_single_coord_idx_mapping(config.rows, vd.row);
-        println!("{:?}", map);
+        let result = VoxelDelta::create_single_coord_idx_mapping(config.rows, vd.row);
+        let mut truth = BTreeMap::new();
+        let floats = vec![-0.5f32, -0.25, 0.0, 0.25, 0.5];
+        for (idx, float) in (0..5).zip(floats.iter()) {
+            truth.insert(OrderedFloat(*float), idx as u32);
+        }
+        assert_eq!(result, truth);
     }
 
     #[test]
     fn voxel_delta_im_map_coord_3d_default() {
-        let config = setup_default_config().with_planes(5).build();
+        let config = setup_default_config().with_planes(11).build();
         let vd = VoxelDelta::<Coordinate>::from_config(&config);
-        let map = VoxelDelta::create_single_coord_idx_mapping(config.planes, vd.plane);
-        println!("{:?}", map);
+        let result = VoxelDelta::create_single_coord_idx_mapping(config.planes, vd.plane);
+        let mut truth = BTreeMap::new();
+        let floats = vec![-0.5f32, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5];
+        for (idx, float) in (0..10).zip(floats.iter()) {
+            truth.insert(OrderedFloat(*float), idx as u32);
+        }
+
+        let _ = result
+            .iter()
+            .zip(truth.iter())
+            .map(|(x, y)| {assert_approx_eq!(x.0.into_inner(), y.0.into_inner(), 0.001f32); assert_eq!(x.1, y.1);});
     }
 
     #[test]
@@ -1317,7 +1335,7 @@ mod tests {
             snake.data[1],
             TimeCoordPair::new(
                 25,
-                ImageCoor::new(OrderedFloat(-1.0), OrderedFloat(-1.0), OrderedFloat(0.0))
+                ImageCoor::new(RENDERING_BOUNDS.0, RENDERING_BOUNDS.0, RENDERING_BOUNDS.1)
             ),
         );
         assert_eq!(
@@ -1325,9 +1343,9 @@ mod tests {
             TimeCoordPair::new(
                 525,
                 ImageCoor::new(
-                    OrderedFloat(-1.0 + (2.0 / 9.0f32)),
-                    OrderedFloat(1.0),
-                    OrderedFloat(0.0)
+                    RENDERING_BOUNDS.0 + (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.2,
+                    RENDERING_BOUNDS.1,
                 )
             ),
         );
@@ -1336,9 +1354,9 @@ mod tests {
             TimeCoordPair::new(
                 1550,
                 ImageCoor::new(
-                    OrderedFloat(-1.0 + 3.0 * (2.0 / 9.0f32)),
-                    OrderedFloat(1.0 - (2.0 / 9.0f32)),
-                    OrderedFloat(0.0)
+                    RENDERING_BOUNDS.0 + OrderedFloat(3.0) * (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.2 - (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.1,
                 )
             ),
         );
@@ -1346,7 +1364,7 @@ mod tests {
             snake.data[snake.data.len() - 1],
             TimeCoordPair::new(
                 4750,
-                ImageCoor::new(OrderedFloat(1.0), OrderedFloat(-1.0), OrderedFloat(0.0))
+                ImageCoor::new(RENDERING_BOUNDS.2, RENDERING_BOUNDS.0, RENDERING_BOUNDS.1)
             )
         );
         assert_eq!(snake.data.len() + 1, snake.data.capacity());
@@ -1392,7 +1410,7 @@ mod tests {
             snake.data[snake.data.len() - 1],
             TimeCoordPair::new(
                 11500,
-                ImageCoor::new(RENDERING_BOUNDS.2, RENDERING_BOUNDS.2, RENDERING_BOUNDS.2)
+                ImageCoor::new(RENDERING_BOUNDS.2, RENDERING_BOUNDS.2, RENDERING_BOUNDS.1)
             )
         );
         assert_eq!(snake.data.len() + 1, snake.data.capacity());
@@ -1520,6 +1538,7 @@ mod tests {
             .zip(truth.iter())
             .filter(|(a, b)| a == b)
             .count();
+        println!("{:?}", sine_ps);
         assert_eq!(c, sine_ps.len());
     }
 

@@ -69,7 +69,7 @@ pub trait PointDisplay {
     fn display_point(&mut self, p: &ImageCoor, c: &Point3<f32>, time: Picosecond);
     fn render(&mut self);
     fn hide(&mut self);
-    fn get_window(&mut self) -> &mut Window;
+    fn should_close(&self) -> bool;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -106,6 +106,10 @@ impl<T: PointDisplay> Channels<T> {
             .drain()
             .for_each(|(k, v)| self.channel_merge.display_point(&k, &v, 0));
         self.channel_merge.render();
+    }
+
+    pub fn should_close(&self) -> bool {
+        self.channel_merge.should_close()
     }
 }
 
@@ -165,8 +169,8 @@ impl PointDisplay for DisplayChannel {
         self.window.hide();
     }
 
-    fn get_window(&mut self) -> &mut Window {
-        &mut self.window
+    fn should_close(&self) -> bool {
+        self.window.should_close()
     }
 }
 
@@ -517,7 +521,7 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         let (sender, receiver) = unbounded();
         let voxel_delta = self.snake.get_voxel_delta_im();
         std::thread::spawn(move || serialize_data(receiver, voxel_delta, config.filename));
-        while !self.channels.channel_merge.get_window().should_close() {
+        while !self.channels.should_close() {
             // self.reset_frame_buffer();
             info!("Starting the population of single frame");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
