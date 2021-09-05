@@ -1,9 +1,11 @@
 extern crate kiss3d;
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 use std::net::TcpStream;
 use std::ops::{Index, IndexMut};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use arrow2::{
@@ -13,12 +15,14 @@ use arrow2::{
 use crossbeam::channel::{unbounded, Receiver};
 use hashbrown::HashMap;
 use kiss3d::window::Window;
-use nalgebra::{DMatrix, Point3};
+use nalgebra::Point3;
 use ordered_float::OrderedFloat;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::event_stream::{Event, EventStream};
-use crate::snakes::{Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake};
+use crate::snakes::{
+    Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake, VoxelDelta,
+};
 use crate::GRAYSCALE_STEP;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
@@ -504,13 +508,15 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
     /// detect the last of the photons or a new frame signal.
-    pub fn start_inf_acq_loop(&mut self, rolling_avg: u16) -> Result<()> {
+    pub fn start_inf_acq_loop(&mut self, config: &AppConfig) -> Result<()> {
         self.acquire_stream_filehandle()?;
         let mut events_after_newframe = self.advance_till_first_frame_line(None);
         let mut frame_number = 1usize;
-        let rolling_avg = rolling_avg as usize;
+        let rolling_avg = config.rolling_avg as usize;
         let (sender, receiver) = unbounded();
-        std::thread::spawn(move || serialize_data(receiver, self.snake.voxel_delta_im));
+        std::thread::spawn(move || {
+            serialize_data(receiver, self.snake.get_voxel_delta_im(), config.filename)
+        });
         while !self.channels.channel_merge.get_window().should_close() {
             // self.reset_frame_buffer();
             info!("Starting the population of single frame");
@@ -650,33 +656,62 @@ impl DataSerializer {
     }
 }
 
-struct CoordToIndex {
-    row_coords: Vec<Coordinate>,
-    row_indices: Vec<usize>,
-    column_coords: Vec<Coordinate>,
-    column_indices: Vec<usize>,
-    plane_coords: Vec<Coordinate>,
-    plane_indices: Vec<usize>,
-}
-
 /// Write the data to disk in a tabular format.
 ///
 /// This function will take the per-frame data, convert it to a clearer
 /// serialization format and finally write it to disk.
 fn serialize_data(
     recv: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>,
-    voxel_delta: VoxelDelta<Coordinate>,
+    voxel_delta: &VoxelDelta<Coordinate>,
+    filename: String,
 ) {
-    let mut frame_data = Vec::<(u16, u16, u16, f32)>::with_capacity(10_000);
-    let mut new_data;
-    let mut formatted_data;
+    let coord_to_index = CoordToIndex::new(&voxel_delta);
     loop {
         match recv.recv() {
-            Ok(new_data) => frame_data.append(convert_to_table(new_data)),
+            Ok(new_data) => coord_to_index.append(new_data),
             Err(e) => break,
         };
     }
-    write_table_to_disk(frame_data);
+    coord_to_index.write_table_to_disk(&filename);
 }
 
-fn convert_to_table(inp: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) -> (u16, u16, u16, f32) {}
+struct CoordToIndex {
+    row_mapping: BTreeMap<OrderedFloat<f32>, u32>,
+    column_mapping: BTreeMap<OrderedFloat<f32>, u32>,
+    plane_mapping: BTreeMap<OrderedFloat<f32>, u32>,
+    frame_buffer: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
+    data_to_serialize: Vec<(u32, u32, u32, f32)>,
+}
+
+impl CoordToIndex {
+    pub fn new(voxel_delta: &VoxelDelta<Coordinate>) -> Self {
+        let (row, col, plane) = voxel_delta.map_coord_to_index();
+        Self {
+            row_mapping: row,
+            column_mapping: col,
+            plane_mapping: plane,
+            frame_buffer: HashMap::new(),
+            data_to_serialize: Vec::<(u32, u32, u32, f32)>::with_capacity(10_000),
+        }
+    }
+
+    pub fn append(&mut self, data: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) {
+        for (point, color) in data.drain() {
+            let row = self.row_mapping[&point.x];
+            let col = self.column_mapping[&point.y];
+            let plane = self.plane_mapping[&point.z];
+            self.data_to_serialize.push((row, col, plane, color.x));
+        }
+    }
+
+    pub fn write_table_to_disk<T: AsRef<Path>>(&self, filename: T) {
+        todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_coord_to_index() -> CoordToIndex {}
+}

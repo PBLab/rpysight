@@ -99,9 +99,9 @@ impl VoxelDelta<Coordinate> {
     pub(crate) fn map_coord_to_index(
         &self,
     ) -> (
-        BTreeMap<OrderedFloat<f32>, usize>,
-        BTreeMap<OrderedFloat<f32>, usize>,
-        BTreeMap<OrderedFloat<f32>, usize>,
+        BTreeMap<OrderedFloat<f32>, u32>,
+        BTreeMap<OrderedFloat<f32>, u32>,
+        BTreeMap<OrderedFloat<f32>, u32>,
     ) {
         let coord_to_index_rows =
             VoxelDelta::create_single_coord_idx_mapping(self.volsize.rows, self.row);
@@ -120,10 +120,10 @@ impl VoxelDelta<Coordinate> {
     fn create_single_coord_idx_mapping(
         num: u32,
         step: OrderedFloat<f32>,
-    ) -> BTreeMap<OrderedFloat<f32>, usize> {
-        let mut tree = BTreeMap::<OrderedFloat<f32>, usize>::new();
+    ) -> BTreeMap<OrderedFloat<f32>, u32> {
+        let mut tree = BTreeMap::<OrderedFloat<f32>, u32>::new();
         let mut current_step = RENDERING_BOUNDS.0;
-        (0..num as usize)
+        (0..num)
             .map(|idx| tree.insert(current_step + (OrderedFloat::<f32>(idx as f32) * step), idx));
         tree
     }
@@ -404,6 +404,8 @@ pub trait Snake {
     fn dump(&self, _time: Picosecond) -> ProcessedEvent {
         ProcessedEvent::NoOp
     }
+
+    fn get_voxel_delta_im(&self) -> &VoxelDelta<Coordinate>;
 }
 
 /// Data and logic for finding the image-space coordinates for the given
@@ -939,6 +941,10 @@ impl Snake for TwoDimensionalSnake {
         }
     }
 
+    fn get_voxel_delta_im(&self) -> &VoxelDelta<Coordinate> {
+        &self.voxel_delta_im
+    }
+
     fn get_earliest_frame_time(&self) -> Picosecond {
         self.earliest_frame_time
     }
@@ -1063,6 +1069,10 @@ impl Snake for ThreeDimensionalSnake {
                 offset,
             ),
         }
+    }
+
+    fn get_voxel_delta_im(&self) -> &VoxelDelta<Coordinate> {
+        &self.voxel_delta_im
     }
 
     fn calc_snake_length(&self, config: &AppConfig) -> usize {
@@ -1244,6 +1254,7 @@ mod tests {
             column: 175_693,
             plane: 263_435,
             frame: 1_009_314_712,
+            volsize: VolumeSize::from_config(&config),
         };
         assert_eq!(VoxelDelta::<Picosecond>::from_config(&config), voxel_delta)
     }

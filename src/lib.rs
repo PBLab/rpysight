@@ -251,11 +251,11 @@ pub async fn start_acquisition(config_name: PathBuf, cfg: AppConfig) {
         cfg.clone(),
     );
     debug!("Renderer set up correctly");
+    let cloned_cfg = cfg.clone();
     std::thread::spawn(move || {
-        start_timetagger_with_python(&cfg).expect("Failed to start TimeTagger, aborting")
+        start_timetagger_with_python(&cloned_cfg).expect("Failed to start TimeTagger, aborting")
     });
-    app.start_inf_acq_loop(rolling_avg)
-        .expect("Some error during acq");
+    app.start_inf_acq_loop(&cfg).expect("Some error during acq");
 }
 
 /// Saves the current configuration to disk.
