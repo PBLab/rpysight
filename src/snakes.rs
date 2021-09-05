@@ -111,7 +111,7 @@ impl VoxelDelta<Coordinate> {
             VoxelDelta::create_single_coord_idx_mapping(self.volsize.planes, self.plane);
         (
             coord_to_index_rows,
-            coord_to_index_rows,
+            coord_to_index_cols,
             coord_to_index_planes,
         )
     }
@@ -122,9 +122,12 @@ impl VoxelDelta<Coordinate> {
         step: OrderedFloat<f32>,
     ) -> BTreeMap<OrderedFloat<f32>, u32> {
         let mut tree = BTreeMap::<OrderedFloat<f32>, u32>::new();
-        let mut current_step = RENDERING_BOUNDS.0;
-        (0..num)
-            .map(|idx| tree.insert(current_step + (OrderedFloat::<f32>(idx as f32) * step), idx));
+        (0..num).for_each(|idx| {
+            tree.insert(
+                RENDERING_BOUNDS.0 + (OrderedFloat::<f32>(idx as f32) * step),
+                idx,
+            );
+        });
         tree
     }
 }
@@ -405,7 +408,7 @@ pub trait Snake {
         ProcessedEvent::NoOp
     }
 
-    fn get_voxel_delta_im(&self) -> &VoxelDelta<Coordinate>;
+    fn get_voxel_delta_im(&self) -> VoxelDelta<Coordinate>;
 }
 
 /// Data and logic for finding the image-space coordinates for the given
@@ -941,8 +944,8 @@ impl Snake for TwoDimensionalSnake {
         }
     }
 
-    fn get_voxel_delta_im(&self) -> &VoxelDelta<Coordinate> {
-        &self.voxel_delta_im
+    fn get_voxel_delta_im(&self) -> VoxelDelta<Coordinate> {
+        self.voxel_delta_im.clone()
     }
 
     fn get_earliest_frame_time(&self) -> Picosecond {
@@ -1071,8 +1074,8 @@ impl Snake for ThreeDimensionalSnake {
         }
     }
 
-    fn get_voxel_delta_im(&self) -> &VoxelDelta<Coordinate> {
-        &self.voxel_delta_im
+    fn get_voxel_delta_im(&self) -> VoxelDelta<Coordinate> {
+        self.voxel_delta_im.clone()
     }
 
     fn calc_snake_length(&self, config: &AppConfig) -> usize {
@@ -1278,6 +1281,22 @@ mod tests {
         assert_eq!(vd.row, 1.0);
         assert_eq!(vd.column, 0.5);
         assert_eq!(vd.plane, 2.0);
+    }
+
+    #[test]
+    fn voxel_delta_im_map_coord_2d_default() {
+        let config = setup_default_config().build();
+        let vd = VoxelDelta::<Coordinate>::from_config(&config);
+        let map = VoxelDelta::create_single_coord_idx_mapping(config.rows, vd.row);
+        println!("{:?}", map);
+    }
+
+    #[test]
+    fn voxel_delta_im_map_coord_3d_default() {
+        let config = setup_default_config().with_planes(5).build();
+        let vd = VoxelDelta::<Coordinate>::from_config(&config);
+        let map = VoxelDelta::create_single_coord_idx_mapping(config.planes, vd.plane);
+        println!("{:?}", map);
     }
 
     #[test]

@@ -12,6 +12,7 @@ use arrow2::{
     io::ipc::read::{read_stream_metadata, StreamReader, StreamState},
     record_batch::RecordBatch,
 };
+use bincode::serialize_into;
 use crossbeam::channel::{unbounded, Receiver};
 use hashbrown::HashMap;
 use kiss3d::window::Window;
@@ -508,15 +509,14 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
     /// detect the last of the photons or a new frame signal.
-    pub fn start_inf_acq_loop(&mut self, config: &AppConfig) -> Result<()> {
+    pub fn start_inf_acq_loop(&mut self, config: AppConfig) -> Result<()> {
         self.acquire_stream_filehandle()?;
         let mut events_after_newframe = self.advance_till_first_frame_line(None);
         let mut frame_number = 1usize;
         let rolling_avg = config.rolling_avg as usize;
         let (sender, receiver) = unbounded();
-        std::thread::spawn(move || {
-            serialize_data(receiver, self.snake.get_voxel_delta_im(), config.filename)
-        });
+        let voxel_delta = self.snake.get_voxel_delta_im();
+        std::thread::spawn(move || serialize_data(receiver, voxel_delta, config.filename));
         while !self.channels.channel_merge.get_window().should_close() {
             // self.reset_frame_buffer();
             info!("Starting the population of single frame");
@@ -644,42 +644,32 @@ impl<T: PointDisplay, R: Read> EventStreamHandler for AppState<T, R> {
     }
 }
 
-pub struct DataSerializer {
-    receiver: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>,
-}
-
-impl DataSerializer {
-    pub fn new<T: Snake>(
-        receiver: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>,
-        snake: T,
-    ) {
-    }
-}
-
 /// Write the data to disk in a tabular format.
 ///
 /// This function will take the per-frame data, convert it to a clearer
 /// serialization format and finally write it to disk.
 fn serialize_data(
     recv: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>,
-    voxel_delta: &VoxelDelta<Coordinate>,
+    voxel_delta: VoxelDelta<Coordinate>,
     filename: String,
 ) {
-    let coord_to_index = CoordToIndex::new(&voxel_delta);
+    let mut coord_to_index = CoordToIndex::new(&voxel_delta);
     loop {
         match recv.recv() {
             Ok(new_data) => coord_to_index.append(new_data),
-            Err(e) => break,
+            Err(_) => break,
         };
     }
-    coord_to_index.write_table_to_disk(&filename);
+    match coord_to_index.write_table_to_disk(&filename) {
+        Ok(()) => {}
+        Err(e) => error!("Error with serialization of volume: {:?}", e),
+    };
 }
 
 struct CoordToIndex {
     row_mapping: BTreeMap<OrderedFloat<f32>, u32>,
     column_mapping: BTreeMap<OrderedFloat<f32>, u32>,
     plane_mapping: BTreeMap<OrderedFloat<f32>, u32>,
-    frame_buffer: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
     data_to_serialize: Vec<(u32, u32, u32, f32)>,
 }
 
@@ -690,13 +680,12 @@ impl CoordToIndex {
             row_mapping: row,
             column_mapping: col,
             plane_mapping: plane,
-            frame_buffer: HashMap::new(),
             data_to_serialize: Vec::<(u32, u32, u32, f32)>::with_capacity(10_000),
         }
     }
 
     pub fn append(&mut self, data: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) {
-        for (point, color) in data.drain() {
+        for (point, color) in data.iter() {
             let row = self.row_mapping[&point.x];
             let col = self.column_mapping[&point.y];
             let plane = self.plane_mapping[&point.z];
@@ -704,14 +693,14 @@ impl CoordToIndex {
         }
     }
 
-    pub fn write_table_to_disk<T: AsRef<Path>>(&self, filename: T) {
-        todo!()
+    pub fn write_table_to_disk<T: AsRef<Path>>(&self, filename: T) -> Result<()> {
+        let new_filename = filename.as_ref().with_extension("bincode");
+        serialize_into(File::create(new_filename)?, &self.data_to_serialize)?;
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn setup_coord_to_index() -> CoordToIndex {}
 }
