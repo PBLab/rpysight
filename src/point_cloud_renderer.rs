@@ -2,7 +2,7 @@ extern crate kiss3d;
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::ops::{Index, IndexMut};
 use std::path::Path;
@@ -12,7 +12,7 @@ use arrow2::{
     io::ipc::read::{read_stream_metadata, StreamReader, StreamState},
     record_batch::RecordBatch,
 };
-use bincode::serialize_into;
+use bincode::serialize;
 use crossbeam::channel::{unbounded, Receiver};
 use hashbrown::HashMap;
 use kiss3d::window::Window;
@@ -520,7 +520,7 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         let rolling_avg = config.rolling_avg as usize;
         let (sender, receiver) = unbounded();
         let voxel_delta = self.snake.get_voxel_delta_im();
-        std::thread::spawn(move || serialize_data(receiver, voxel_delta, config.filename));
+        let handle = std::thread::spawn(move || serialize_data(receiver, voxel_delta, config.filename));
         while !self.channels.should_close() {
             // self.reset_frame_buffer();
             info!("Starting the population of single frame");
@@ -533,7 +533,9 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             frame_number += 1;
             events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
         }
-        info!("We're done!");
+        info!("Writing to disk");
+        drop(sender);
+        handle.join().unwrap();
         Ok(())
     }
 
@@ -665,7 +667,7 @@ fn serialize_data(
         };
     }
     match coord_to_index.write_table_to_disk(&filename) {
-        Ok(()) => {}
+        Ok(()) => {info!("Done writing data inside the function")}
         Err(e) => error!("Error with serialization of volume: {:?}", e),
     };
 }
@@ -680,6 +682,7 @@ struct CoordToIndex {
 impl CoordToIndex {
     pub fn new(voxel_delta: &VoxelDelta<Coordinate>) -> Self {
         let (row, col, plane) = voxel_delta.map_coord_to_index();
+        info!("Got the following mapping: Row: {:#?}, Col: {:#?}, Plane: {:#?}", row, col, plane);
         Self {
             row_mapping: row,
             column_mapping: col,
@@ -690,16 +693,29 @@ impl CoordToIndex {
 
     pub fn append(&mut self, data: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) {
         for (point, color) in data.iter() {
-            let row = self.row_mapping[&point.x];
-            let col = self.column_mapping[&point.y];
-            let plane = self.plane_mapping[&point.z];
-            self.data_to_serialize.push((row, col, plane, color.x));
+            debug!("Point to push: {:?}", point);
+            let row = match self.row_mapping.get(&point.x) {
+                Some(r) => r,
+                None => continue,
+            };
+            let col = match self.column_mapping.get(&point.y) {
+                Some(r) => r,
+                None => continue,
+            };
+            let plane = match self.plane_mapping.get(&point.z) {
+                Some(r) => r,
+                None => continue,
+            };
+            self.data_to_serialize.push((*row, *col, *plane, color.x));
         }
     }
 
     pub fn write_table_to_disk<T: AsRef<Path>>(&self, filename: T) -> Result<()> {
         let new_filename = filename.as_ref().with_extension("bincode");
-        serialize_into(File::create(new_filename)?, &self.data_to_serialize)?;
+        info!("Writing the table to disk at: {:?}", new_filename);
+        let mut file = File::create(new_filename)?;
+        let data = serialize(&self.data_to_serialize)?;
+        file.write(&data)?;
         Ok(())
     }
 }
@@ -707,4 +723,42 @@ impl CoordToIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::configuration::{AppConfigBuilder, InputChannel, Period, Bidirectionality};
+    use nalgebra::Point3;
+    use crate::snakes::*;
+
+    fn setup_default_config() -> AppConfigBuilder {
+        AppConfigBuilder::default()
+            .with_point_color(Point3::new(1.0f32, 1.0, 1.0))
+            .with_rows(256)
+            .with_columns(256)
+            .with_planes(10)
+            .with_scan_period(Period::from_freq(7926.17))
+            .with_tag_period(Period::from_freq(189800))
+            .with_bidir(Bidirectionality::Bidir)
+            .with_fill_fraction(71.3)
+            .with_frame_dead_time(8 * *Period::from_freq(7926.17))
+            .with_pmt1_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(0, 0.0))
+            .with_pmt3_ch(InputChannel::new(0, 0.0))
+            .with_pmt4_ch(InputChannel::new(0, 0.0))
+            .with_laser_ch(InputChannel::new(0, 0.0))
+            .with_frame_ch(InputChannel::new(0, 0.0))
+            .with_line_ch(InputChannel::new(2, 0.0))
+            .with_taglens_ch(InputChannel::new(3, 0.0))
+            .with_line_shift(0)
+            .clone()
+    }
+
+    fn setup_coord_to_index(config: &AppConfig) -> CoordToIndex {
+        let vd = VoxelDelta::<Coordinate>::from_config(&config);
+        CoordToIndex::new(&vd)
+    }
+
+    #[test]
+    fn coord_to_index_2d() {
+        let config = setup_default_config().with_rows(5).build();
+        let cti = setup_coord_to_index(&config);
+        println!("{:?}", cti.row_mapping);
+    }
 }

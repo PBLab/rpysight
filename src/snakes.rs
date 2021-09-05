@@ -74,6 +74,7 @@ impl VoxelDelta<Coordinate> {
         let jump_between_planes: OrderedFloat<f32>;
         if config.planes > 1 {
             jump_between_planes = RENDERING_SPAN / OrderedFloat(config.planes as f32 - 1.0);
+            info!("The jump between planes is: {}", jump_between_planes);
         } else {
             jump_between_planes = RENDERING_SPAN;
         }
@@ -107,8 +108,13 @@ impl VoxelDelta<Coordinate> {
             VoxelDelta::create_single_coord_idx_mapping(self.volsize.rows, self.row);
         let coord_to_index_cols =
             VoxelDelta::create_single_coord_idx_mapping(self.volsize.columns, self.column);
-        let coord_to_index_planes =
-            VoxelDelta::create_single_coord_idx_mapping(self.volsize.planes, self.plane);
+        let coord_to_index_planes = match self.volsize.planes {
+            0 | 1 => {let mut map = BTreeMap::new();
+                map.insert(OrderedFloat(0.0f32), 0u32);
+                map
+            },
+            _ => VoxelDelta::create_single_coord_idx_mapping(self.volsize.planes, self.plane),
+        };
         (
             coord_to_index_rows,
             coord_to_index_cols,
@@ -704,18 +710,18 @@ impl ThreeDimensionalSnake {
     /// The rising part (up to pi/2), the decending part (pi/2, 3pi/2) and the
     // last rise (3pi/2, 2pi).
     fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<Coordinate> {
-        let step_size = RENDERING_SPAN / OrderedFloat(planes as f32);
+        let step_size = RENDERING_SPAN / OrderedFloat(planes as f32 - 1.0);
         let half_planes = planes / 2 + 1;
         let phase_limits_0_to_1 = DVector::<Coordinate>::from_iterator(
             half_planes,
             linspace::<Coordinate>(RENDERING_BOUNDS.1, RENDERING_BOUNDS.2, half_planes),
         );
         let phase_limits_1_to_m1 = DVector::<Coordinate>::from_iterator(
-            planes - 1,
+            planes - 2,
             linspace::<Coordinate>(
                 RENDERING_BOUNDS.2 - step_size,
                 RENDERING_BOUNDS.0 + step_size,
-                planes - 1,
+                planes - 2,
             ),
         );
         let phase_limits_m1_to_0 = DVector::<Coordinate>::from_iterator(
@@ -727,7 +733,7 @@ impl ThreeDimensionalSnake {
             ),
         );
         let mut all_phases = DVector::<Coordinate>::repeat(
-            half_planes + half_planes + planes - 2,
+            half_planes + half_planes + planes - 3,
             OrderedFloat(0.0f32),
         );
         all_phases
@@ -742,6 +748,7 @@ impl ThreeDimensionalSnake {
                 phase_limits_m1_to_0.len(),
             )
             .set_column(0, &phase_limits_m1_to_0);
+        info!("The phases vector we made is: {:?}", all_phases);
         all_phases
     }
 
@@ -1301,6 +1308,19 @@ mod tests {
     }
 
     #[test]
+    fn voxel_delta_im_map_coord_2d_check_planes() {
+        let config = setup_default_config().with_rows(5).with_planes(1).build();
+        let vd = VoxelDelta::<Coordinate>::from_config(&config);
+        let result = vd.map_coord_to_index();
+        let mut truth = BTreeMap::new();
+        let floats = vec![0.0f32];
+        for (idx, float) in (0..1).zip(floats.iter()) {
+            truth.insert(OrderedFloat(*float), idx as u32);
+        }
+        assert_eq!(result.2, truth);
+    }
+
+    #[test]
     fn voxel_delta_im_map_coord_3d_default() {
         let config = setup_default_config().with_planes(11).build();
         let vd = VoxelDelta::<Coordinate>::from_config(&config);
@@ -1308,6 +1328,23 @@ mod tests {
         let mut truth = BTreeMap::new();
         let floats = vec![-0.5f32, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5];
         for (idx, float) in (0..10).zip(floats.iter()) {
+            truth.insert(OrderedFloat(*float), idx as u32);
+        }
+
+        let _ = result
+            .iter()
+            .zip(truth.iter())
+            .map(|(x, y)| {assert_approx_eq!(x.0.into_inner(), y.0.into_inner(), 0.001f32); assert_eq!(x.1, y.1);});
+    }
+
+    #[test]
+    fn voxel_delta_im_map_coord_3d_two_planes() {
+        let config = setup_default_config().with_planes(2).build();
+        let vd = VoxelDelta::<Coordinate>::from_config(&config);
+        let result = VoxelDelta::create_single_coord_idx_mapping(config.planes, vd.plane);
+        let mut truth = BTreeMap::new();
+        let floats = vec![-0.5f32, 0.5];
+        for (idx, float) in (0..2).zip(floats.iter()) {
             truth.insert(OrderedFloat(*float), idx as u32);
         }
 
