@@ -67,8 +67,12 @@ pub trait PointDisplay {
     /// abstraction "leaks" and we have to use the native type that the
     /// underlying library expects.
     fn display_point(&mut self, p: &ImageCoor, c: &Point3<f32>, time: Picosecond);
+    /// Start the GPU-based rendering process
     fn render(&mut self);
+    /// Hide the rendering window
     fn hide(&mut self);
+    /// Whether the acquisition is over and we may stop acquisition and
+    /// rendering
     fn should_close(&self) -> bool;
 }
 
@@ -520,7 +524,8 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         let rolling_avg = config.rolling_avg as usize;
         let (sender, receiver) = unbounded();
         let voxel_delta = self.snake.get_voxel_delta_im();
-        let handle = std::thread::spawn(move || serialize_data(receiver, voxel_delta, config.filename));
+        let handle =
+            std::thread::spawn(move || serialize_data(receiver, voxel_delta, config.filename));
         while !self.channels.should_close() {
             // self.reset_frame_buffer();
             info!("Starting the population of single frame");
@@ -667,7 +672,9 @@ fn serialize_data(
         };
     }
     match coord_to_index.write_table_to_disk(&filename) {
-        Ok(()) => {info!("Done writing data inside the function")}
+        Ok(()) => {
+            info!("Done writing data inside the function")
+        }
         Err(e) => error!("Error with serialization of volume: {:?}", e),
     };
 }
@@ -682,7 +689,10 @@ struct CoordToIndex {
 impl CoordToIndex {
     pub fn new(voxel_delta: &VoxelDelta<Coordinate>) -> Self {
         let (row, col, plane) = voxel_delta.map_coord_to_index();
-        info!("Got the following mapping: Row: {:#?}, Col: {:#?}, Plane: {:#?}", row, col, plane);
+        info!(
+            "Got the following mapping: Row: {:#?}, Col: {:#?}, Plane: {:#?}",
+            row, col, plane
+        );
         Self {
             row_mapping: row,
             column_mapping: col,
@@ -723,9 +733,9 @@ impl CoordToIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::configuration::{AppConfigBuilder, InputChannel, Period, Bidirectionality};
-    use nalgebra::Point3;
+    use crate::configuration::{AppConfigBuilder, Bidirectionality, InputChannel, Period};
     use crate::snakes::*;
+    use nalgebra::Point3;
 
     fn setup_default_config() -> AppConfigBuilder {
         AppConfigBuilder::default()
