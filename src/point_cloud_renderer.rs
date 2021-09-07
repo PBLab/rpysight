@@ -27,7 +27,7 @@ use crate::event_stream::{Event, EventStream};
 use crate::snakes::{
     Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake, VoxelDelta,
 };
-use crate::COLOR_INCREMENT;
+use crate::{COLOR_INCREMENT, DISPLAY_COLORS};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -48,7 +48,7 @@ pub trait EventStreamHandler {
 #[derive(Debug, Clone, Copy)]
 pub enum ProcessedEvent {
     /// Contains the coordinates in image space and the color
-    Displayed(Point3<Coordinate>, Point3<f32>),
+    Displayed(Point3<Coordinate>, usize),
     /// Nothing to do with this event
     NoOp,
     /// A new frame signal
@@ -108,8 +108,11 @@ impl<T: PointDisplay> Channels<T> {
         self.channel_merge.hide();
     }
 
-    pub fn render(&mut self, frame_buffer: &mut HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) {
-        frame_buffer
+    pub fn render(
+        &mut self,
+        frame_buffers: &mut [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>],
+    ) {
+        frame_buffers
             .drain()
             .for_each(|(k, v)| self.channel_merge.display_point(&k, &v, 0));
         self.channel_merge.render();
@@ -201,7 +204,7 @@ pub struct AppState<T: PointDisplay, R: Read> {
     line_count: u32,
     lines_vec: Vec<Picosecond>,
     batch_readout_count: u64,
-    frame_buffer: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
+    frame_buffers: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5],
 }
 
 impl<T: PointDisplay, R: Read> AppState<T, R> {
@@ -218,7 +221,13 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             line_count: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
             batch_readout_count: 0,
-            frame_buffer: HashMap::with_capacity(10000),
+            frame_buffers: [
+                HashMap::with_capacity(100_000),
+                HashMap::with_capacity(100_000),
+                HashMap::with_capacity(1),
+                HashMap::with_capacity(1),
+                HashMap::with_capacity(100_000),
+            ],
         }
     }
 
@@ -232,7 +241,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
 
     /// Render the data to the screen
     fn render(&mut self) {
-        self.channels.render(&mut self.frame_buffer);
+        self.channels.render(&mut self.frame_buffers);
     }
 
     /// Called when an event from the line channel arrives to the event stream.
@@ -371,11 +380,11 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     /// rather its job is to increment the color of the that pixel if this
     /// isn't the first time a photon has arrived at that pixel. Else it gives
     /// that pixel its default color.
-    fn draw(&mut self, point: ImageCoor, color: Point3<f32>) {
-        self.frame_buffer
+    fn draw(&mut self, point: ImageCoor, channel: usize) {
+        self.frame_buffers[channel]
             .entry(point)
             .and_modify(|c| c.apply(|d| d * COLOR_INCREMENT))
-            .or_insert(color);
+            .or_insert(DISPLAY_COLORS[channel]);
     }
 
     /// The function called on each event in the processed batch.
@@ -386,8 +395,8 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     /// halts only when Some(val) is returned.
     fn act_on_single_event(&mut self, event: Event) -> Option<i8> {
         match self.event_to_coordinate(event) {
-            ProcessedEvent::Displayed(point, color) => {
-                self.draw(point, color);
+            ProcessedEvent::Displayed(point, channel) => {
+                self.draw(point, channel);
                 None
             }
             ProcessedEvent::NoOp => None,

@@ -1020,7 +1020,7 @@ impl Snake for TwoDimensionalSnake {
         // Makes sure that we indeed captured some cell. This can be avoided in
         // principle but I'm still not confident enough in this implementation.
         if let Some(coord) = coord {
-            ProcessedEvent::Displayed(coord, DISPLAY_COLORS[ch])
+            ProcessedEvent::Displayed(coord, ch)
         } else {
             error!(
                 "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
@@ -1119,7 +1119,7 @@ impl Snake for ThreeDimensionalSnake {
         // principle but I'm still not confident enough in this implementation.
         if let Some(coord) = coord {
             trace!("Found a point on the snake! Time: {}; Additional steps taken: {}; Channel: {}. The coord we're sending is: {:?}", time, additional_steps_taken, ch, coord);
-            ProcessedEvent::Displayed(coord, *DISPLAY_COLOR)
+            ProcessedEvent::Displayed(coord, ch)
         } else {
             error!(
                 "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
