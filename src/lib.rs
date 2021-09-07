@@ -41,11 +41,13 @@ const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 /// The gray level step that each photon adds to the current pixel. This is a
 /// poor man's brightness normalization mechanism
-const GRAYSCALE_STEP: f32 = 0.05;
+const COLOR_INCREMENT: f32 = 1.8;
 
 lazy_static! {
     /// The currently rendered channel
-    static ref DISPLAY_COLOR: Point3<f32> = Point3::<f32>::new(GRAYSCALE_STEP, GRAYSCALE_STEP, GRAYSCALE_STEP);
+    static ref DISPLAY_COLOR: Point3<f32> = Point3::<f32>::new(0.05, 0.05, 0.05);
+    /// GRAY, GREEN, MAGENTA, CYAN
+    static ref DISPLAY_COLORS: [Point3<f32>; 4] = [Point3::<f32>::new(0.05, 0.05, 0.05), Point3::<f32>::new(0.0, 0.05, 0.0), Point3::<f32>::new(0.05, 0.0, 0.05), Point3::<f32>::new(0.0, 0.05, 0.05)];
 }
 
 /// Load an existing configuration file or generate a new one with default

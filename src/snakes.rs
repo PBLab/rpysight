@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::configuration::{AppConfig, Bidirectionality, Period};
 use crate::point_cloud_renderer::{ImageCoor, ProcessedEvent};
-use crate::DISPLAY_COLOR;
+use crate::DISPLAY_COLORS;
 
 /// The image bounds as the renderer requires - start, center and end
 const RENDERING_BOUNDS: (OrderedFloat<f32>, OrderedFloat<f32>, OrderedFloat<f32>) =
@@ -109,10 +109,11 @@ impl VoxelDelta<Coordinate> {
         let coord_to_index_cols =
             VoxelDelta::create_single_coord_idx_mapping(self.volsize.columns, self.column);
         let coord_to_index_planes = match self.volsize.planes {
-            0 | 1 => {let mut map = BTreeMap::new();
+            0 | 1 => {
+                let mut map = BTreeMap::new();
                 map.insert(OrderedFloat(0.0f32), 0u32);
                 map
-            },
+            }
             _ => VoxelDelta::create_single_coord_idx_mapping(self.volsize.planes, self.plane),
         };
         (
@@ -758,7 +759,7 @@ impl ThreeDimensionalSnake {
     /// dividing the Z axis into three parts, in accordance with a sine curve:
     /// The rising part (up to pi/2), the decending part (pi/2, 3pi/2) and the
     /// last rise (3pi/2, 2pi).
-    /// 
+    ///
     /// The Planes imagespace vector is multiplied by 2 before the computation
     /// because the way this arcsine function works is with the planes
     /// given between [-1.0, 1.0] rather than [-0.5, 0.5].
@@ -772,7 +773,9 @@ impl ThreeDimensionalSnake {
         let firstq = num_planes / 4;
         let half = num_planes / 2;
         let lastq = 3 * num_planes / 4;
-        let mut asin = planes.map(|x| x * OrderedFloat(2.0)).map(|x| x.asin() / (PI / 2.0));
+        let mut asin = planes
+            .map(|x| x * OrderedFloat(2.0))
+            .map(|x| x.asin() / (PI / 2.0));
         let mut sine_ps = DVector::<Coordinate>::repeat(num_planes, quarter_period);
         // First quarter of phase
         sine_ps
@@ -1017,7 +1020,7 @@ impl Snake for TwoDimensionalSnake {
         // Makes sure that we indeed captured some cell. This can be avoided in
         // principle but I'm still not confident enough in this implementation.
         if let Some(coord) = coord {
-            ProcessedEvent::Displayed(coord, *DISPLAY_COLOR)
+            ProcessedEvent::Displayed(coord, DISPLAY_COLORS[ch])
         } else {
             error!(
                 "Coordinate remained unpopulated. self.data: {:?}\nAdditional steps taken: {}",
@@ -1326,15 +1329,17 @@ mod tests {
         let vd = VoxelDelta::<Coordinate>::from_config(&config);
         let result = VoxelDelta::create_single_coord_idx_mapping(config.planes, vd.plane);
         let mut truth = BTreeMap::new();
-        let floats = vec![-0.5f32, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5];
+        let floats = vec![
+            -0.5f32, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5,
+        ];
         for (idx, float) in (0..10).zip(floats.iter()) {
             truth.insert(OrderedFloat(*float), idx as u32);
         }
 
-        let _ = result
-            .iter()
-            .zip(truth.iter())
-            .map(|(x, y)| {assert_approx_eq!(x.0.into_inner(), y.0.into_inner(), 0.001f32); assert_eq!(x.1, y.1);});
+        let _ = result.iter().zip(truth.iter()).map(|(x, y)| {
+            assert_approx_eq!(x.0.into_inner(), y.0.into_inner(), 0.001f32);
+            assert_eq!(x.1, y.1);
+        });
     }
 
     #[test]
@@ -1348,10 +1353,10 @@ mod tests {
             truth.insert(OrderedFloat(*float), idx as u32);
         }
 
-        let _ = result
-            .iter()
-            .zip(truth.iter())
-            .map(|(x, y)| {assert_approx_eq!(x.0.into_inner(), y.0.into_inner(), 0.001f32); assert_eq!(x.1, y.1);});
+        let _ = result.iter().zip(truth.iter()).map(|(x, y)| {
+            assert_approx_eq!(x.0.into_inner(), y.0.into_inner(), 0.001f32);
+            assert_eq!(x.1, y.1);
+        });
     }
 
     #[test]
@@ -1391,7 +1396,8 @@ mod tests {
             TimeCoordPair::new(
                 1550,
                 ImageCoor::new(
-                    RENDERING_BOUNDS.0 + OrderedFloat(3.0) * (RENDERING_SPAN / OrderedFloat(9.0f32)),
+                    RENDERING_BOUNDS.0
+                        + OrderedFloat(3.0) * (RENDERING_SPAN / OrderedFloat(9.0f32)),
                     RENDERING_BOUNDS.2 - (RENDERING_SPAN / OrderedFloat(9.0f32)),
                     RENDERING_BOUNDS.1,
                 )

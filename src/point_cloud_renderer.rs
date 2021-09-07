@@ -27,7 +27,7 @@ use crate::event_stream::{Event, EventStream};
 use crate::snakes::{
     Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake, VoxelDelta,
 };
-use crate::GRAYSCALE_STEP;
+use crate::COLOR_INCREMENT;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -367,10 +367,14 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
 
     /// Adds the point with its color to a pixel list that will be drawn in the
     /// next rendering pass.
+    /// The method is agnostic to the coordinate and the color it has,
+    /// rather its job is to increment the color of the that pixel if this
+    /// isn't the first time a photon has arrived at that pixel. Else it gives
+    /// that pixel its default color.
     fn draw(&mut self, point: ImageCoor, color: Point3<f32>) {
         self.frame_buffer
             .entry(point)
-            .and_modify(|c| c.apply(|d| d + GRAYSCALE_STEP))
+            .and_modify(|c| c.apply(|d| d * COLOR_INCREMENT))
             .or_insert(color);
     }
 
