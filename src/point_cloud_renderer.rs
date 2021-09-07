@@ -769,9 +769,6 @@ impl CoordToIndex {
         zs: Vec<u32>,
         colors: Vec<Point3<f32>>,
     ) -> RecordBatch {
-        // let xs = Arc::new(UInt32Array::from_trusted_len_values_iter(xs.into_iter()));
-        // let ys = Arc::new(UInt32Array::from_trusted_len_values_iter(ys.into_iter()));
-        // let zs = Arc::new(UInt32Array::from_trusted_len_values_iter(zs.into_iter()));
         let xs = Arc::new(UInt32Array::from_slice(&xs));
         let ys = Arc::new(UInt32Array::from_slice(&ys));
         let zs = Arc::new(UInt32Array::from_slice(&zs));
@@ -790,15 +787,6 @@ impl CoordToIndex {
             colors_y.push(p.y);
             colors_z.push(p.z);
         }
-        // let colors_x = Arc::new(Float32Array::from_trusted_len_values_iter(
-        //     colors_x.into_iter(),
-        // ));
-        // let colors_y = Arc::new(Float32Array::from_trusted_len_values_iter(
-        //     colors_y.into_iter(),
-        // ));
-        // let colors_z = Arc::new(Float32Array::from_trusted_len_values_iter(
-        //     colors_z.into_iter(),
-        // ));
         let colors_x = Arc::new(Float32Array::from_slice(&colors_x));
         let colors_y = Arc::new(Float32Array::from_slice(&colors_y));
         let colors_z = Arc::new(Float32Array::from_slice(&colors_z));
