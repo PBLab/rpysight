@@ -745,18 +745,22 @@ impl CoordToIndex {
 
         for (point, color) in data.iter() {
             debug!("Point to push: {:?}", point);
-            match self.row_mapping.get(&point.x) {
-                Some(r) => xs.push(*r),
+            let r = match self.row_mapping.get(&point.x) {
+                Some(r) => *r,
                 None => continue,
             };
-            match self.column_mapping.get(&point.y) {
-                Some(c) => ys.push(*c),
+            let c = match self.column_mapping.get(&point.y) {
+                Some(c) => *c,
                 None => continue,
             };
-            match self.plane_mapping.get(&point.z) {
-                Some(p) => zs.push(*p),
+            let p = match self.plane_mapping.get(&point.z) {
+                Some(p) => *p,
                 None => continue,
             };
+            // All points are not NaNs, we can add them to the buffers
+            xs.push(r);
+            ys.push(c);
+            zs.push(p);
             colors.push(*color);
         }
         (xs, ys, zs, colors)
