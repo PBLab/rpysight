@@ -2,17 +2,20 @@ extern crate kiss3d;
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::net::TcpStream;
 use std::ops::{Index, IndexMut};
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use arrow2::io::ipc::write::StreamWriter;
 use arrow2::{
+    array::{Array, Float32Array, StructArray, UInt32Array},
+    datatypes::{Field, Schema},
     io::ipc::read::{read_stream_metadata, StreamReader, StreamState},
     record_batch::RecordBatch,
 };
-use bincode::serialize;
 use crossbeam::channel::{unbounded, Receiver};
 use hashbrown::HashMap;
 use kiss3d::window::Window;
@@ -664,68 +667,155 @@ fn serialize_data(
     voxel_delta: VoxelDelta<Coordinate>,
     filename: String,
 ) {
-    let mut coord_to_index = CoordToIndex::new(&voxel_delta);
+    let mut coord_to_index = match CoordToIndex::new(&voxel_delta, filename) {
+        Ok(cti) => cti,
+        Err(e) => {
+            error!(
+                "Cannot create a file: {:?}. Not writing columnar data to disk",
+                e
+            );
+            return;
+        }
+    };
     loop {
         match recv.recv() {
-            Ok(new_data) => coord_to_index.append(new_data),
+            Ok(new_data) => {
+                let (xs, ys, zs, colors) = coord_to_index.map_data_to_indices(new_data);
+                let rb = coord_to_index.convert_vecs_to_recordbatch(xs, ys, zs, colors);
+                match coord_to_index.serialize_to_stream(rb) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        error!("Failed to serialize: {:?}", e);
+                    }
+                };
+            }
             Err(_) => break,
         };
     }
-    match coord_to_index.write_table_to_disk(&filename) {
-        Ok(()) => {
-            info!("Done writing data inside the function")
-        }
-        Err(e) => error!("Error with serialization of volume: {:?}", e),
-    };
 }
 
 struct CoordToIndex {
     row_mapping: BTreeMap<OrderedFloat<f32>, u32>,
     column_mapping: BTreeMap<OrderedFloat<f32>, u32>,
     plane_mapping: BTreeMap<OrderedFloat<f32>, u32>,
-    data_to_serialize: Vec<(u32, u32, u32, f32)>,
+    stream: StreamWriter<File>,
 }
 
 impl CoordToIndex {
-    pub fn new(voxel_delta: &VoxelDelta<Coordinate>) -> Self {
+    pub fn new<P: AsRef<Path>>(voxel_delta: &VoxelDelta<Coordinate>, filename: P) -> Result<Self> {
         let (row, col, plane) = voxel_delta.map_coord_to_index();
         info!(
             "Got the following mapping: Row: {:#?}, Col: {:#?}, Plane: {:#?}",
             row, col, plane
         );
-        Self {
+        let schema = Schema::new(vec![
+            Field::new("x", arrow2::datatypes::DataType::UInt32, false),
+            Field::new("y", arrow2::datatypes::DataType::UInt32, false),
+            Field::new("z", arrow2::datatypes::DataType::UInt32, false),
+            Field::new(
+                "value",
+                arrow2::datatypes::DataType::Struct(vec![
+                    Field::new("x", arrow2::datatypes::DataType::Float32, false),
+                    Field::new("y", arrow2::datatypes::DataType::Float32, false),
+                    Field::new("z", arrow2::datatypes::DataType::Float32, false),
+                ]),
+                false,
+            ),
+        ]);
+        let f = File::create(filename.as_ref().with_extension("arrow"))?;
+        info!("Writing the table to disk at: {:?}", f);
+        let stream = StreamWriter::try_new(f, &schema)?;
+        Ok(Self {
             row_mapping: row,
             column_mapping: col,
             plane_mapping: plane,
-            data_to_serialize: Vec::<(u32, u32, u32, f32)>::with_capacity(10_000),
-        }
+            stream,
+        })
     }
 
-    pub fn append(&mut self, data: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>) {
+    pub fn map_data_to_indices(
+        &mut self,
+        data: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
+    ) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<Point3<f32>>) {
+        let length = data.len();
+        let mut xs = Vec::<u32>::with_capacity(length);
+        let mut ys = Vec::<u32>::with_capacity(length);
+        let mut zs = Vec::<u32>::with_capacity(length);
+        let mut colors = Vec::<Point3<f32>>::with_capacity(length);
+
         for (point, color) in data.iter() {
             debug!("Point to push: {:?}", point);
-            let row = match self.row_mapping.get(&point.x) {
-                Some(r) => r,
+            match self.row_mapping.get(&point.x) {
+                Some(r) => xs.push(*r),
                 None => continue,
             };
-            let col = match self.column_mapping.get(&point.y) {
-                Some(r) => r,
+            match self.column_mapping.get(&point.y) {
+                Some(c) => ys.push(*c),
                 None => continue,
             };
-            let plane = match self.plane_mapping.get(&point.z) {
-                Some(r) => r,
+            match self.plane_mapping.get(&point.z) {
+                Some(p) => zs.push(*p),
                 None => continue,
             };
-            self.data_to_serialize.push((*row, *col, *plane, color.x));
+            colors.push(*color);
         }
+        (xs, ys, zs, colors)
     }
 
-    pub fn write_table_to_disk<T: AsRef<Path>>(&self, filename: T) -> Result<()> {
-        let new_filename = filename.as_ref().with_extension("bincode");
-        info!("Writing the table to disk at: {:?}", new_filename);
-        let mut file = File::create(new_filename)?;
-        let data = serialize(&self.data_to_serialize)?;
-        file.write(&data)?;
+    pub fn convert_vecs_to_recordbatch(
+        &self,
+        xs: Vec<u32>,
+        ys: Vec<u32>,
+        zs: Vec<u32>,
+        colors: Vec<Point3<f32>>,
+    ) -> RecordBatch {
+        // let xs = Arc::new(UInt32Array::from_trusted_len_values_iter(xs.into_iter()));
+        // let ys = Arc::new(UInt32Array::from_trusted_len_values_iter(ys.into_iter()));
+        // let zs = Arc::new(UInt32Array::from_trusted_len_values_iter(zs.into_iter()));
+        let xs = Arc::new(UInt32Array::from_slice(&xs));
+        let ys = Arc::new(UInt32Array::from_slice(&ys));
+        let zs = Arc::new(UInt32Array::from_slice(&zs));
+        let colors = self.convert_colors_vec_to_arrays(colors);
+        let iter_over_vecs: Vec<(&str, Arc<dyn Array>)> =
+            vec![("x", xs), ("y", ys), ("z", zs), ("colors", colors)];
+        RecordBatch::try_from_iter(iter_over_vecs).unwrap()
+    }
+
+    pub fn convert_colors_vec_to_arrays(&self, colors: Vec<Point3<f32>>) -> Arc<StructArray> {
+        let mut colors_x = vec![];
+        let mut colors_y = vec![];
+        let mut colors_z = vec![];
+        for p in colors {
+            colors_x.push(p.x);
+            colors_y.push(p.y);
+            colors_z.push(p.z);
+        }
+        // let colors_x = Arc::new(Float32Array::from_trusted_len_values_iter(
+        //     colors_x.into_iter(),
+        // ));
+        // let colors_y = Arc::new(Float32Array::from_trusted_len_values_iter(
+        //     colors_y.into_iter(),
+        // ));
+        // let colors_z = Arc::new(Float32Array::from_trusted_len_values_iter(
+        //     colors_z.into_iter(),
+        // ));
+        let colors_x = Arc::new(Float32Array::from_slice(&colors_x));
+        let colors_y = Arc::new(Float32Array::from_slice(&colors_y));
+        let colors_z = Arc::new(Float32Array::from_slice(&colors_z));
+        let colors = Arc::new(StructArray::from_data(
+            vec![
+                Field::new("x", arrow2::datatypes::DataType::Float32, false),
+                Field::new("y", arrow2::datatypes::DataType::Float32, false),
+                Field::new("z", arrow2::datatypes::DataType::Float32, false),
+            ],
+            vec![colors_x, colors_y, colors_z],
+            None,
+        ));
+        colors
+    }
+
+    pub fn serialize_to_stream(&mut self, rb: RecordBatch) -> Result<()> {
+        self.stream.write(&rb)?;
         Ok(())
     }
 }
@@ -736,6 +826,7 @@ mod tests {
     use crate::configuration::{AppConfigBuilder, Bidirectionality, InputChannel, Period};
     use crate::snakes::*;
     use nalgebra::Point3;
+    use std::env::temp_dir;
 
     fn setup_default_config() -> AppConfigBuilder {
         AppConfigBuilder::default()
@@ -762,7 +853,9 @@ mod tests {
 
     fn setup_coord_to_index(config: &AppConfig) -> CoordToIndex {
         let vd = VoxelDelta::<Coordinate>::from_config(&config);
-        CoordToIndex::new(&vd)
+        let mut path = temp_dir();
+        path.push("rpysight.test");
+        CoordToIndex::new(&vd, path).unwrap()
     }
 
     #[test]
