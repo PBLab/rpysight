@@ -365,15 +365,12 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
         }
     }
 
+    /// Adds the point with its color to a pixel list that will be drawn in the
+    /// next rendering pass.
     fn draw(&mut self, point: ImageCoor, color: Point3<f32>) {
-        let corrected_z = if point.z == OrderedFloat(0.0) {
-            OrderedFloat(1.0 / 0.1f32)
-        } else {
-            OrderedFloat(1.0 / point.z.abs())
-        };
         self.frame_buffer
             .entry(point)
-            .and_modify(|c| c.apply(|d| d + (GRAYSCALE_STEP * corrected_z.into_inner())))
+            .and_modify(|c| c.apply(|d| d + GRAYSCALE_STEP))
             .or_insert(color);
     }
 
