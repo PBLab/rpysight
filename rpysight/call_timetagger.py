@@ -50,8 +50,6 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
 
     def __init__(self, tagger, channels: Optional[list], fname: Optional[str] = None):
         super().__init__(tagger)
-        # if channels:
-        #     [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
         if channels:
             [self.register_channel(channel=channel['channel']) for channel in channels]
         self.init_stream_and_schema()
@@ -203,8 +201,7 @@ def run_tagger(cfg: str):
     with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
         rt = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
         fw = FileWriter(measure_group.getTagger(), config['filename'], int_channels)
-        # measure_group.startFor(int(1_000_000e12))
-        measure_group.startFor(int(900e12))
+        measure_group.startFor(int(1_000_000e12))
         measure_group.waitUntilFinished()
 
 
