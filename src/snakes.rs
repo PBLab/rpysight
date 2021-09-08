@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::configuration::{AppConfig, Bidirectionality, Period};
 use crate::point_cloud_renderer::{ImageCoor, ProcessedEvent};
-use crate::DISPLAY_COLORS;
 
 /// The image bounds as the renderer requires - start, center and end
 const RENDERING_BOUNDS: (OrderedFloat<f32>, OrderedFloat<f32>, OrderedFloat<f32>) =

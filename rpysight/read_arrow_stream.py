@@ -12,6 +12,7 @@ struct_fields = [
     ("z", pa.float32()),
 ]
 schema = pa.schema([
+    ("channels", pa.uint8()),
     ('x', pa.uint32()),
     ('y', pa.uint32()),
     ('z', pa.uint32()),

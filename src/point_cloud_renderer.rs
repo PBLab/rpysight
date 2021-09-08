@@ -11,8 +11,11 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use arrow2::io::ipc::write::StreamWriter;
 use arrow2::{
-    array::{Array, Float32Array, StructArray, UInt32Array},
-    datatypes::{Field, Schema},
+    array::{Array, Float32Array, StructArray, UInt32Array, UInt8Array},
+    datatypes::{
+        DataType::{Float32, Struct, UInt32, UInt8},
+        Field, Schema,
+    },
     io::ipc::read::{read_stream_metadata, StreamReader, StreamState},
     record_batch::RecordBatch,
 };
@@ -112,16 +115,16 @@ impl<T: PointDisplay> Channels<T> {
         &mut self,
         frame_buffers: &mut [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>],
     ) {
-        Channels::render_single_channel(frame_buffers[0], self.channel1);
-        Channels::render_single_channel(frame_buffers[1], self.channel2);
-        Channels::render_single_channel(frame_buffers[2], self.channel3);
-        Channels::render_single_channel(frame_buffers[3], self.channel4);
-        Channels::render_single_channel(frame_buffers[4], self.channel_merge);
+        Channels::render_single_channel(&mut frame_buffers[0], &mut self.channel1);
+        Channels::render_single_channel(&mut frame_buffers[1], &mut self.channel2);
+        Channels::render_single_channel(&mut frame_buffers[2], &mut self.channel3);
+        Channels::render_single_channel(&mut frame_buffers[3], &mut self.channel4);
+        Channels::render_single_channel(&mut frame_buffers[4], &mut self.channel_merge);
     }
 
     fn render_single_channel(
-        frame_buffer: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
-        channel: T,
+        frame_buffer: &mut HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
+        channel: &mut T,
     ) {
         frame_buffer
             .drain()
@@ -696,7 +699,7 @@ impl<T: PointDisplay, R: Read> EventStreamHandler for AppState<T, R> {
 /// This function will take the per-frame data, convert it to a clearer
 /// serialization format and finally write it to disk.
 fn serialize_data(
-    recv: Receiver<HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>>,
+    recv: Receiver<[HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5]>,
     voxel_delta: VoxelDelta<Coordinate>,
     filename: String,
 ) {
@@ -713,8 +716,8 @@ fn serialize_data(
     loop {
         match recv.recv() {
             Ok(new_data) => {
-                let (xs, ys, zs, colors) = coord_to_index.map_data_to_indices(new_data);
-                let rb = coord_to_index.convert_vecs_to_recordbatch(xs, ys, zs, colors);
+                let (channels, xs, ys, zs, colors) = coord_to_index.map_data_to_indices(new_data);
+                let rb = coord_to_index.convert_vecs_to_recordbatch(channels, xs, ys, zs, colors);
                 match coord_to_index.serialize_to_stream(rb) {
                     Ok(()) => {}
                     Err(e) => {
@@ -742,15 +745,16 @@ impl CoordToIndex {
             row, col, plane
         );
         let schema = Schema::new(vec![
-            Field::new("x", arrow2::datatypes::DataType::UInt32, false),
-            Field::new("y", arrow2::datatypes::DataType::UInt32, false),
-            Field::new("z", arrow2::datatypes::DataType::UInt32, false),
+            Field::new("channel", UInt8, false),
+            Field::new("x", UInt32, false),
+            Field::new("y", UInt32, false),
+            Field::new("z", UInt32, false),
             Field::new(
                 "value",
-                arrow2::datatypes::DataType::Struct(vec![
-                    Field::new("x", arrow2::datatypes::DataType::Float32, false),
-                    Field::new("y", arrow2::datatypes::DataType::Float32, false),
-                    Field::new("z", arrow2::datatypes::DataType::Float32, false),
+                Struct(vec![
+                    Field::new("x", Float32, false),
+                    Field::new("y", Float32, false),
+                    Field::new("z", Float32, false),
                 ]),
                 false,
             ),
@@ -768,50 +772,60 @@ impl CoordToIndex {
 
     pub fn map_data_to_indices(
         &mut self,
-        data: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
-    ) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<Point3<f32>>) {
+        data: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5],
+    ) -> (Vec<u8>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<Point3<f32>>) {
         let length = data.len();
+        let mut channels = Vec::<u8>::with_capacity(length);
         let mut xs = Vec::<u32>::with_capacity(length);
         let mut ys = Vec::<u32>::with_capacity(length);
         let mut zs = Vec::<u32>::with_capacity(length);
         let mut colors = Vec::<Point3<f32>>::with_capacity(length);
-
-        for (point, color) in data.iter() {
-            debug!("Point to push: {:?}", point);
-            let r = match self.row_mapping.get(&point.x) {
-                Some(r) => *r,
-                None => continue,
-            };
-            let c = match self.column_mapping.get(&point.y) {
-                Some(c) => *c,
-                None => continue,
-            };
-            let p = match self.plane_mapping.get(&point.z) {
-                Some(p) => *p,
-                None => continue,
-            };
-            // All points are not NaNs, we can add them to the buffers
-            xs.push(r);
-            ys.push(c);
-            zs.push(p);
-            colors.push(*color);
+        for (ch, single_channel_data) in data.iter().enumerate() {
+            for (point, color) in single_channel_data.iter() {
+                debug!("Point to push: {:?}", point);
+                let r = match self.row_mapping.get(&point.x) {
+                    Some(r) => *r,
+                    None => continue,
+                };
+                let c = match self.column_mapping.get(&point.y) {
+                    Some(c) => *c,
+                    None => continue,
+                };
+                let p = match self.plane_mapping.get(&point.z) {
+                    Some(p) => *p,
+                    None => continue,
+                };
+                // All points are not NaNs, we can add them to the buffers
+                channels.push(ch as u8);
+                xs.push(r);
+                ys.push(c);
+                zs.push(p);
+                colors.push(*color);
+            }
         }
-        (xs, ys, zs, colors)
+        (channels, xs, ys, zs, colors)
     }
 
     pub fn convert_vecs_to_recordbatch(
         &self,
+        channels: Vec<u8>,
         xs: Vec<u32>,
         ys: Vec<u32>,
         zs: Vec<u32>,
         colors: Vec<Point3<f32>>,
     ) -> RecordBatch {
+        let channels = Arc::new(UInt8Array::from_slice(&channels));
         let xs = Arc::new(UInt32Array::from_slice(&xs));
         let ys = Arc::new(UInt32Array::from_slice(&ys));
         let zs = Arc::new(UInt32Array::from_slice(&zs));
         let colors = self.convert_colors_vec_to_arrays(colors);
-        let iter_over_vecs: Vec<(&str, Arc<dyn Array>)> =
-            vec![("x", xs), ("y", ys), ("z", zs), ("colors", colors)];
+        let iter_over_vecs: Vec<(&str, Arc<dyn Array>)> = vec![
+            ("channels", channels),
+            ("x", xs),
+            ("y", ys),
+            ("z", zs),
+            ("colors", colors),
+        ];
         RecordBatch::try_from_iter(iter_over_vecs).unwrap()
     }
 
