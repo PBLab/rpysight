@@ -703,7 +703,7 @@ fn serialize_data(
     voxel_delta: VoxelDelta<Coordinate>,
     filename: String,
 ) {
-    let mut coord_to_index = match CoordToIndex::new(&voxel_delta, filename) {
+    let mut coord_to_index = match CoordToIndex::try_new(&voxel_delta, filename) {
         Ok(cti) => cti,
         Err(e) => {
             error!(
@@ -730,6 +730,12 @@ fn serialize_data(
     }
 }
 
+/// Convert the GPU-focused coordinates to array indexing.
+///
+/// We wish to have access to the GPU array that is rendered in each step, but
+/// since that's impossible we use this struct to create a proxy - a mapping
+/// between the GPU-based coordinates (probably in the range [-0.5, 0.5]) to
+/// array indices ([0..len]).
 struct CoordToIndex {
     row_mapping: BTreeMap<OrderedFloat<f32>, u32>,
     column_mapping: BTreeMap<OrderedFloat<f32>, u32>,
@@ -738,7 +744,11 @@ struct CoordToIndex {
 }
 
 impl CoordToIndex {
-    pub fn new<P: AsRef<Path>>(voxel_delta: &VoxelDelta<Coordinate>, filename: P) -> Result<Self> {
+    /// Try to create a new mapping from the voxel delta information
+    pub fn try_new<P: AsRef<Path>>(
+        voxel_delta: &VoxelDelta<Coordinate>,
+        filename: P,
+    ) -> Result<Self> {
         let (row, col, plane) = voxel_delta.map_coord_to_index();
         info!(
             "Got the following mapping: Row: {:#?}, Col: {:#?}, Plane: {:#?}",
@@ -770,6 +780,8 @@ impl CoordToIndex {
         })
     }
 
+    /// Convert the GPU-based coordinates and brightness levels to a table of
+    /// array-focused coordinates.
     pub fn map_data_to_indices(
         &mut self,
         data: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5],
@@ -806,6 +818,8 @@ impl CoordToIndex {
         (channels, xs, ys, zs, colors)
     }
 
+    /// Convert the "raw" table of data into a [`RecordBatch`] that cna be
+    /// streamed and serialized.
     pub fn convert_vecs_to_recordbatch(
         &self,
         channels: Vec<u8>,
@@ -829,6 +843,8 @@ impl CoordToIndex {
         RecordBatch::try_from_iter(iter_over_vecs).unwrap()
     }
 
+    /// Create the specific structure of the colors (=brightness) to an Arrow-
+    /// centered data representation.
     pub fn convert_colors_vec_to_arrays(&self, colors: Vec<Point3<f32>>) -> Arc<StructArray> {
         let mut colors_x = vec![];
         let mut colors_y = vec![];
@@ -853,6 +869,7 @@ impl CoordToIndex {
         colors
     }
 
+    /// Write the data to disk
     pub fn serialize_to_stream(&mut self, rb: RecordBatch) -> Result<()> {
         self.stream.write(&rb)?;
         Ok(())
@@ -888,19 +905,5 @@ mod tests {
             .with_taglens_ch(InputChannel::new(3, 0.0))
             .with_line_shift(0)
             .clone()
-    }
-
-    fn setup_coord_to_index(config: &AppConfig) -> CoordToIndex {
-        let vd = VoxelDelta::<Coordinate>::from_config(&config);
-        let mut path = temp_dir();
-        path.push("rpysight.test");
-        CoordToIndex::new(&vd, path).unwrap()
-    }
-
-    #[test]
-    fn coord_to_index_2d() {
-        let config = setup_default_config().with_rows(5).build();
-        let cti = setup_coord_to_index(&config);
-        println!("{:?}", cti.row_mapping);
     }
 }
