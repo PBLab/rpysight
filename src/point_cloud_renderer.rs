@@ -698,10 +698,10 @@ impl<T: PointDisplay, R: Read> EventStreamHandler for AppState<T, R> {
 ///
 /// This function will take the per-frame data, convert it to a clearer
 /// serialization format and finally write it to disk.
-fn serialize_data(
+fn serialize_data<P: AsRef<Path>>(
     recv: Receiver<[HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5]>,
     voxel_delta: VoxelDelta<Coordinate>,
-    filename: String,
+    filename: P,
 ) {
     let mut coord_to_index = match CoordToIndex::try_new(&voxel_delta, filename) {
         Ok(cti) => cti,
@@ -905,5 +905,45 @@ mod tests {
             .with_taglens_ch(InputChannel::new(3, 0.0))
             .with_line_shift(0)
             .clone()
+    }
+
+    fn create_mock_maps() -> [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5] {
+        let mut map = HashMap::new();
+        map.insert(
+            Point3::<OrderedFloat<f32>>::new(
+                OrderedFloat(0.5),
+                OrderedFloat(0.3),
+                OrderedFloat(0.0),
+            ),
+            Point3::<f32>::new(0.1, 0.1, 0.2),
+        );
+        let map2 = HashMap::new();
+        let map3 = map2.clone();
+        let map4 = map2.clone();
+        let map5 = map.clone();
+        [map, map2, map3, map4, map5]
+    }
+
+    fn create_record_batch() -> RecordBatch {
+        todo!()
+    }
+
+    fn read_data_stream<P: AsRef<Path>>(filename: P) -> RecordBatch {
+        todo!()
+    }
+
+    #[test]
+    fn serialize_data_2d() {
+        let (sender, receiver) = unbounded();
+        let mut filename = temp_dir();
+        filename.push("test_serialize.test");
+        let fname = filename.clone();
+        let voxel_delta = VoxelDelta::<Coordinate>::from_config(&setup_default_config().build());
+        std::thread::spawn(move || serialize_data(receiver, voxel_delta, &filename));
+        let base_data = create_mock_maps();
+        sender.send(base_data).unwrap();
+        let truth_recordbatch = create_record_batch();
+        let streamed_data = read_data_stream(&fname);
+        assert_eq!(truth_recordbatch, streamed_data);
     }
 }
