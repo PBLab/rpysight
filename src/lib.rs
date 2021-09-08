@@ -1,4 +1,21 @@
 //! Real time parsing and rendering of data coming from a TimeTagger.
+//!
+//! This crate is designed to render images or volumes of Two Photon
+//! Microscopes that are imaged using the TimeTagger, a unique discriminator
+//! and digitizer made by Swabian Instruments. Plugging in your typical Two
+//! Photon hardware into a TT turns your microscope into a photon-counting
+//! based device, which results in improved imaging conditions. However,
+//! without rPySight it's difficult to see the full extent of improvement that
+//! photon counting provides in real time, and offline-based solutions are
+//! required.
+//!
+//! rPySight alleviates this requirement while also providing experimenters
+//! with easier integration of voluemtric scanning via a TAG lens, a resonant
+//! Z-axis scanner that is very fast but hard to integrate into a standard Two
+//! Photon Microscope since it can't be controlled by an external signal.
+//!
+//! Taken together, rPySight facilitates rapid voluemtric scanning of live
+//! tissue with realtime visualization of the data.
 
 pub mod configuration;
 pub mod event_stream;

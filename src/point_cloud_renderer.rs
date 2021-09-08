@@ -728,6 +728,7 @@ fn serialize_data<P: AsRef<Path>>(
             Err(_) => break,
         };
     }
+    coord_to_index.stream.finish().unwrap();
 }
 
 /// Convert the GPU-focused coordinates to array indexing.
@@ -769,7 +770,7 @@ impl CoordToIndex {
                 false,
             ),
         ]);
-        let f = File::create(filename.as_ref().with_extension("arrow"))?;
+        let f = File::create(filename.as_ref().with_extension("arrow_stream"))?;
         info!("Writing the table to disk at: {:?}", f);
         let stream = StreamWriter::try_new(f, &schema)?;
         Ok(Self {
