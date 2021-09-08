@@ -42,10 +42,12 @@ const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 /// The gray level step that each photon adds to the current pixel. This is a
 /// poor man's brightness normalization mechanism
 const COLOR_INCREMENT: f32 = 1.8;
+/// Increasing the brightness of pixel by this much in the color channels
+const GRAYSCALE_STEP: f32 = 0.05;
 
 lazy_static! {
-    /// The currently rendered channel
-    static ref DISPLAY_COLOR: Point3<f32> = Point3::<f32>::new(0.05, 0.05, 0.05);
+    /// Brightness starting level of each channel
+    static ref GRAYSCALE_START: Point3<f32> = Point3::<f32>::new(0.05, 0.05, 0.05);
     /// GRAY, GREEN, MAGENTA, CYAN
     static ref DISPLAY_COLORS: [Point3<f32>; 4] = [Point3::<f32>::new(0.05, 0.05, 0.05), Point3::<f32>::new(0.0, 0.05, 0.0), Point3::<f32>::new(0.05, 0.0, 0.05), Point3::<f32>::new(0.0, 0.05, 0.05)];
 }

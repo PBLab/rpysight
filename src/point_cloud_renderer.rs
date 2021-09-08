@@ -27,7 +27,7 @@ use crate::event_stream::{Event, EventStream};
 use crate::snakes::{
     Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake, VoxelDelta,
 };
-use crate::{COLOR_INCREMENT, DISPLAY_COLORS};
+use crate::{COLOR_INCREMENT, DISPLAY_COLORS, GRAYSCALE_START, GRAYSCALE_STEP};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -112,13 +112,26 @@ impl<T: PointDisplay> Channels<T> {
         &mut self,
         frame_buffers: &mut [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>],
     ) {
-        frame_buffers
+        Channels::render_single_channel(frame_buffers[0], self.channel1);
+        Channels::render_single_channel(frame_buffers[1], self.channel2);
+        Channels::render_single_channel(frame_buffers[2], self.channel3);
+        Channels::render_single_channel(frame_buffers[3], self.channel4);
+        Channels::render_single_channel(frame_buffers[4], self.channel_merge);
+    }
+
+    fn render_single_channel(
+        frame_buffer: HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
+        channel: T,
+    ) {
+        frame_buffer
             .drain()
-            .for_each(|(k, v)| self.channel_merge.display_point(&k, &v, 0));
-        self.channel_merge.render();
+            .for_each(|(k, v)| channel.display_point(&k, &v, 0));
+        channel.render();
     }
 
     pub fn should_close(&self) -> bool {
+        // We'll use channel_merge as the indicator because it will always be
+        // used
         self.channel_merge.should_close()
     }
 }
@@ -380,8 +393,18 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     /// rather its job is to increment the color of the that pixel if this
     /// isn't the first time a photon has arrived at that pixel. Else it gives
     /// that pixel its default color.
+    ///
+    /// Each individual color channel is rendered in grayscale since they're
+    /// separate, and thus they're incremented using [`GRAYSALE_STEP`]. But the
+    /// merged channel shows each channel with its respective color, so this
+    /// channel, marked as `frame_buffers[4]` is using a different incrementing
+    /// method
     fn draw(&mut self, point: ImageCoor, channel: usize) {
         self.frame_buffers[channel]
+            .entry(point)
+            .and_modify(|c| c.apply(|d| d + GRAYSCALE_STEP))
+            .or_insert(*GRAYSCALE_START);
+        self.frame_buffers[4]
             .entry(point)
             .and_modify(|c| c.apply(|d| d * COLOR_INCREMENT))
             .or_insert(DISPLAY_COLORS[channel]);
@@ -544,7 +567,7 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             info!("Starting the population of single frame");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             if frame_number % rolling_avg == 0 {
-                sender.send(self.frame_buffer.clone()).unwrap();
+                sender.send(self.frame_buffers.clone()).unwrap();
                 debug!("Starting render");
                 self.render();
             };
