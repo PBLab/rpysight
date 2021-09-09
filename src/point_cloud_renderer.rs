@@ -30,8 +30,7 @@ use crate::event_stream::{Event, EventStream};
 use crate::snakes::{
     Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake, VoxelDelta,
 };
-use crate::{COLOR_INCREMENT, DISPLAY_COLORS};
-
+use crate::{COLOR_INCREMENT, DISPLAY_COLORS, GRAYSCALE_START, GRAYSCALE_STEP};
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
 /// requires.
@@ -238,8 +237,8 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
             batch_readout_count: 0,
             frame_buffers: [
-                HashMap::with_capacity(1),
-                HashMap::with_capacity(1),
+                HashMap::with_capacity(600_000),
+                HashMap::with_capacity(600_000),
                 HashMap::with_capacity(1),
                 HashMap::with_capacity(1),
                 HashMap::with_capacity(600_000),
@@ -401,12 +400,16 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     /// separate, and thus they're incremented using [`GRAYSALE_STEP`]. But the
     /// merged channel shows each channel with its respective color, so this
     /// channel, marked as `frame_buffers[4]` is using a different incrementing
-    /// method
+    /// method.
+    ///
+    /// Due to limitations of kiss3d all frame_buffers others than the 4th one
+    /// (merge) aren't rendered, but their photons are still added to these
+    /// buffers because they'll be used in the serialization process later on.
     fn draw(&mut self, point: ImageCoor, channel: usize) {
-        // self.frame_buffers[channel]
-        //     .entry(point)
-        //     .and_modify(|c| c.apply(|d| d + GRAYSCALE_STEP))
-        //     .or_insert(*GRAYSCALE_START);
+        self.frame_buffers[channel]
+            .entry(point)
+            .and_modify(|c| c.apply(|d| d + GRAYSCALE_STEP))
+            .or_insert(*GRAYSCALE_START);
         self.frame_buffers[4]
             .entry(point)
             .and_modify(|c| c.apply(|d| d * COLOR_INCREMENT))
