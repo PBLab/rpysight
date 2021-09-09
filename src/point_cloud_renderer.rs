@@ -763,11 +763,11 @@ impl CoordToIndex {
             Field::new("y", UInt32, false),
             Field::new("z", UInt32, false),
             Field::new(
-                "value",
+                "color",
                 Struct(vec![
-                    Field::new("x", Float32, false),
-                    Field::new("y", Float32, false),
-                    Field::new("z", Float32, false),
+                    Field::new("r", Float32, false),
+                    Field::new("g", Float32, false),
+                    Field::new("b", Float32, false),
                 ]),
                 false,
             ),
@@ -837,11 +837,11 @@ impl CoordToIndex {
         let zs = Arc::new(UInt32Array::from_slice(&zs));
         let colors = self.convert_colors_vec_to_arrays(colors);
         let iter_over_vecs: Vec<(&str, Arc<dyn Array>)> = vec![
-            ("channels", channels),
+            ("channel", channels),
             ("x", xs),
             ("y", ys),
             ("z", zs),
-            ("colors", colors),
+            ("color", colors),
         ];
         RecordBatch::try_from_iter(iter_over_vecs).unwrap()
     }
@@ -862,9 +862,9 @@ impl CoordToIndex {
         let colors_z = Arc::new(Float32Array::from_slice(&colors_z));
         let colors = Arc::new(StructArray::from_data(
             vec![
-                Field::new("x", arrow2::datatypes::DataType::Float32, false),
-                Field::new("y", arrow2::datatypes::DataType::Float32, false),
-                Field::new("z", arrow2::datatypes::DataType::Float32, false),
+                Field::new("r", arrow2::datatypes::DataType::Float32, false),
+                Field::new("g", arrow2::datatypes::DataType::Float32, false),
+                Field::new("b", arrow2::datatypes::DataType::Float32, false),
             ],
             vec![colors_x, colors_y, colors_z],
             None,
