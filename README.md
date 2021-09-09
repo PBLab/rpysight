@@ -16,14 +16,18 @@ rPySight's main _raison d'être_ is the fact that it shows the same data but in 
 
 This project is a mixed Rust-Python project - most of the work is done with Rust, but Python is required to start the TimeTagger and stream the data from it to the Rust renderer. You may use [maturin](https://github.com/PyO3/maturin)to more easily build the project locally. Thus a recent Rust compiler (when building from soure) and an updated Python version are needed to run this project. Needless to say, a working and installed TimeTagger is also required.
 
-## Usage
+## Installation Usage
 
 A detailed protocol can be found in the accompanying manuscript (currently being written).
 
-### From source
+### Install from source
 
-Download a Rust compiler, preferably using [rustup](https://rustup.rs/), clone the repo and run `cargo build --release`. To run, use `cargo run --release --bin cli CONFIG_FILENAME`, where the configuration filename is a custom configuration file you created (a default one can be found under the `resources` folder).
+Download a Rust compiler, preferably using [rustup](https://rustup.rs/), clone the repo and run `cargo build --release`. To run, use `cargo run --release CONFIG_FILENAME`, where the configuration filename is a custom configuration file you created (a default one can be found under the `resources` folder). There's also a GUI available using `cargo run --release --bin gui`, but it's a bit more clunky ATM.
 
-### From binary
+### Download binary file
 
-Download the binary from the Releases page and run it the same way.
+Download the binary from the Releases page and run it in your shell.
+
+### Outputs
+
+rPySight generates two main outputs with names similar to the ones in the "filename" field of the configuration file. The first is a `.ttbin` file that can be used to replay old experiments and generally have access to the raw data as it arrived from the TimeTagger. The second is an `.arrow_stream` file, which is a table of coordinates and data that can be used to create the same rendered volumes but in post-processing. An example for such processing in Python may be found in the `rpysight` directory.
