@@ -860,12 +860,12 @@ impl CoordToIndex {
         let colors_x = Arc::new(Float32Array::from_slice(&colors_x));
         let colors_y = Arc::new(Float32Array::from_slice(&colors_y));
         let colors_z = Arc::new(Float32Array::from_slice(&colors_z));
-        let colors = Arc::new(StructArray::from_data(
+        let colors = Arc::new(StructArray::from_data(Struct(
             vec![
                 Field::new("r", arrow2::datatypes::DataType::Float32, false),
                 Field::new("g", arrow2::datatypes::DataType::Float32, false),
                 Field::new("b", arrow2::datatypes::DataType::Float32, false),
-            ],
+            ]),
             vec![colors_x, colors_y, colors_z],
             None,
         ));
