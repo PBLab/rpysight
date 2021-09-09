@@ -30,7 +30,7 @@ use crate::event_stream::{Event, EventStream};
 use crate::snakes::{
     Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake, VoxelDelta,
 };
-use crate::{COLOR_INCREMENT, DISPLAY_COLORS, GRAYSCALE_START, GRAYSCALE_STEP};
+use crate::{COLOR_INCREMENT, DISPLAY_COLORS};
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -115,10 +115,10 @@ impl<T: PointDisplay> Channels<T> {
         &mut self,
         frame_buffers: &mut [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>],
     ) {
-        Channels::render_single_channel(&mut frame_buffers[0], &mut self.channel1);
-        Channels::render_single_channel(&mut frame_buffers[1], &mut self.channel2);
-        Channels::render_single_channel(&mut frame_buffers[2], &mut self.channel3);
-        Channels::render_single_channel(&mut frame_buffers[3], &mut self.channel4);
+        // Channels::render_single_channel(&mut frame_buffers[0], &mut self.channel1);
+        // Channels::render_single_channel(&mut frame_buffers[1], &mut self.channel2);
+        // Channels::render_single_channel(&mut frame_buffers[2], &mut self.channel3);
+        // Channels::render_single_channel(&mut frame_buffers[3], &mut self.channel4);
         Channels::render_single_channel(&mut frame_buffers[4], &mut self.channel_merge);
     }
 
@@ -238,11 +238,11 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
             batch_readout_count: 0,
             frame_buffers: [
-                HashMap::with_capacity(100_000),
-                HashMap::with_capacity(100_000),
                 HashMap::with_capacity(1),
                 HashMap::with_capacity(1),
-                HashMap::with_capacity(100_000),
+                HashMap::with_capacity(1),
+                HashMap::with_capacity(1),
+                HashMap::with_capacity(600_000),
             ],
         }
     }
@@ -403,10 +403,10 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     /// channel, marked as `frame_buffers[4]` is using a different incrementing
     /// method
     fn draw(&mut self, point: ImageCoor, channel: usize) {
-        self.frame_buffers[channel]
-            .entry(point)
-            .and_modify(|c| c.apply(|d| d + GRAYSCALE_STEP))
-            .or_insert(*GRAYSCALE_START);
+        // self.frame_buffers[channel]
+        //     .entry(point)
+        //     .and_modify(|c| c.apply(|d| d + GRAYSCALE_STEP))
+        //     .or_insert(*GRAYSCALE_START);
         self.frame_buffers[4]
             .entry(point)
             .and_modify(|c| c.apply(|d| d * COLOR_INCREMENT))
@@ -566,7 +566,6 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
         let handle =
             std::thread::spawn(move || serialize_data(receiver, voxel_delta, config.filename));
         while !self.channels.should_close() {
-            // self.reset_frame_buffer();
             info!("Starting the population of single frame");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             if frame_number % rolling_avg == 0 {
