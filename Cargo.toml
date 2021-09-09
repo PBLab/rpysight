@@ -3,8 +3,15 @@ name = "rpysight"
 version = "0.1.0"
 authors = ["HagaiHargil <hagaihargil@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "GPL-3.0"
+description = "Render 2D/3D photon counting data in real time"
+homepage = "https://github.com/PBLab/rpysight"
+documentation = "https://docs.rs/rpysight"  # still offline
+repository = "https://github.com/PBLab/rpysight" 
+readme = "README.md"
+keywords = ["photon counting", "point cloud", "3D", "rendering", "microscopy", "two-photon", "neuroscience"]
+categories = ["rendering", "science", "visualization"]
+default-run = "cli"
 
 [dependencies]
 kiss3d = "0.31"
