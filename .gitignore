@@ -6,3 +6,5 @@ Cargo.lock
 __tt_data_stream.dat
 *.ttbin
 *.dat
+*.arrow
+*.arrow_stream

@@ -1,0 +1,50 @@
+filename = "target/test.npy"
+ignored_channels = []
+rows = 256
+columns = 256
+planes = 1
+fill_fraction = 71.0
+frame_dead_time = 1310000000
+replay_existing = false
+rolling_avg = 5
+line_shift = 1000000
+bidir = "Bidir"
+point_color = [1.0, 1.0, 1.0]
+
+[scan_period]
+period = 126214818
+
+[tag_period]
+period = 5268704
+
+[pmt1_ch]
+channel = -1
+threshold = -0.3
+
+[pmt2_ch]
+channel = 0
+threshold = 0.0
+
+[pmt3_ch]
+channel = 0
+threshold = 0.0
+
+[pmt4_ch]
+channel = 0
+threshold = 0.0
+
+[laser_ch]
+channel = 0
+threshold = 0.0
+
+[frame_ch]
+channel = 3
+threshold = 0.5
+
+[line_ch]
+channel = 0
+threshold = 0.0
+
+[taglens_ch]
+channel = 0
+threshold = 0.0
