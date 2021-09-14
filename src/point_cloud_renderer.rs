@@ -465,7 +465,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             let mut previous_events_mut = previous_events.iter();
             let mut steps = 0;
             let frame_started =
-                previous_events_mut.find_map(|event| match self.inputs[event.channel] {
+                previous_events_mut.find_map(|event| match self.inputs.get(event.channel) {
                     DataType::Line => Some((DataType::Line, event.time)),
                     DataType::Frame => Some((DataType::Frame, event.time)),
                     _ => {

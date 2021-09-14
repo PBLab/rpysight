@@ -161,7 +161,6 @@ impl Inputs {
         inps
     }
 
-
     pub fn get(&self, channel: i32) -> &DataType {
         let actual_idx = (MAX_TIMETAGGER_INPUTS + channel) as usize;
         if actual_idx >= self.0.len() {
