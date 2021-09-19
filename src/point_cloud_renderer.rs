@@ -405,7 +405,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     /// Due to limitations of kiss3d all frame_buffers others than the 4th one
     /// (merge) aren't rendered, but their photons are still added to these
     /// buffers because they'll be used in the serialization process later on.
-    fn draw(&mut self, point: ImageCoor, channel: usize) {
+    fn add_to_render_queue(&mut self, point: ImageCoor, channel: usize) {
         self.frame_buffers[channel]
             .entry(point)
             .and_modify(|c| c.apply(|d| d + GRAYSCALE_STEP))
@@ -425,7 +425,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     fn act_on_single_event(&mut self, event: Event) -> Option<i8> {
         match self.event_to_coordinate(event) {
             ProcessedEvent::Displayed(point, channel) => {
-                self.draw(point, channel);
+                self.add_to_render_queue(point, channel);
                 None
             }
             ProcessedEvent::NoOp => None,
@@ -465,11 +465,18 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             let mut previous_events_mut = previous_events.iter();
             let mut steps = 0;
             let frame_started =
-                previous_events_mut.find_map(|event| match self.inputs.get(event.channel) {
-                    DataType::Line => Some((DataType::Line, event.time)),
-                    DataType::Frame => Some((DataType::Frame, event.time)),
-                    _ => {
-                        steps += 1;
+                previous_events_mut.find_map(|event| {
+                    if event.type_ == 0 {
+                        match self.inputs.get(event.channel) {
+                            DataType::Line => Some((DataType::Line, event.time)),
+                            DataType::Frame => Some((DataType::Frame, event.time)),
+                            _ => {
+                                steps += 1;
+                                None
+                            }
+                        }
+                    } else {
+                        warn!("Overflow: {:?}", event);
                         None
                     }
                 });
@@ -527,18 +534,24 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                 }
             };
             let mut leftover_event_stream = event_stream.iter();
+            info!("Looking for the first line/frame in a newly acquired stream");
             let frame_started = leftover_event_stream
-                // .find_map(|event| match self.inputs[event.channel] {
-                .find_map(|event| match self.inputs.get(event.channel) {
-                    &DataType::Line => Some((DataType::Line, event.time)),
-                    &DataType::Frame => Some((DataType::Frame, event.time)),
-                    &DataType::Invalid => {
-                        error!("Out of bounds access: {:?}", event);
+                .find_map(|event| {
+                    if event.type_ == 0 {
+                        match self.inputs.get(event.channel) {
+                        &DataType::Line => Some((DataType::Line, event.time)),
+                        &DataType::Frame => Some((DataType::Frame, event.time)),
+                        &DataType::Invalid => {
+                            error!("Out of bounds access: {:?}", event);
+                            None
+                        }
+                        _ => None,
+                        }
+                    } else {
+                        warn!("Overflow: {:?}", event);
                         None
                     }
-                    _ => None,
                 });
-            info!("Looking for the first line/frame in a newly acquired stream");
             if let Some(started) = frame_started {
                 self.lines_vec.clear();
                 match started.0 {

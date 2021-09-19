@@ -97,6 +97,16 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         pass
 
     def convert_tags_to_recordbatch(self, incoming_tags):
+        """Transfer the np.ndarray to a RecordBatch.
+        
+        This is done whenever the TimeTagger sends its data, and this operation
+        is quite minimal in its computational requirements.
+        
+        Note that to construct a pyarrow.Array we need to provide a list with
+        two elements, a None and then the actual buffer. I wasn't able to
+        understand exactly what's the purpose of the first None (nulls?), but
+        regardless it should be kept there.
+        """
         num_tags = len(incoming_tags)
         type_ = pa.UInt8Array.from_buffers(
             pa.uint8(),
@@ -151,8 +161,6 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         if len(incoming_tags) > 0:
             batch = self.convert_tags_to_recordbatch(incoming_tags)
             self.stream.write(batch)
-        # Saving the data to an npy file for future-proofing purposes
-        # np.save(self.filehandle, incoming_tags)
 
 
 def infer_channel_list_from_cfg(config):
@@ -179,7 +187,7 @@ def add_fname_suffix(fname: str) -> str:
 
 
 def run_tagger(cfg: str):
-    """Run a TimeTagger acquisition with the GUI's parameters.
+    """Run a TimeTagger acquisition with the given parameters.
 
     This function starts an acquisition using parameters from the rPySight GUI.
     It should be called from that GUI since the parameter it receives arrives
@@ -212,25 +220,3 @@ def replay_existing(cfg: str):
     _ = RealTimeRendering(tagger, None, None)
     tagger.replay(config['filename'], queue=False)
     tagger.waitForCompletion(timeout=-1)
-
-
-def setup_server_tt():
-    tagger = TimeTagger.createTimeTagger()
-    tagger.reset()
-    tagger.setTestSignal(1, True)
-    tagger.startServer(51085, [1])
-    return tagger
-
-
-def setup_client_tt():
-    tagger = TimeTagger.createTimeTaggerNetwork()
-    tagger.connect(domain="127.0.0.1", port=51085)
-    return tagger
-
-
-if __name__ == '__main__':
-    server = setup_server_tt()
-    tagger = setup_client_tt()
-    hist = TimeTagger.Correlation(tagger, 1, binwidth=2, n_bins=2000)
-    hist.startFor(int(10e12), clear=True)
-    hist.waitUntilFinished()

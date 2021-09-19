@@ -58,8 +58,8 @@ const TT_RUN_FUNCTION_NAME: &str = "run_tagger";
 const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 /// The gray level step that each photon adds to the current pixel. This is a
 /// poor man's brightness normalization mechanism
-const COLOR_INCREMENT: f32 = 1.6;
-const GRAYSCALE_STEP: f32 = 0.02;
+const COLOR_INCREMENT: f32 = 1.25;
+const GRAYSCALE_STEP: f32 = 0.01;
 
 lazy_static! {
     /// Brightness starting level of each channel
@@ -91,7 +91,7 @@ pub fn reload_cfg_or_use_default(config_name: Option<PathBuf>) -> AppConfig {
 ///
 /// This function doesn't assert that it exists, it simply returns it.
 pub(crate) fn get_config_path(config_name: Option<PathBuf>) -> PathBuf {
-    let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab", "RPySight") {
+    let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab", "rPySight") {
         proj_dirs
             .config_dir()
             .join(config_name.unwrap_or(PathBuf::from(DEFAULT_CONFIG_FNAME)))
@@ -103,7 +103,7 @@ pub(crate) fn get_config_path(config_name: Option<PathBuf>) -> PathBuf {
     config_path
 }
 
-/// Populates a Settings instance with the configuration of RPySight.
+/// Populates a Settings instance with the configuration of rPySight.
 ///
 /// If any additional changes to the default settings should be made, then
 /// they should be done inside this function.
@@ -115,7 +115,7 @@ pub fn load_app_settings(cfg: AppConfig) -> Settings<AppConfig> {
 
 /// Writes a default configuration file to disk and returns it.
 ///
-/// This functions is called in the case that RPySight is run for the first
+/// This functions is called in the case that rPySight is run for the first
 /// time in a workstation and the configuration folder and files don't yet
 ///  exist. It writes a new default file to disk and returns it. If failed
 ///  during this process it will log these errors to disk and returns an Err
