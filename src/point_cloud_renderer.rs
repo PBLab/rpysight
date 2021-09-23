@@ -110,6 +110,10 @@ impl<T: PointDisplay> Channels<T> {
         self.channel_merge.hide();
     }
 
+    /// Render all channels.
+    ///
+    /// Due to issues with kiss3d we only render a single channel - the merged one -
+    /// at this time.
     pub fn render(
         &mut self,
         frame_buffers: &mut [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>],
@@ -119,6 +123,11 @@ impl<T: PointDisplay> Channels<T> {
         // Channels::render_single_channel(&mut frame_buffers[2], &mut self.channel3);
         // Channels::render_single_channel(&mut frame_buffers[3], &mut self.channel4);
         Channels::render_single_channel(&mut frame_buffers[4], &mut self.channel_merge);
+        // Drain the other ununsed channels
+        frame_buffers[0].clear();
+        frame_buffers[1].clear();
+        frame_buffers[2].clear();
+        frame_buffers[3].clear();
     }
 
     fn render_single_channel(
@@ -734,7 +743,7 @@ fn serialize_data<P: AsRef<Path>>(
                 let (channels, xs, ys, zs, colors) = coord_to_index.map_data_to_indices(new_data);
                 let rb = coord_to_index.convert_vecs_to_recordbatch(channels, xs, ys, zs, colors);
                 match coord_to_index.serialize_to_stream(rb) {
-                    Ok(()) => {}
+                    Ok(()) => {},
                     Err(e) => {
                         error!("Failed to serialize: {:?}", e);
                     }
@@ -757,6 +766,7 @@ struct CoordToIndex {
     column_mapping: BTreeMap<OrderedFloat<f32>, u32>,
     plane_mapping: BTreeMap<OrderedFloat<f32>, u32>,
     stream: StreamWriter<File>,
+    schema: Arc<Schema>,
 }
 
 impl CoordToIndex {
@@ -793,16 +803,17 @@ impl CoordToIndex {
             column_mapping: col,
             plane_mapping: plane,
             stream,
+            schema: Arc::new(schema),
         })
     }
 
     /// Convert the GPU-based coordinates and brightness levels to a table of
     /// array-focused coordinates.
     pub fn map_data_to_indices(
-        &mut self,
+        &self,
         data: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5],
     ) -> (Vec<u8>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<Point3<f32>>) {
-        let length = data.len();
+        let length = data[4].len();
         let mut channels = Vec::<u8>::with_capacity(length);
         let mut xs = Vec::<u32>::with_capacity(length);
         let mut ys = Vec::<u32>::with_capacity(length);
@@ -834,7 +845,7 @@ impl CoordToIndex {
         (channels, xs, ys, zs, colors)
     }
 
-    /// Convert the "raw" table of data into a [`RecordBatch`] that cna be
+    /// Convert the "raw" table of data into a [`RecordBatch`] that can be
     /// streamed and serialized.
     pub fn convert_vecs_to_recordbatch(
         &self,
@@ -844,35 +855,36 @@ impl CoordToIndex {
         zs: Vec<u32>,
         colors: Vec<Point3<f32>>,
     ) -> RecordBatch {
-        let channels = Arc::new(UInt8Array::from_slice(&channels));
-        let xs = Arc::new(UInt32Array::from_slice(&xs));
-        let ys = Arc::new(UInt32Array::from_slice(&ys));
-        let zs = Arc::new(UInt32Array::from_slice(&zs));
+        let channels = Arc::new(UInt8Array::from_trusted_len_values_iter(channels.into_iter()));
+        let xs = Arc::new(UInt32Array::from_trusted_len_values_iter(xs.into_iter()));
+        let ys = Arc::new(UInt32Array::from_trusted_len_values_iter(ys.into_iter()));
+        let zs = Arc::new(UInt32Array::from_trusted_len_values_iter(zs.into_iter()));
         let colors = self.convert_colors_vec_to_arrays(colors);
-        let iter_over_vecs: Vec<(&str, Arc<dyn Array>)> = vec![
-            ("channel", channels),
-            ("x", xs),
-            ("y", ys),
-            ("z", zs),
-            ("color", colors),
+        let iter_over_vecs: Vec<Arc<dyn Array>> = vec![
+            channels,
+            xs,
+            ys,
+            zs,
+            colors,
         ];
-        RecordBatch::try_from_iter(iter_over_vecs).unwrap()
+        RecordBatch::try_new(self.schema.clone(), iter_over_vecs).unwrap()
     }
 
     /// Create the specific structure of the colors (=brightness) to an Arrow-
     /// centered data representation.
     pub fn convert_colors_vec_to_arrays(&self, colors: Vec<Point3<f32>>) -> Arc<StructArray> {
-        let mut colors_x = vec![];
-        let mut colors_y = vec![];
-        let mut colors_z = vec![];
+        let length = colors.len();
+        let mut colors_x = Vec::<f32>::with_capacity(length);
+        let mut colors_y = Vec::<f32>::with_capacity(length);
+        let mut colors_z = Vec::<f32>::with_capacity(length);
         for p in colors {
             colors_x.push(p.x);
             colors_y.push(p.y);
             colors_z.push(p.z);
         }
-        let colors_x = Arc::new(Float32Array::from_slice(&colors_x));
-        let colors_y = Arc::new(Float32Array::from_slice(&colors_y));
-        let colors_z = Arc::new(Float32Array::from_slice(&colors_z));
+        let colors_x = Arc::new(Float32Array::from_trusted_len_values_iter(colors_x.into_iter()));
+        let colors_y = Arc::new(Float32Array::from_trusted_len_values_iter(colors_y.into_iter()));
+        let colors_z = Arc::new(Float32Array::from_trusted_len_values_iter(colors_z.into_iter()));
         let colors = Arc::new(StructArray::from_data(Struct(
             vec![
                 Field::new("r", arrow2::datatypes::DataType::Float32, false),
