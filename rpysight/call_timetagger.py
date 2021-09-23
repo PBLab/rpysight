@@ -1,24 +1,15 @@
-"""Taken directly from Swabian's examples. Written on 132.66.42.158 (laser
-room computer) for realtime interaction with the TT. This somehow works
+"""Run the TimeTagger using its Python API.
+
+Taken directly from Swabian's examples. Written on an internal machine (laser
+room computer) for real-time interaction with the TT. This somehow works
 without any PYTHONPATH manipulation - someone has already added the
 'driver\\python' directory and it seems stable enough for this POC.
-
-By and large, the 'process' method is automatically called when each batch of
-events arrive. The entire data is in the 'incoming_tags' variable, the
-self.data array is a buffer that's holding the intermediate results of their
-histogramming effort.
-
-Here they called the numbafied function 'fast_process' during each iteration. I
-replaced that function with my own mock function defined in lib.rs just to make
-it work once, and it did, which is great.
 """
 import pathlib
 from typing import Optional
 import socket
-from time import sleep
 
 import numpy as np
-from numpy.testing._private.utils import measure
 import pyarrow as pa
 import toml
 
@@ -28,11 +19,11 @@ try:
     import TimeTagger
 except ModuleNotFoundError:
     import sys
+    # Modify this path with your own env path
     sys.path.append(r"C:\Users\PBLab\.conda\envs\timetagger")
     import TimeTagger
 
 
-TT_DATA_STREAM = "tt_data_stream.arrow_stream"
 HOST = '127.0.0.1'
 PORT = 64444
 
