@@ -1,5 +1,4 @@
 filename = "target/test.npy"
-ignored_channels = []
 rows = 256
 columns = 256
 planes = 1
@@ -9,7 +8,7 @@ replay_existing = false
 rolling_avg = 5
 line_shift = 1000000
 bidir = "Bidir"
-point_color = [1.0, 1.0, 1.0]
+laser_freq = 80000000
 
 [scan_period]
 period = 126214818
@@ -48,3 +47,8 @@ threshold = 0.0
 [taglens_ch]
 channel = 0
 threshold = 0.0
+
+[demux]
+demultiplex = false
+demux_ch = "pmt1_ch"
+periods = 2
