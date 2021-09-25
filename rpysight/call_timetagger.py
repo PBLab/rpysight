@@ -179,18 +179,16 @@ def set_tt_for_demuxing(tagger, config) -> list:
     section of the laser clock period.
     """
     input_channel_to_gate = config[config['demux']['demux_ch']]['channel']
-    delayed_channels = [config['laser_ch']['channel']]
     new_channels = []
     num_demux_channels = config['demux']['periods']
-    delay_in_ps =  config['laser_period'] / num_demux_channels
+    delay_in_ps = int(config['laser_period']['period'] / num_demux_channels)
+    delayed_channels = [DelayedChannel(tagger, config['laser_ch']['channel'], delay_in_ps)]
     for period in range(1, num_demux_channels):
-        delayed_channels.append(DelayedChannel(tagger, config['laser_ch']['channel'], delay_in_ps * period).getChannel())
-        
+        delayed_channels.append(DelayedChannel(tagger, config['laser_ch']['channel'], delay_in_ps * period))
     for idx, ch in enumerate(delayed_channels[:-1]):
-        new_channels.append(GatedChannel(tagger, input_channel_to_gate, ch, delayed_channels[idx + 1]).getChannel())
-    new_channels.append(GatedChannel(tagger, input_channel_to_gate, delayed_channels[-1], delayed_channels[0]))
-
-    return new_channels
+        new_channels.append(GatedChannel(tagger, input_channel_to_gate, ch.getChannel(), delayed_channels[idx + 1].getChannel()))
+    new_channels.append(GatedChannel(tagger, input_channel_to_gate, delayed_channels[-1].getChannel(), delayed_channels[0].getChannel()))
+    return delayed_channels, new_channels
     
 
 def run_tagger(cfg: str):
@@ -212,9 +210,9 @@ def run_tagger(cfg: str):
     [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
     int_channels = [channel['channel'] for channel in channels]
     if config['demux']['demultiplex']:
-        demux_channels = set_tt_for_demuxing(tagger, config)
-        print(demux_channels)
-        int_channels += demux_channels
+        _delayed_channels, demux_channels = set_tt_for_demuxing(tagger, config)
+        print(_delayed_channels[0].getChannel(), demux_channels[0].getChannel())
+        int_channels += [channel.getChannel() for channel in demux_channels]
     with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
         _rt = RealTimeRendering(measure_group.getTagger(), int_channels, config['filename'])
         _fw = FileWriter(measure_group.getTagger(), config['filename'], int_channels)

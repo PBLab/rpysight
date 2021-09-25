@@ -200,8 +200,8 @@ pub struct AppConfig {
     pub(crate) replay_existing: bool,
     pub(crate) rolling_avg: u16,
     pub(crate) line_shift: Picosecond,
-    pub(crate) laser_period: Period,
     pub(crate) bidir: Bidirectionality,
+    pub(crate) laser_period: Period,
     pub(crate) scan_period: Period,
     pub(crate) tag_period: Period,
     pub(crate) pmt1_ch: InputChannel,
@@ -380,7 +380,7 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected, f32)
 #[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Demux {
     demultiplex: bool,
-    demux_ch: i32,
+    demux_ch: String,
     periods: u8,
 }
 
