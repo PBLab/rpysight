@@ -3,7 +3,6 @@
 use std::num::ParseFloatError;
 use std::ops::{Deref, Index};
 
-use nalgebra::Point3;
 use serde::{Deserialize, Serialize};
 
 use crate::gui::{ChannelNumber, EdgeDetected, MainAppGui};
@@ -201,8 +200,8 @@ pub struct AppConfig {
     pub(crate) replay_existing: bool,
     pub(crate) rolling_avg: u16,
     pub(crate) line_shift: Picosecond,
+    pub(crate) laser_period: Period,
     pub(crate) bidir: Bidirectionality,
-    pub(crate) point_color: Point3<f32>,
     pub(crate) scan_period: Period,
     pub(crate) tag_period: Period,
     pub(crate) pmt1_ch: InputChannel,
@@ -213,6 +212,7 @@ pub struct AppConfig {
     pub(crate) frame_ch: InputChannel,
     pub(crate) line_ch: InputChannel,
     pub(crate) taglens_ch: InputChannel,
+    pub(crate) demux: Demux,
 }
 
 impl AppConfig {
@@ -376,10 +376,17 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected, f32)
     InputChannel::new(ch, channel.2)
 }
 
+/// Demultiplexing configuration
+#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq)]
+pub struct Demux {
+    demultiplex: bool,
+    demux_ch: String,
+    periods: u8,
+}
+
 #[derive(Clone)]
 pub struct AppConfigBuilder {
     filename: String,
-    point_color: Point3<f32>,
     ignored_channels: Vec<InputChannel>,
     rows: u32,
     columns: u32,
@@ -391,6 +398,7 @@ pub struct AppConfigBuilder {
     frame_dead_time: Picosecond,
     replay_existing: bool,
     rolling_avg: u16,
+    laser_period: Period,
     line_shift: Picosecond,
     pmt1_ch: InputChannel,
     pmt2_ch: InputChannel,
@@ -400,6 +408,7 @@ pub struct AppConfigBuilder {
     frame_ch: InputChannel,
     line_ch: InputChannel,
     taglens_ch: InputChannel,
+    demux: Demux,
 }
 
 impl AppConfigBuilder {
@@ -408,7 +417,7 @@ impl AppConfigBuilder {
     pub fn default() -> AppConfigBuilder {
         AppConfigBuilder {
             filename: "target/test.npy".to_string(),
-            point_color: Point3::new(1.0f32, 1.0, 1.0),
+            laser_period: Period::from_freq(80_000_000.0),
             ignored_channels: vec![],
             rows: 256,
             columns: 256,
@@ -429,13 +438,14 @@ impl AppConfigBuilder {
             frame_ch: InputChannel::new(0, 0.0),
             line_ch: InputChannel::new(-2, 0.0),
             taglens_ch: InputChannel::new(3, 0.0),
+            demux: Demux::default(),
         }
     }
 
     pub fn build(&self) -> AppConfig {
         AppConfig {
             filename: self.filename.clone(),
-            point_color: self.point_color,
+            laser_period: self.laser_period,
             ignored_channels: self.ignored_channels.clone(),
             rows: self.rows,
             columns: self.columns,
@@ -456,6 +466,7 @@ impl AppConfigBuilder {
             taglens_ch: self.taglens_ch,
             replay_existing: self.replay_existing,
             line_shift: self.line_shift,
+            demux: self.demux.clone(),
         }
     }
 
@@ -464,8 +475,8 @@ impl AppConfigBuilder {
         self
     }
 
-    pub fn with_point_color(&mut self, point_color: Point3<f32>) -> &mut Self {
-        self.point_color = point_color;
+    pub fn with_laser_period(&mut self, laser_period: Period) -> &mut Self {
+        self.laser_period = laser_period;
         self
     }
 
@@ -583,6 +594,11 @@ impl AppConfigBuilder {
         self.line_shift = line_shift;
         self
     }
+
+    pub fn with_demux(&mut self, demux: Demux) -> &mut Self {
+        self.demux = demux;
+        self
+    }
 }
 
 #[cfg(test)]
@@ -593,7 +609,7 @@ mod tests {
     /// about the different config values
     fn setup_default_config() -> AppConfigBuilder {
         AppConfigBuilder::default()
-            .with_point_color(Point3::new(1.0f32, 1.0, 1.0))
+            .with_laser_period(80_000_000.0)
             .with_rows(256)
             .with_columns(256)
             .with_planes(10)
@@ -613,6 +629,7 @@ mod tests {
             .with_taglens_ch(InputChannel::new(3, 0.0))
             .with_replay_existing(false)
             .with_ignored_channels(vec![])
+            .with_demux(Demux::default())
             .clone()
     }
 

@@ -181,9 +181,8 @@ def set_tt_for_demuxing(tagger, config) -> list:
     input_channel_to_gate = config[config['demux']['demux_ch']]['channel']
     delayed_channels = [config['laser_ch']['channel']]
     new_channels = []
-    laser_period_ps = 1e12 / config['laser_freq']
     num_demux_channels = config['demux']['periods']
-    delay_in_ps =  laser_period_ps / num_demux_channels
+    delay_in_ps =  config['laser_period'] / num_demux_channels
     for period in range(1, num_demux_channels):
         delayed_channels.append(DelayedChannel(tagger, config['laser_ch']['channel'], delay_in_ps * period).getChannel())
         

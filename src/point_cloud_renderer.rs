@@ -473,22 +473,21 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             info!("Looking for the first line/frame in the previous event stream");
             let mut previous_events_mut = previous_events.iter();
             let mut steps = 0;
-            let frame_started =
-                previous_events_mut.find_map(|event| {
-                    if event.type_ == 0 {
-                        match self.inputs.get(event.channel) {
-                            DataType::Line => Some((DataType::Line, event.time)),
-                            DataType::Frame => Some((DataType::Frame, event.time)),
-                            _ => {
-                                steps += 1;
-                                None
-                            }
+            let frame_started = previous_events_mut.find_map(|event| {
+                if event.type_ == 0 {
+                    match self.inputs.get(event.channel) {
+                        DataType::Line => Some((DataType::Line, event.time)),
+                        DataType::Frame => Some((DataType::Frame, event.time)),
+                        _ => {
+                            steps += 1;
+                            None
                         }
-                    } else {
-                        warn!("Overflow: {:?}", event);
-                        None
                     }
-                });
+                } else {
+                    warn!("Overflow: {:?}", event);
+                    None
+                }
+            });
             if let Some(started) = frame_started {
                 self.lines_vec.clear();
                 match started.0 {
@@ -544,10 +543,9 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             };
             let mut leftover_event_stream = event_stream.iter();
             info!("Looking for the first line/frame in a newly acquired stream");
-            let frame_started = leftover_event_stream
-                .find_map(|event| {
-                    if event.type_ == 0 {
-                        match self.inputs.get(event.channel) {
+            let frame_started = leftover_event_stream.find_map(|event| {
+                if event.type_ == 0 {
+                    match self.inputs.get(event.channel) {
                         &DataType::Line => Some((DataType::Line, event.time)),
                         &DataType::Frame => Some((DataType::Frame, event.time)),
                         &DataType::Invalid => {
@@ -555,12 +553,12 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                             None
                         }
                         _ => None,
-                        }
-                    } else {
-                        warn!("Overflow: {:?}", event);
-                        None
                     }
-                });
+                } else {
+                    warn!("Overflow: {:?}", event);
+                    None
+                }
+            });
             if let Some(started) = frame_started {
                 self.lines_vec.clear();
                 match started.0 {
@@ -743,7 +741,7 @@ fn serialize_data<P: AsRef<Path>>(
                 let (channels, xs, ys, zs, colors) = coord_to_index.map_data_to_indices(new_data);
                 let rb = coord_to_index.convert_vecs_to_recordbatch(channels, xs, ys, zs, colors);
                 match coord_to_index.serialize_to_stream(rb) {
-                    Ok(()) => {},
+                    Ok(()) => {}
                     Err(e) => {
                         error!("Failed to serialize: {:?}", e);
                     }
@@ -855,18 +853,14 @@ impl CoordToIndex {
         zs: Vec<u32>,
         colors: Vec<Point3<f32>>,
     ) -> RecordBatch {
-        let channels = Arc::new(UInt8Array::from_trusted_len_values_iter(channels.into_iter()));
+        let channels = Arc::new(UInt8Array::from_trusted_len_values_iter(
+            channels.into_iter(),
+        ));
         let xs = Arc::new(UInt32Array::from_trusted_len_values_iter(xs.into_iter()));
         let ys = Arc::new(UInt32Array::from_trusted_len_values_iter(ys.into_iter()));
         let zs = Arc::new(UInt32Array::from_trusted_len_values_iter(zs.into_iter()));
         let colors = self.convert_colors_vec_to_arrays(colors);
-        let iter_over_vecs: Vec<Arc<dyn Array>> = vec![
-            channels,
-            xs,
-            ys,
-            zs,
-            colors,
-        ];
+        let iter_over_vecs: Vec<Arc<dyn Array>> = vec![channels, xs, ys, zs, colors];
         RecordBatch::try_new(self.schema.clone(), iter_over_vecs).unwrap()
     }
 
@@ -882,11 +876,17 @@ impl CoordToIndex {
             colors_y.push(p.y);
             colors_z.push(p.z);
         }
-        let colors_x = Arc::new(Float32Array::from_trusted_len_values_iter(colors_x.into_iter()));
-        let colors_y = Arc::new(Float32Array::from_trusted_len_values_iter(colors_y.into_iter()));
-        let colors_z = Arc::new(Float32Array::from_trusted_len_values_iter(colors_z.into_iter()));
-        let colors = Arc::new(StructArray::from_data(Struct(
-            vec![
+        let colors_x = Arc::new(Float32Array::from_trusted_len_values_iter(
+            colors_x.into_iter(),
+        ));
+        let colors_y = Arc::new(Float32Array::from_trusted_len_values_iter(
+            colors_y.into_iter(),
+        ));
+        let colors_z = Arc::new(Float32Array::from_trusted_len_values_iter(
+            colors_z.into_iter(),
+        ));
+        let colors = Arc::new(StructArray::from_data(
+            Struct(vec![
                 Field::new("r", arrow2::datatypes::DataType::Float32, false),
                 Field::new("g", arrow2::datatypes::DataType::Float32, false),
                 Field::new("b", arrow2::datatypes::DataType::Float32, false),
@@ -914,7 +914,7 @@ mod tests {
 
     fn setup_default_config() -> AppConfigBuilder {
         AppConfigBuilder::default()
-            .with_point_color(Point3::new(1.0f32, 1.0, 1.0))
+            .with_laser_period(Period::from_freq(80_000_000.0))
             .with_rows(256)
             .with_columns(256)
             .with_planes(10)

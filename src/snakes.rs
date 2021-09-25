@@ -1168,7 +1168,7 @@ mod tests {
     /// about the different config values
     fn setup_default_config() -> AppConfigBuilder {
         AppConfigBuilder::default()
-            .with_point_color(Point3::new(1.0f32, 1.0, 1.0))
+            .with_laser_period(Period::from_freq(80_000_000.0))
             .with_rows(256)
             .with_columns(256)
             .with_planes(10)
@@ -1191,7 +1191,7 @@ mod tests {
 
     fn setup_image_scanning_config() -> AppConfigBuilder {
         AppConfigBuilder::default()
-            .with_point_color(Point3::new(1.0f32, 1.0, 1.0))
+            .with_laser_period(Period::from_freq(80_000_000.0))
             .with_rows(10)
             .with_columns(10)
             .with_planes(1)
