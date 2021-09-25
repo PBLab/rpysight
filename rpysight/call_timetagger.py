@@ -41,8 +41,8 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
 
     def __init__(self, tagger, channels: Optional[list], fname: Optional[str] = None):
         super().__init__(tagger)
-        if channels:
-            [self.register_channel(channel=channel['channel']) for channel in channels]
+        if channels:  # during replay we skip it
+            [self.register_channel(channel=channel) for channel in channels]
         self.init_stream_and_schema()
         if fname:
             self.filehandle = open(fname, "wb")
@@ -213,10 +213,11 @@ def run_tagger(cfg: str):
     int_channels = [channel['channel'] for channel in channels]
     if config['demux']['demultiplex']:
         demux_channels = set_tt_for_demuxing(tagger, config)
+        print(demux_channels)
         int_channels += demux_channels
     with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
-        rt = RealTimeRendering(measure_group.getTagger(), channels, config['filename'])
-        fw = FileWriter(measure_group.getTagger(), config['filename'], int_channels)
+        _rt = RealTimeRendering(measure_group.getTagger(), int_channels, config['filename'])
+        _fw = FileWriter(measure_group.getTagger(), config['filename'], int_channels)
         measure_group.startFor(int(1_000_000e12))
         measure_group.waitUntilFinished()
 

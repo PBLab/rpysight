@@ -1159,7 +1159,6 @@ impl Snake for ThreeDimensionalSnake {
 #[cfg(test)]
 mod tests {
     use assert_approx_eq::assert_approx_eq;
-    use nalgebra::Point3;
 
     use super::*;
     use crate::configuration::{AppConfigBuilder, InputChannel, Period};

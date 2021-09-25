@@ -380,7 +380,7 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected, f32)
 #[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Demux {
     demultiplex: bool,
-    demux_ch: String,
+    demux_ch: i32,
     periods: u8,
 }
 
