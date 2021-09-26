@@ -61,6 +61,9 @@ const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 const COLOR_INCREMENT: f32 = 1.25;
 const GRAYSCALE_STEP: f32 = 0.01;
 
+/// The TimeTagger's virtual channels always start at this value
+const FIRST_VIRTUAL_CHANNEL: i32 = 1000i32;
+
 lazy_static! {
     /// Brightness starting level of each channel
     static ref GRAYSCALE_START: Point3<f32> = Point3::<f32>::new(0.05, 0.05, 0.05);

@@ -248,8 +248,8 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             frame_buffers: [
                 HashMap::with_capacity(600_000),
                 HashMap::with_capacity(600_000),
-                HashMap::with_capacity(1),
-                HashMap::with_capacity(1),
+                HashMap::with_capacity(600_000),
+                HashMap::with_capacity(600_000),
                 HashMap::with_capacity(600_000),
             ],
         }
@@ -691,7 +691,6 @@ impl<T: PointDisplay, R: Read> EventStreamHandler for AppState<T, R> {
             DataType::TagLens => self.snake.new_taglens_period(event.time),
             DataType::Laser => self.snake.new_laser_event(event.time),
             DataType::Frame => self.handle_frame_event(event.time),
-            DataType::Unwanted => ProcessedEvent::NoOp,
             DataType::Invalid => {
                 warn!("Unsupported event: {:?}", event);
                 ProcessedEvent::NoOp

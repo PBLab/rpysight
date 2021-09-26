@@ -2,12 +2,15 @@
 
 use std::num::ParseFloatError;
 use std::ops::{Deref, Index};
+use std::path::Path;
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::fs::read_to_string;
 
 use crate::gui::{ChannelNumber, EdgeDetected, MainAppGui};
 use crate::snakes::Picosecond;
-use crate::UserInputError;
+use crate::{UserInputError, FIRST_VIRTUAL_CHANNEL};
 
 /// Picosecond and Hz aware period
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -74,16 +77,32 @@ pub enum DataType {
     Line,
     TagLens,
     Laser,
-    /// A connected output which is unneeded in this experiment
-    Unwanted,
     Invalid,
 }
 
+impl DataType {
+    pub(crate) fn from_str(name: &str) -> Self {
+        match name {
+            "pmt1_ch" => Self::Pmt1,
+            "pmt2_ch" => Self::Pmt2,
+            "pmt3_ch" => Self::Pmt3,
+            "pmt4_ch" => Self::Pmt4,
+            "frame_ch" => Self::Frame,
+            "line_ch" => Self::Line,
+            "taglens_ch" => Self::TagLens,
+            "laser_ch" => Self::Laser,
+            "invalid" => Self::Invalid,
+        }
+    }
+}
 /// Physical number of the input SMA ports on the time tagger.
 ///
 /// It's an i32 due to it having to interact with the channel values that
 /// return from the time tagger stream, which are also i32.
 const MAX_TIMETAGGER_INPUTS: i32 = 18;
+
+/// When using virtual channels their input will never exceed this value
+const VIRTUAL_INPUTS_NUMBER: usize = 1010;
 
 /// A physical input port on the TimeTagger, having both a channel value
 /// (positive if the threshold is positive, else negative) and a threshold
@@ -112,7 +131,8 @@ impl Inputs {
     /// Generates a new Inputs instance. Panics if the input channels aren't
     /// unique or if a channel was accidently assigned to a non-existent input.
     pub fn from_config(config: &AppConfig) -> Inputs {
-        let mut data = [DataType::Invalid; 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1];
+        let mut physical_to_logical_map =
+            [DataType::Invalid; 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1];
         let mut set = std::collections::HashSet::<i32>::new();
         let mut used_channels = 0;
         let mut needed_channels = vec![
@@ -136,26 +156,25 @@ impl Inputs {
             DataType::Laser,
         ];
 
-        let num_unwanted_channels = config.ignored_channels.len();
-        let mut ignored_channels = vec![DataType::Unwanted; num_unwanted_channels];
-        needed_channels.append(&mut config.ignored_channels.clone());
-        datatypes.append(&mut ignored_channels);
         assert!(needed_channels.len() == datatypes.len());
         // Loop over a pair of input and the corresponding data type, but only
         // register the inputs which are actually used, i.e. different than 0.
         for (ch, dt) in needed_channels.into_iter().zip(datatypes).into_iter() {
             if ch.channel != 0 {
                 set.insert(ch.channel);
-                data[(MAX_TIMETAGGER_INPUTS + ch.channel) as usize] = dt;
+                physical_to_logical_map[(MAX_TIMETAGGER_INPUTS + ch.channel) as usize] = dt;
                 used_channels += 1;
             }
+        }
+        if config.demux.demultiplex {
+            Inputs::handle_demux(&mut physical_to_logical_map, config.demux);
         }
         assert_eq!(
             set.len(),
             used_channels,
             "One of the channels was a duplicate"
         );
-        let inps = Inputs(data);
+        let inps = Inputs(physical_to_logical_map);
         debug!("The inputs struct was constructed successfully: {:?}", inps);
         inps
     }
@@ -163,11 +182,30 @@ impl Inputs {
     pub fn get(&self, channel: i32) -> &DataType {
         let actual_idx = (MAX_TIMETAGGER_INPUTS + channel) as usize;
         if actual_idx >= self.0.len() {
-            error!("orig channel: {}", channel);
+            error!(
+                "Wrong channel used for indexing! Received channel {}",
+                channel
+            );
             &DataType::Invalid
         } else {
             &self.0[actual_idx]
         }
+    }
+
+    fn handle_demux(physical_to_logical_map: &mut [DataType], demux: Demux) {
+        let dt = DataType::from_str(&demux.demux_ch);
+        let ch = physical_to_logical_map.iter().position(|item| item == &dt);
+        let ch = match ch {
+            Some(ch) => ch,
+            None => {
+                error!("Demux requested but channel is unavailabe. Continuing.");
+                return;
+            }
+        };
+        physical_to_logical_map[ch] = DataType::Invalid;
+        let periods = demux.periods as i32;
+        let first_gated = FIRST_VIRTUAL_CHANNEL + periods - 1;
+        for gate_idx in first_gated..first_gated + periods {}
     }
 }
 
@@ -191,7 +229,6 @@ impl Index<i32> for Inputs {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppConfig {
     pub(crate) filename: String,
-    pub(crate) ignored_channels: Vec<InputChannel>,
     pub(crate) rows: u32,
     pub(crate) columns: u32,
     pub(crate) planes: u32,
@@ -285,9 +322,19 @@ impl AppConfig {
             ))
             .with_replay_existing(user_input.get_replay_existing())
             .with_rolling_avg(user_input.get_rolling_avg())
-            .with_ignored_channels(convert_ignored_to_vec(user_input.get_ignored_channels()))
             .with_line_shift(user_input.get_line_shift().parse::<Picosecond>().unwrap())
             .build())
+    }
+
+    pub fn try_from_config_path(config_path: &Path) -> Result<Self> {
+        let cfg: AppConfig = toml::from_str(&read_to_string(config_path)?)?;
+        if (cfg.demux.demux_ch != "pmt1_ch") && (cfg.demux.demux_ch != "pmt2_ch") {
+            panic!("Please use demux only on channels 1 or 2")
+        };
+        if (cfg.demux.demultiplex) && (cfg.demux.periods < 2) {
+            panic!("Demultiplexing with a single period doesn't make sense.")
+        }
+        Ok(cfg)
     }
 
     /// The time in ps it takes for a frame to complete. Not including the dead
@@ -313,20 +360,6 @@ impl AppConfig {
         let columns = self.columns.max(1);
         (planes * columns * rows) as usize
     }
-}
-
-/// Converts a comma-separated list of numbers into channels
-fn convert_ignored_to_vec(ignored_str: &str) -> Vec<InputChannel> {
-    if ignored_str.len() == 0 {
-        return vec![];
-    };
-    ignored_str
-        .trim_end_matches(",")
-        .replace(" ", "")
-        .split(",")
-        .map(|ch| ch.parse::<i32>().unwrap())
-        .map(|ch| InputChannel::new(ch, 0.0))
-        .collect()
 }
 
 /// Converts a miliseconds number (a string) into its equivalent in ps.
@@ -387,7 +420,6 @@ pub struct Demux {
 #[derive(Clone)]
 pub struct AppConfigBuilder {
     filename: String,
-    ignored_channels: Vec<InputChannel>,
     rows: u32,
     columns: u32,
     planes: u32,
@@ -418,7 +450,6 @@ impl AppConfigBuilder {
         AppConfigBuilder {
             filename: "target/test.npy".to_string(),
             laser_period: Period::from_freq(80_000_000.0),
-            ignored_channels: vec![],
             rows: 256,
             columns: 256,
             planes: 10,
@@ -446,7 +477,6 @@ impl AppConfigBuilder {
         AppConfig {
             filename: self.filename.clone(),
             laser_period: self.laser_period,
-            ignored_channels: self.ignored_channels.clone(),
             rows: self.rows,
             columns: self.columns,
             planes: self.planes,
@@ -585,11 +615,6 @@ impl AppConfigBuilder {
         self
     }
 
-    pub fn with_ignored_channels(&mut self, ignored_channels: Vec<InputChannel>) -> &mut Self {
-        self.ignored_channels = ignored_channels;
-        self
-    }
-
     pub fn with_line_shift(&mut self, line_shift: Picosecond) -> &mut Self {
         self.line_shift = line_shift;
         self
@@ -628,7 +653,6 @@ mod tests {
             .with_line_ch(InputChannel::new(2, 0.0))
             .with_taglens_ch(InputChannel::new(3, 0.0))
             .with_replay_existing(false)
-            .with_ignored_channels(vec![])
             .with_demux(Demux::default())
             .clone()
     }
@@ -793,35 +817,5 @@ mod tests {
         let result =
             convert_user_channel_input_to_num((ChannelNumber::Channel3, EdgeDetected::Rising, 1.0));
         assert_eq!(result, InputChannel::new(3, 1.0));
-    }
-
-    #[test]
-    fn ignored_to_vec_standard() {
-        let test = "1,2, -3, -4";
-        let ret = convert_ignored_to_vec(test);
-        assert_eq!(
-            ret,
-            vec![1i32, 2, -3, -4]
-                .iter()
-                .map(|ch| InputChannel::new(*ch, 0.0))
-                .collect::<Vec<InputChannel>>()
-        );
-    }
-
-    #[test]
-    fn ignored_to_vec_single() {
-        let test1 = "1";
-        let test2 = "1,";
-        let ret1 = convert_ignored_to_vec(test1);
-        let ret2 = convert_ignored_to_vec(test2);
-        assert_eq!(ret1, vec![InputChannel::new(1, 0.0)]);
-        assert_eq!(ret2, vec![InputChannel::new(1, 0.0)]);
-    }
-
-    #[test]
-    fn ignored_to_vec_empty() {
-        let test = "";
-        let ret = convert_ignored_to_vec(test);
-        assert_eq!(ret, Vec::<InputChannel>::new());
     }
 }

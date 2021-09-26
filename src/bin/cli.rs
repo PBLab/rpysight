@@ -93,7 +93,7 @@ fn main() -> Result<()> {
     info!("Logger initialized successfully, starting rPySight from the CLI");
     let args: Vec<String> = env::args().collect();
     let config_path = validate_and_parse_args(&args[1..])?;
-    let config: AppConfig = toml::from_str(&read_to_string(&config_path)?)?;
+    let config = AppConfig::try_from_config_path(&config_path)?;
     block_on(start_acquisition(config_path, config));
     Ok(())
 }
