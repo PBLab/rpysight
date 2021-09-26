@@ -87,18 +87,19 @@ pub fn reload_cfg_or_use_default(config_name: Option<PathBuf>) -> AppConfig {
     }
 }
 
+pub fn make_config_dir() -> PathBuf {
+    ProjectDirs::from("lab", "PBLab", "rPySight")
+        .unwrap()
+        .config_dir()
+        .into()
+}
+
 /// Generates a PathBuf with the location of the default configuration path.
 ///
 /// This function doesn't assert that it exists, it simply returns it.
 pub(crate) fn get_config_path(config_name: Option<PathBuf>) -> PathBuf {
-    let config_path = if let Some(proj_dirs) = ProjectDirs::from("lab", "PBLab", "rPySight") {
-        proj_dirs
-            .config_dir()
-            .join(config_name.unwrap_or(PathBuf::from(DEFAULT_CONFIG_FNAME)))
-    } else {
-        // Unreachable since config_dir() doesn't fail or returns None
-        unreachable!()
-    };
+    let config_path =
+        make_config_dir().join(config_name.unwrap_or(PathBuf::from(DEFAULT_CONFIG_FNAME)));
     info!("Configuration path: {:?}", config_path);
     config_path
 }

@@ -12,7 +12,10 @@ use futures::executor::block_on;
 use thiserror::Error;
 
 use librpysight::configuration::AppConfig;
-use librpysight::{setup_logger, start_acquisition};
+use librpysight::{
+    make_config_dir, reload_cfg_or_use_default, setup_logger, start_acquisition,
+    DEFAULT_CONFIG_FNAME,
+};
 
 #[derive(Debug, Error)]
 pub enum ConfigParsingError {
@@ -91,8 +94,14 @@ fn main() -> Result<()> {
     setup_logger(Some(PathBuf::from("target/rpysight.log")));
     info!("Logger initialized successfully, starting rPySight from the CLI");
     let args: Vec<String> = env::args().collect();
-    let config_path = validate_and_parse_args(&args[1..])?;
-    let config = AppConfig::try_from_config_path(&config_path)?;
+    let (config_path, config) = match args.len() {
+        1 => (make_config_dir().join(DEFAULT_CONFIG_FNAME), reload_cfg_or_use_default(None)),
+        2 => {
+            let config_path = validate_and_parse_args(&args[1..])?;
+            (config_path.clone(), AppConfig::try_from_config_path(&config_path)?)
+        },
+        _ => panic!("Wrong number of arguments received, pass no args to initialize a new default configuration."),
+    };
     block_on(start_acquisition(config_path, config));
     Ok(())
 }

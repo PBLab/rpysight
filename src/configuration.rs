@@ -489,7 +489,7 @@ impl AppConfigBuilder {
     /// testing.
     pub fn default() -> AppConfigBuilder {
         AppConfigBuilder {
-            filename: "target/test.npy".to_string(),
+            filename: "target/data.arrow_stream".to_string(),
             laser_period: Period::from_freq(80_000_000.0),
             rows: 256,
             columns: 256,
