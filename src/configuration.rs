@@ -1,16 +1,33 @@
 //! All things related to user-facing configurations.
 
+use std::fs::read_to_string;
 use std::num::ParseFloatError;
 use std::ops::{Deref, Index};
 use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::fs::read_to_string;
 
 use crate::gui::{ChannelNumber, EdgeDetected, MainAppGui};
 use crate::snakes::Picosecond;
-use crate::{UserInputError, FIRST_VIRTUAL_CHANNEL};
+use crate::UserInputError;
+
+/// Physical number of the input SMA ports on the time tagger.
+///
+/// It's an i32 due to it having to interact with the channel values that
+/// return from the time tagger stream, which are also i32.
+const MAX_TIMETAGGER_INPUTS: i32 = 18;
+
+/// When no demuxing occurs, the length of the Inputs vector.
+const TOTAL_INPUTS_WITHOUT_VIRTUAL: usize = 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1;
+
+/// Swabian's offset for a virtual channel
+const VIRTUAL_INPUTS_OFFSET: usize = 1000;
+/// Need extra virtual channels
+const VIRTUAL_CHANNELS_MAX_NUM: usize = 8;
+
+const TOTAL_INPUTS_WITH_VIRTUAL: usize =
+    TOTAL_INPUTS_WITHOUT_VIRTUAL + VIRTUAL_INPUTS_OFFSET + VIRTUAL_CHANNELS_MAX_NUM;
 
 /// Picosecond and Hz aware period
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -92,18 +109,10 @@ impl DataType {
             "taglens_ch" => Self::TagLens,
             "laser_ch" => Self::Laser,
             "invalid" => Self::Invalid,
+            _ => panic!("Wrong DataType entered (received {})", name),
         }
     }
 }
-/// Physical number of the input SMA ports on the time tagger.
-///
-/// It's an i32 due to it having to interact with the channel values that
-/// return from the time tagger stream, which are also i32.
-const MAX_TIMETAGGER_INPUTS: i32 = 18;
-
-/// When using virtual channels their input will never exceed this value
-const VIRTUAL_INPUTS_NUMBER: usize = 1010;
-
 /// A physical input port on the TimeTagger, having both a channel value
 /// (positive if the threshold is positive, else negative) and a threshold
 /// value that is set as the trigger of it.
@@ -125,17 +134,17 @@ impl InputChannel {
 /// implemented here we can index into an Inputs instance with a positive or
 /// negative value without any conversions.
 #[derive(Clone, Debug)]
-pub struct Inputs([DataType; 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1]);
+pub struct Inputs([DataType; TOTAL_INPUTS_WITH_VIRTUAL]);
 
 impl Inputs {
     /// Generates a new Inputs instance. Panics if the input channels aren't
     /// unique or if a channel was accidently assigned to a non-existent input.
     pub fn from_config(config: &AppConfig) -> Inputs {
-        let mut physical_to_logical_map =
-            [DataType::Invalid; 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1];
+        let mut physical_to_logical_map = [DataType::Invalid; TOTAL_INPUTS_WITH_VIRTUAL];
+
         let mut set = std::collections::HashSet::<i32>::new();
         let mut used_channels = 0;
-        let mut needed_channels = vec![
+        let needed_channels = vec![
             config.pmt1_ch,
             config.pmt2_ch,
             config.pmt3_ch,
@@ -145,7 +154,7 @@ impl Inputs {
             config.taglens_ch,
             config.laser_ch,
         ];
-        let mut datatypes = vec![
+        let datatypes = vec![
             DataType::Pmt1,
             DataType::Pmt2,
             DataType::Pmt3,
@@ -166,14 +175,14 @@ impl Inputs {
                 used_channels += 1;
             }
         }
-        if config.demux.demultiplex {
-            Inputs::handle_demux(&mut physical_to_logical_map, config.demux);
-        }
         assert_eq!(
             set.len(),
             used_channels,
             "One of the channels was a duplicate"
         );
+        if config.demultiplex() {
+            Inputs::handle_demux(&mut physical_to_logical_map, &config.demux);
+        }
         let inps = Inputs(physical_to_logical_map);
         debug!("The inputs struct was constructed successfully: {:?}", inps);
         inps
@@ -192,20 +201,34 @@ impl Inputs {
         }
     }
 
-    fn handle_demux(physical_to_logical_map: &mut [DataType], demux: Demux) {
+    /// Adds the virtual channels to the inputs array.
+    ///
+    /// When there are active virtual channels, they're given by the TT a high
+    /// index - greater than 1000 - which we need to populate with a
+    /// corresponding PMT channel, while also "decomissioning" the original
+    /// channel for that PMT.
+    fn handle_demux(physical_to_logical_map: &mut [DataType], demux: &Demux) {
         let dt = DataType::from_str(&demux.demux_ch);
-        let ch = physical_to_logical_map.iter().position(|item| item == &dt);
-        let ch = match ch {
-            Some(ch) => ch,
-            None => {
-                error!("Demux requested but channel is unavailabe. Continuing.");
-                return;
-            }
-        };
+        // We can unwrap here because configuration validation verifies that
+        // we'll find a match
+        let ch = physical_to_logical_map
+            .iter()
+            .position(|item| item == &dt)
+            .expect("Demux channel somehow doesn't exist, investigate!");
         physical_to_logical_map[ch] = DataType::Invalid;
-        let periods = demux.periods as i32;
-        let first_gated = FIRST_VIRTUAL_CHANNEL + periods - 1;
-        for gate_idx in first_gated..first_gated + periods {}
+        let periods = demux.periods as usize;
+        let mut available_datatypes = vec![
+            dt,
+            DataType::Pmt3,
+            DataType::Pmt4,
+            DataType::Pmt2,
+            DataType::Pmt1,
+        ];
+        available_datatypes.truncate(periods);
+        let starting_virtual_channel_index = VIRTUAL_INPUTS_OFFSET + periods - 1;
+        let ending_virtual_channel_index = VIRTUAL_INPUTS_OFFSET + periods - 1 + periods;
+        physical_to_logical_map[starting_virtual_channel_index..ending_virtual_channel_index]
+            .copy_from_slice(&available_datatypes);
     }
 }
 
@@ -334,6 +357,11 @@ impl AppConfig {
         if (cfg.demux.demultiplex) && (cfg.demux.periods < 2) {
             panic!("Demultiplexing with a single period doesn't make sense.")
         }
+        match cfg.demux.demux_ch.as_str() {
+            "pmt1_ch" => assert!(cfg.pmt1_ch.channel != 0),
+            "pmt2_ch" => assert!(cfg.pmt2_ch.channel != 0),
+            _ => unreachable!(),
+        }
         Ok(cfg)
     }
 
@@ -359,6 +387,10 @@ impl AppConfig {
         let rows = self.rows.max(1);
         let columns = self.columns.max(1);
         (planes * columns * rows) as usize
+    }
+
+    pub fn demultiplex(&self) -> bool {
+        self.demux.demultiplex
     }
 }
 
@@ -403,7 +435,6 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected, f32)
             ChannelNumber::Channel16 => 16,
             ChannelNumber::Channel17 => 17,
             ChannelNumber::Channel18 => 18,
-            ChannelNumber::Ignore => 0,
             ChannelNumber::Disconnected => 0,
         };
     InputChannel::new(ch, channel.2)

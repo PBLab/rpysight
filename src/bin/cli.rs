@@ -2,7 +2,6 @@
 // because powershell is too dumb to remember.
 use std::env;
 use std::ffi::OsStr;
-use std::fs::read_to_string;
 use std::path::PathBuf;
 
 #[macro_use]
