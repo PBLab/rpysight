@@ -448,6 +448,16 @@ pub struct Demux {
     periods: u8,
 }
 
+impl Demux {
+    pub fn new(demultiplex: bool, demux_ch: String, periods: u8) -> Self {
+        Self {
+            demultiplex,
+            demux_ch,
+            periods,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AppConfigBuilder {
     filename: String,
@@ -775,6 +785,18 @@ mod tests {
             .with_taglens_ch(InputChannel::new(0, 0.0))
             .build();
         let _ = Inputs::from_config(&config);
+    }
+
+    #[test]
+    fn inputs_two_periods() {
+        let config = setup_default_config()
+            .with_pmt1_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(-1, 0.0))
+            .with_demux(Demux::new(true, String::from("pmt1_ch"), 2))
+            .build();
+        let inps = Inputs::from_config(&config);
+        println!("{:?}", inps[1001]);
+        assert!(false);
     }
 
     #[test]
