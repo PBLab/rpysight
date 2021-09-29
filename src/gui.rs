@@ -1048,22 +1048,3 @@ impl Application for MainAppGui {
             .into()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn vec_to_string_full() {
-        let v = vec![InputChannel::new(1, 0.0), InputChannel::new(-2, 0.0)];
-        let f = vec_to_comma_sep_string(&v);
-        assert_eq!(f, "1,-2".to_string());
-    }
-
-    #[test]
-    fn vec_to_string_empty() {
-        let v = vec![];
-        let f = vec_to_comma_sep_string(&v);
-        assert_eq!(f, "".to_string());
-    }
-}
