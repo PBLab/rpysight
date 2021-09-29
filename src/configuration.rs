@@ -675,7 +675,7 @@ mod tests {
     /// about the different config values
     fn setup_default_config() -> AppConfigBuilder {
         AppConfigBuilder::default()
-            .with_laser_period(80_000_000.0)
+            .with_laser_period(Period::from_freq(80_000_000.0))
             .with_rows(256)
             .with_columns(256)
             .with_planes(10)
