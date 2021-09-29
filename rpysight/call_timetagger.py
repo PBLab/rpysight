@@ -5,8 +5,7 @@ room computer) for real-time interaction with the TT. This somehow works
 without any PYTHONPATH manipulation - someone has already added the
 'driver\\python' directory and it seems stable enough for this POC.
 """
-import pathlib
-from typing import Optional
+from typing import Optional, List, Tuple
 import socket
 
 import numpy as np
@@ -171,12 +170,17 @@ def infer_channel_list_from_cfg(config):
     return channels
 
 
-def set_tt_for_demuxing(tagger, config) -> list:
+def set_tt_for_demuxing(tagger, config) -> Tuple[List, List]:
     """Setup the TimeTagger for demultiplexing.
 
     This mode is enabled on the user's request, and splits a data channel into
     two or more individual channels, each representing a different temporal
     section of the laser clock period.
+
+    This is done via cloning and delaying the laser pulse channel by the proper
+    number of picoseconds, while also gating the PMT channels by these delayed
+    channels. Finally we filter out most of the laser-channel event since
+    we have no use for them.
     """
     input_channel_to_gate = config[config['demux']['demux_ch']]['channel']
     new_channels = []
@@ -188,6 +192,8 @@ def set_tt_for_demuxing(tagger, config) -> list:
     for idx, ch in enumerate(delayed_channels[:-1]):
         new_channels.append(GatedChannel(tagger, input_channel_to_gate, ch.getChannel(), delayed_channels[idx + 1].getChannel()))
     new_channels.append(GatedChannel(tagger, input_channel_to_gate, delayed_channels[-1].getChannel(), delayed_channels[0].getChannel()))
+    tagger.setConditionalFilter(trigger=[ch.getChannel() for ch in new_channels], filetered=[ch.getChannel() for ch in delayed_channels])
+    [tagger.setEventDivider(ch.getChannel(), 100) for ch in delayed_channels]
     return delayed_channels, new_channels
     
 
@@ -210,9 +216,8 @@ def run_tagger(cfg: str):
     [tagger.setTriggerLevel(ch['channel'], ch['threshold']) for ch in channels]
     int_channels = [channel['channel'] for channel in channels]
     if config['demux']['demultiplex']:
-        _delayed_channels, demux_channels = set_tt_for_demuxing(tagger, config)
-        print(_delayed_channels[0].getChannel(), demux_channels[0].getChannel())
-        int_channels += [channel.getChannel() for channel in demux_channels]
+        delayed_channels, demux_channels = set_tt_for_demuxing(tagger, config)
+        int_channels += [channel.getChannel() for channel in demux_channels + delayed_channels]
     with TimeTagger.SynchronizedMeasurements(tagger) as measure_group:
         _rt = RealTimeRendering(measure_group.getTagger(), int_channels, config['filename'])
         _fw = FileWriter(measure_group.getTagger(), config['filename'], int_channels)
