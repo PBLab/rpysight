@@ -36,28 +36,18 @@ identical, so we can simply use one of them as the point's color. This schema
 isn't required to read the data (as you'll see below), but it's useful to know
 about it regardless.
 
-The script uses a single stream as an example, and it also assumes we know the
-"true" shape of the rendered data, (512, 512, 15) in our case. This shape is
-determined by the configuration file used to generate the .arrow_stream file.
-The output is a sparse matrix that can be post-processed using all kinds of
-standard computational methods (averaging over all planes, e.g.), and can be
-also written to disk in one format or another. It can also be visualized in
-napari as a point cloud.
+The script uses a single stream as an example, and reads its rendering
+parameters from the supplied configuration file.  The output is a sparse matrix
+that can be post-processed using all kinds of standard computational methods
+(averaging over all planes, e.g.), and can be also written to disk in one 
+format or another. It can also be visualized in napari as a point cloud.
 """
 import pathlib
 
 import pyarrow as pa
 import pyarrow.compute as pc
 import sparse
-
-filename = pathlib.Path(
-    r"E:\Lior\2021_08_31\mouse3_crystal_fov3_2mag_750um_186kHz_two_channels_3_planes_visible_neurons.arrow_stream"
-)
-dense_data_shape = (512, 512, 15)
-assert filename.exists()
-
-opts = pa.ipc.IpcWriteOptions(allow_64bit=True)
-stream = pa.ipc.open_stream(filename)
+import toml
 
 
 # Simple helper function below
@@ -71,27 +61,40 @@ def create_coords_list(recordbatch, mask):
     return (coords, data)
 
 
-# Iterate over the Batches in the Arrow stream
-for batch in stream:
-    channels = pc.unique(batch[0])
-    mask_per_channel = []
-    for ch in channels[:-1]:
-        mask_per_channel.append(pc.equal(ch, batch[0]))
+if __name__ == '__main___':
+    config_filename = pathlib.Path(r"E:\Data\Hagai\21-09-29\mouse1_fov1_.toml")
+    assert config_filename.suffix == '.toml'
+    assert config_filename.exists()
+    config = toml.load(config_filename)
 
-    channel_data = []
-    for mask in mask_per_channel:
-        coords, data = create_coords_list(batch, mask)
-        channel_data.append(
-            sparse.COO(
-                coords, data, dense_data_shape, has_duplicates=False, sorted=False
+    filename = pathlib.Path(config['filename'])
+    assert filename.exists()
+    dense_data_shape = (config['rows'], config['columns'], config['planes'])
+    opts = pa.ipc.IpcWriteOptions(allow_64bit=True)
+    stream = pa.ipc.open_stream(filename)
+
+    # Iterate over the Batches in the Arrow stream
+    for batch in stream:
+        channels = pc.unique(batch[0])
+        mask_per_channel = []
+        for ch in channels[:-1]:
+            mask_per_channel.append(pc.equal(ch, batch[0]))
+
+        channel_data = []
+        for mask in mask_per_channel:
+            coords, data = create_coords_list(batch, mask)
+            channel_data.append(
+                sparse.COO(
+                    coords, data, dense_data_shape, has_duplicates=False, sorted=False
+                )
             )
-        )
 
-    for channel_idx, channel_datum in enumerate(channel_data):
-        # Do something with the single channel data, such as write it to disk:
-        # channel_datum.todense()  # numpy array with the original shape,
-        # although many operations are available on the sparse representation
-        # of the data
-        pass
+        for channel_idx, channel_datum in enumerate(channel_data):
+            # Do something with the single channel data, such as write it to disk:
+            # channel_datum.todense()  # numpy array with the original shape,
+            # although many operations are available on the sparse representation
+            # of the data
+            pass
 
-    break  # this loop should continue until exhausting the stream
+        break  # this loop should continue until exhausting the stream
+

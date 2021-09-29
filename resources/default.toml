@@ -1,4 +1,4 @@
-filename = "target/test.npy"
+filename = "target/test.ttbin"
 rows = 256
 columns = 256
 planes = 1
