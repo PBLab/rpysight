@@ -40,17 +40,19 @@ The script uses a single stream as an example, and reads its rendering
 parameters from the supplied configuration file.  The output is a sparse matrix
 that can be post-processed using all kinds of standard computational methods
 (averaging over all planes, e.g.), and can be also written to disk in one 
-format or another. It can also be visualized in napari as a point cloud.
+format or another. It can also be visualized in napari as a point cloud. This
+script shows the most basic example of a 2D-T timelapse recording being written
+to disk as a TIF file.
 """
 import pathlib
 
 import pyarrow as pa
 import pyarrow.compute as pc
 import sparse
+from tifffile import TiffWriter
 import toml
 
 
-# Simple helper function below
 def create_coords_list(recordbatch, mask):
     """Transform our RecordBatch format to a list of coordinates and values"""
     coords = []
@@ -61,40 +63,45 @@ def create_coords_list(recordbatch, mask):
     return (coords, data)
 
 
-if __name__ == '__main___':
-    config_filename = pathlib.Path(r"E:\Data\Hagai\21-09-29\mouse1_fov1_.toml")
+def iterate_over_stream(stream, data_shape, new_fname):
+    """Iterate over the Arrow stream, producing one frame of rendered data
+    on each step."""
+    with TiffWriter(str(new_fname)) as tif:
+        # Iterate over the Batches in the Arrow stream
+        for batch in stream:
+            channels = pc.unique(batch[0])
+            mask_per_channel = []
+            for ch in channels[:-1]:
+                mask_per_channel.append(pc.equal(ch, batch[0]))
+
+            channel_data = []
+            for mask in mask_per_channel:
+                coords, data = create_coords_list(batch, mask)
+                channel_data.append(
+                    sparse.COO(
+                        coords, data, data_shape, has_duplicates=False, sorted=False
+                    )
+                )
+
+            for channel_datum in channel_data:
+                # Do something with the single channel data, such as write it to disk:
+                # channel_datum.todense()  # numpy array with the original shape,
+                # although many operations are available on the sparse representation
+                # of the data
+                data = channel_datum.todense().squeeze()
+                tif.write(data, contiguous=True)
+
+
+
+if __name__ == '__main__':
+    config_filename = pathlib.Path(r"default.toml")
     assert config_filename.suffix == '.toml'
     assert config_filename.exists()
     config = toml.load(config_filename)
 
-    filename = pathlib.Path(config['filename'])
+    filename = pathlib.Path(config['filename']).with_suffix('.arrow_stream')
     assert filename.exists()
-    dense_data_shape = (config['rows'], config['columns'], config['planes'])
-    opts = pa.ipc.IpcWriteOptions(allow_64bit=True)
     stream = pa.ipc.open_stream(filename)
+    dense_data_shape = (config['rows'], config['columns'], config['planes'])
 
-    # Iterate over the Batches in the Arrow stream
-    for batch in stream:
-        channels = pc.unique(batch[0])
-        mask_per_channel = []
-        for ch in channels[:-1]:
-            mask_per_channel.append(pc.equal(ch, batch[0]))
-
-        channel_data = []
-        for mask in mask_per_channel:
-            coords, data = create_coords_list(batch, mask)
-            channel_data.append(
-                sparse.COO(
-                    coords, data, dense_data_shape, has_duplicates=False, sorted=False
-                )
-            )
-
-        for channel_idx, channel_datum in enumerate(channel_data):
-            # Do something with the single channel data, such as write it to disk:
-            # channel_datum.todense()  # numpy array with the original shape,
-            # although many operations are available on the sparse representation
-            # of the data
-            pass
-
-        break  # this loop should continue until exhausting the stream
-
+    iterate_over_stream(stream, dense_data_shape, filename.with_suffix('.tif'))
