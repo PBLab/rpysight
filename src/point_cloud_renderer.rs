@@ -325,7 +325,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
         // New experiments will start out here, by loading the data and
         // looking for the first line signal
         debug!("Starting a 'frame loop");
-        loop {
+        while !self.data_stream.as_ref().unwrap().is_finished() {
             // The following lines cannot be factored to a function due to
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
@@ -351,7 +351,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                 },
                 None => {
                     debug!("End of stream",);
-                    break None;
+                    break;
                 }
             };
             let event_stream = match self.get_event_stream(&batch) {
@@ -379,7 +379,8 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                 return Some(leftover_event_stream.collect::<Vec<Event>>());
             }
             info!("Let's loop again, we're still inside a single frame");
-        }
+        };
+        None
     }
 
     /// Verifies that the current event stream lies within the boundaries of
@@ -507,8 +508,8 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                 return Some(previous_events_mut.copied().collect::<Vec<Event>>());
             };
         }
-        // We'll look for the first line\frame indefinitely
-        loop {
+        // We'll look for the first line\frame until the stream is finished
+        while !self.data_stream.as_ref().unwrap().is_finished() {
             // The following lines cannot be factored to a function due to
             // borrowing - the data stream contains a reference to 'batch', so
             // 'batch' cannot go out of scope
@@ -570,7 +571,8 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                 self.snake.update_snake_for_next_frame(started.1);
                 return Some(leftover_event_stream.collect::<Vec<Event>>());
             }
-        }
+        };
+        None
     }
 }
 
@@ -579,6 +581,11 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
     /// loop we advance the photon stream iterator until the first line event,
     /// and then we iterate over all of the photons of that frame, until we
     /// detect the last of the photons or a new frame signal.
+    ///
+    /// The loop will continue indefinitely - always looking for new events on
+    /// the stream. The two stop conditions are when a user clicks the "X"
+    /// button on the renderer, or when the TimeTagger reports that it has
+    /// finished sending data, probably due to it replaying an older file.
     pub fn start_inf_acq_loop(&mut self, config: AppConfig) -> Result<()> {
         self.acquire_stream_filehandle()?;
         let mut events_after_newframe = self.advance_till_first_frame_line(None);
@@ -598,6 +605,9 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             };
             frame_number += 1;
             events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
+            if let None = events_after_newframe {
+                break
+            }
         }
         info!("Writing to disk");
         drop(sender);

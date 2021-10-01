@@ -61,7 +61,6 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
             names=["type_", "missed_events", "channel", "time"],
         )
         self.schema = test_batch.schema
-
         self.socket = socket.socket()
         self.socket.bind((HOST, PORT))
         self.socket.listen()
@@ -77,6 +76,7 @@ class RealTimeRendering(TimeTagger.CustomMeasurement):
         # The measurement must be stopped before deconstruction to avoid
         # concurrent process() calls.
         self.stop()
+        self.stream.close()
 
     def on_start(self):
         # The lock is already acquired within the backend.
@@ -230,5 +230,13 @@ def replay_existing(cfg: str):
     config = toml.loads(cfg)
     tagger = TimeTagger.createTimeTaggerVirtual()
     _ = RealTimeRendering(tagger, None, None)
+    tagger.replay(config['filename'], queue=False)
+    tagger.waitForCompletion(timeout=-1)
+
+
+if __name__ == '__main__':
+    with open(r"E:\Hagai\21-09-29\fov1\calcium_m1_fov1.toml") as f:
+        config = toml.load(f)
+    tagger = TimeTagger.createTimeTaggerVirtual()
     tagger.replay(config['filename'], queue=False)
     tagger.waitForCompletion(timeout=-1)

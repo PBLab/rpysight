@@ -164,13 +164,13 @@ pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<()> {
     debug!("Starting timetagger");
     let module_filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let tt_module = load_timetagger_run_function(module_filename, app_config.replay_existing)?;
+    debug!("Calling Python to start the TT business");
     tt_module
         .call1(
             Python::acquire_gil().python(),
             (toml::to_string(app_config).expect("Unable to convert configuration to string"),),
         )
         .expect("Starting the TimeTagger failed, aborting!");
-    debug!("Called Python to start the TT business");
     Ok(())
 }
 
