@@ -60,6 +60,8 @@ const TT_REPLAY_FUNCTION_NAME: &str = "replay_existing";
 /// poor man's brightness normalization mechanism
 const COLOR_INCREMENT: f32 = 1.25;
 const GRAYSCALE_STEP: f32 = 0.01;
+/// Number of color channels rPySight can display, excluding the merged one.
+const SUPPORTED_SPECTRAL_CHANNELS: usize = 4;
 
 lazy_static! {
     /// Brightness starting level of each channel

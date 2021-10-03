@@ -37,7 +37,7 @@ isn't required to read the data (as you'll see below), but it's useful to know
 about it regardless.
 
 The script uses a single stream as an example, and reads its rendering
-parameters from the supplied configuration file.  The output is a sparse matrix
+parameters from the supplied configuration file. The output is a sparse matrix
 that can be post-processed using all kinds of standard computational methods
 (averaging over all planes, e.g.), and can be also written to disk in one 
 format or another. It can also be visualized in napari as a point cloud. This
@@ -45,12 +45,28 @@ script shows the most basic example of a 2D-T timelapse recording being written
 to disk as a TIF file.
 """
 import pathlib
+from typing import List, Tuple
 
 import pyarrow as pa
 import pyarrow.compute as pc
 import sparse
 from tifffile import TiffWriter
 import toml
+
+
+def find_expected_channels(config: dict) -> list:
+    """Finds out which data channels should the final array have.
+
+    This excludes the merged channel that was displayed during the acquisition.
+    """
+    channels = []
+    key = 'pmt{}_ch'
+    for ch in range(1, 5):
+        current_key = key.format(ch)
+        assigned_channel = config[current_key]['channel']
+        if assigned_channel != 0:
+            channels.append(assigned_channel)
+    return channels
 
 
 def create_coords_list(recordbatch, mask):
@@ -63,17 +79,54 @@ def create_coords_list(recordbatch, mask):
     return (coords, data)
 
 
-def iterate_over_stream(stream, data_shape, new_fname):
+def _get_row_mask_per_channel(ch_column: pa.array, channels: List[int]) -> List[int]:
+    """Generates the mask arrays for each channel.
+
+    This function creates a list, the length of which is the expected number
+    of channels, and in each entry of that list lies a boolean array that says
+    whether each row belongs to that channel.
+    """
+    mask_per_channel = []
+    channels = _match_channels_to_reference(ch_column, channels)
+    for ch in channels:
+        mask_per_channel.append(pc.equal(ch, ch_column))
+    return mask_per_channel
+
+
+def _match_channels_to_reference(ch_column: pa.array, channels: List[int]) -> List[int]:
+    """Makes sure that the existing channels are equivalent to the expected channels.
+
+    If the current batch didn't contain all needed channels then it would write to
+    disk the wrong number of channels per slice or step, which means that
+    the resulting data array won't be in the correct order channel-wise. To fix
+    it we make sure that the channels are in their correct order and that
+    they're all here, and if not we add the missing values.
+    """
+    uniques = pc.unique(ch_column).to_pylist()
+    if uniques == channels:
+        return channels
+    if len(uniques) > len(channels):
+        raise ValueError(
+            "More channels found in stream than were per-configured. Investigate please."
+        )
+    if len(uniques) == len(channels):
+        if set(uniques) == set(channels):
+            return channels
+        else:
+            raise ValueError(
+                "Channels that weren't configured were found in the stream. Investigate!"
+            )
+    return channels
+
+
+
+def iterate_over_stream(stream, data_shape: Tuple[int], new_fname: pathlib.Path, channels: List[int]):
     """Iterate over the Arrow stream, producing one frame of rendered data
     on each step."""
     with TiffWriter(str(new_fname)) as tif:
         # Iterate over the Batches in the Arrow stream
         for batch in stream:
-            channels = pc.unique(batch[0])
-            mask_per_channel = []
-            for ch in channels[:-1]:
-                mask_per_channel.append(pc.equal(ch, batch[0]))
-
+            mask_per_channel = _get_row_mask_per_channel(batch[0], channels)
             channel_data = []
             for mask in mask_per_channel:
                 coords, data = create_coords_list(batch, mask)
@@ -82,10 +135,10 @@ def iterate_over_stream(stream, data_shape, new_fname):
                         coords, data, data_shape, has_duplicates=False, sorted=False
                     )
                 )
-
+            assert len(channel_data) == len(channels)
             for channel_datum in channel_data:
                 # Do something with the single channel data, such as write it to disk:
-                # channel_datum.todense()  # numpy array with the original shape,
+                # channel_datum.todense()  # numpy array with the original shape
                 # although many operations are available on the sparse representation
                 # of the data
                 data = channel_datum.todense().squeeze()
@@ -102,6 +155,7 @@ if __name__ == '__main__':
     filename = pathlib.Path(config['filename']).with_suffix('.arrow_stream')
     assert filename.exists()
     stream = pa.ipc.open_stream(filename)
+    channels = find_expected_channels(config)
     dense_data_shape = (config['rows'], config['columns'], config['planes'])
 
-    iterate_over_stream(stream, dense_data_shape, filename.with_suffix('.tif'))
+    iterate_over_stream(stream, dense_data_shape, filename.with_suffix('.tif'), channels)

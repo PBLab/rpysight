@@ -30,7 +30,9 @@ use crate::event_stream::{Event, EventStream};
 use crate::snakes::{
     Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake, VoxelDelta,
 };
-use crate::{COLOR_INCREMENT, DISPLAY_COLORS, GRAYSCALE_START, GRAYSCALE_STEP};
+use crate::{
+    COLOR_INCREMENT, DISPLAY_COLORS, GRAYSCALE_START, GRAYSCALE_STEP, SUPPORTED_SPECTRAL_CHANNELS,
+};
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
 /// requires.
@@ -92,7 +94,7 @@ pub struct Channels<T: PointDisplay> {
 
 impl<T: PointDisplay> Channels<T> {
     pub fn new(mut channels: Vec<T>) -> Self {
-        assert!(channels.len() == 5);
+        assert!(channels.len() == SUPPORTED_SPECTRAL_CHANNELS + 1);
         Self {
             channel1: channels.remove(0),
             channel2: channels.remove(0),
@@ -228,7 +230,8 @@ pub struct AppState<T: PointDisplay, R: Read> {
     line_count: u32,
     lines_vec: Vec<Picosecond>,
     batch_readout_count: u64,
-    frame_buffers: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5],
+    frame_buffers:
+        [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1],
 }
 
 impl<T: PointDisplay, R: Read> AppState<T, R> {
@@ -730,7 +733,9 @@ impl<T: PointDisplay, R: Read> EventStreamHandler for AppState<T, R> {
 /// This function will take the per-frame data, convert it to a clearer
 /// serialization format and finally write it to disk.
 fn serialize_data<P: AsRef<Path>>(
-    recv: Receiver<[HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5]>,
+    recv: Receiver<
+        [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1],
+    >,
     voxel_delta: VoxelDelta<Coordinate>,
     filename: P,
 ) {
@@ -816,17 +821,20 @@ impl CoordToIndex {
 
     /// Convert the GPU-based coordinates and brightness levels to a table of
     /// array-focused coordinates.
+    ///
+    /// Note that we don't serialize the merged channel, only the individual
+    /// ones.
     pub fn map_data_to_indices(
         &self,
-        data: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5],
+        data: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1],
     ) -> (Vec<u8>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<Point3<f32>>) {
-        let length = data[4].len();
+        let length = data[SUPPORTED_SPECTRAL_CHANNELS].len();
         let mut channels = Vec::<u8>::with_capacity(length);
         let mut xs = Vec::<u32>::with_capacity(length);
         let mut ys = Vec::<u32>::with_capacity(length);
         let mut zs = Vec::<u32>::with_capacity(length);
         let mut colors = Vec::<Point3<f32>>::with_capacity(length);
-        for (ch, single_channel_data) in data.iter().enumerate() {
+        for (ch, single_channel_data) in data[..SUPPORTED_SPECTRAL_CHANNELS].iter().enumerate() {
             for (point, color) in single_channel_data.iter() {
                 debug!("Point to push: {:?}", point);
                 let r = match self.row_mapping.get(&point.x) {
@@ -944,7 +952,8 @@ mod tests {
             .clone()
     }
 
-    fn create_mock_maps() -> [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; 5] {
+    fn create_mock_maps(
+    ) -> [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1] {
         let mut map = HashMap::new();
         map.insert(
             Point3::<OrderedFloat<f32>>::new(
