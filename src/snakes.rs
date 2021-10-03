@@ -468,9 +468,8 @@ pub struct TwoDimensionalSnake {
     voxel_delta_im: VoxelDelta<Coordinate>,
     /// The earliest time of the first voxel
     earliest_frame_time: Picosecond,
-    /// The time it takes the software to finish a full frame, not including
-    /// dead time between frames
-    frame_duration: Picosecond,
+    /// Time between the end of one frame and the start of the next
+    frame_dead_time: Picosecond,
 }
 
 pub struct ThreeDimensionalSnake {
@@ -495,9 +494,8 @@ pub struct ThreeDimensionalSnake {
     voxel_delta_im: VoxelDelta<Coordinate>,
     /// The earliest time of the first voxel
     earliest_frame_time: Picosecond,
-    /// The time it takes the software to finish a full frame, not including
-    /// dead time between frames
-    frame_duration: Picosecond,
+    /// Time between the end of one frame and the start of the next
+    frame_dead_time: Picosecond,
 }
 
 impl TwoDimensionalSnake {
@@ -522,7 +520,7 @@ impl TwoDimensionalSnake {
             last_accessed_idx: 0,
             max_frame_time: 0,
             earliest_frame_time: 0,
-            frame_duration: 0,
+            frame_dead_time: 0,
         }
     }
 
@@ -589,7 +587,7 @@ impl TwoDimensionalSnake {
             voxel_delta_ps: self.voxel_delta_ps,
             voxel_delta_im: self.voxel_delta_im,
             earliest_frame_time: offset,
-            frame_duration: config.calc_frame_duration(),
+            frame_dead_time: config.frame_dead_time,
         }
     }
 
@@ -642,7 +640,6 @@ impl TwoDimensionalSnake {
         }
         let _ = self.data.pop();
         let max_frame_time = self.data[self.data.len() - 1].end_time;
-        let frame_duration = config.calc_frame_duration();
         info!("2D unidir snake finished");
         TwoDimensionalSnake {
             data: self.data,
@@ -651,7 +648,7 @@ impl TwoDimensionalSnake {
             voxel_delta_ps: self.voxel_delta_ps,
             voxel_delta_im: self.voxel_delta_im,
             earliest_frame_time: offset,
-            frame_duration,
+            frame_dead_time: config.frame_dead_time,
         }
     }
 }
@@ -680,7 +677,7 @@ impl ThreeDimensionalSnake {
             tag_deltas_to_coord: IntervalToCoordMap::empty(),
             max_frame_time: 0,
             earliest_frame_time: 0,
-            frame_duration: 0,
+            frame_dead_time: 0,
         }
     }
 
@@ -865,7 +862,7 @@ impl ThreeDimensionalSnake {
             voxel_delta_ps: self.voxel_delta_ps,
             voxel_delta_im: self.voxel_delta_im,
             earliest_frame_time: offset,
-            frame_duration: config.calc_frame_duration(),
+            frame_dead_time: config.frame_dead_time,
         }
     }
 
@@ -894,7 +891,6 @@ impl ThreeDimensionalSnake {
         }
         let _ = self.data.pop();
         let max_frame_time = self.data[self.data.len() - 1].end_time;
-        let frame_duration = config.calc_frame_duration();
         let tag_deltas_to_coord =
             self.build_taglens_delta_to_coord_mapping(config.planes, config.tag_period);
         info!("3D unidir snake finished");
@@ -905,7 +901,7 @@ impl ThreeDimensionalSnake {
             voxel_delta_ps: self.voxel_delta_ps,
             voxel_delta_im: self.voxel_delta_im,
             earliest_frame_time: offset,
-            frame_duration,
+            frame_dead_time: config.frame_dead_time,
             last_taglens_time: 0,
             tag_deltas_to_coord,
         }
@@ -1000,6 +996,7 @@ impl Snake for TwoDimensionalSnake {
                 "Photon arrived after end of Frame! Our time: {}, Max time: {}",
                 time, self.max_frame_time
             );
+            self.update_snake_for_next_frame(self.max_frame_time + self.frame_dead_time);
             return ProcessedEvent::PhotonNewFrame;
         }
         let mut additional_steps_taken = 0usize;
@@ -1032,7 +1029,7 @@ impl Snake for TwoDimensionalSnake {
 
     /// Update the existing data to accommodate the new frame.
     ///
-    /// This function is triggered from the 'tag_to_coord' method once an event
+    /// This function is triggered once an event
     /// with a time tag later than the last possible voxel is detected. It
     /// currently updates the exisitng data based on a guesstimation regarding
     /// data quality, i.e. we don't do any error checking what-so-ever, we
@@ -1049,7 +1046,10 @@ impl Snake for TwoDimensionalSnake {
         }
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
         self.earliest_frame_time = next_frame_at;
-        info!("Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}\nframe_duration: {}", self.max_frame_time,self.earliest_frame_time, self.frame_duration);
+        info!(
+            "Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}",
+            self.max_frame_time, self.earliest_frame_time
+        );
     }
 }
 
@@ -1102,6 +1102,7 @@ impl Snake for ThreeDimensionalSnake {
                 "Photon arrived after end of Frame! Our time: {}, Max time: {}",
                 time, self.max_frame_time
             );
+            self.update_snake_for_next_frame(self.max_frame_time + self.frame_dead_time);
             return ProcessedEvent::PhotonNewFrame;
         }
         let mut additional_steps_taken = 0usize;
@@ -1143,7 +1144,10 @@ impl Snake for ThreeDimensionalSnake {
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
         self.last_taglens_time = 0;
         self.earliest_frame_time = next_frame_at;
-        info!("Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}\nframe_duration: {}", self.max_frame_time,self.earliest_frame_time, self.frame_duration);
+        info!(
+            "Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}",
+            self.max_frame_time, self.earliest_frame_time
+        );
     }
 
     fn get_earliest_frame_time(&self) -> Picosecond {

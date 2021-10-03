@@ -324,7 +324,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
         };
         // New experiments will start out here, by loading the data and
         // looking for the first line signal
-        debug!("Starting a 'frame loop");
+        debug!("Starting a frame loop");
         while !self.data_stream.as_ref().unwrap().is_finished() {
             // The following lines cannot be factored to a function due to
             // borrowing - the data stream contains a reference to 'batch', so
@@ -379,7 +379,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                 return Some(leftover_event_stream.collect::<Vec<Event>>());
             }
             info!("Let's loop again, we're still inside a single frame");
-        };
+        }
         None
     }
 
@@ -571,7 +571,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                 self.snake.update_snake_for_next_frame(started.1);
                 return Some(leftover_event_stream.collect::<Vec<Event>>());
             }
-        };
+        }
         None
     }
 }
@@ -606,7 +606,7 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             frame_number += 1;
             events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
             if let None = events_after_newframe {
-                break
+                break;
             }
         }
         info!("Writing to disk");
