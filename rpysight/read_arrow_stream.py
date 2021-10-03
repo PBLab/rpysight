@@ -119,10 +119,14 @@ def _match_channels_to_reference(ch_column: pa.array, channels: List[int]) -> Li
     return channels
 
 
-
-def iterate_over_stream(stream, data_shape: Tuple[int], new_fname: pathlib.Path, channels: List[int]):
+def iterate_over_stream(
+    stream: pa.RecordBatchStreamReader,
+    data_shape: Tuple[int],
+    new_fname: pathlib.Path,
+    channels: List[int]
+):
     """Iterate over the Arrow stream, producing one frame of rendered data
-    on each step."""
+    on each step per channel."""
     with TiffWriter(str(new_fname)) as tif:
         # Iterate over the Batches in the Arrow stream
         for batch in stream:
@@ -137,13 +141,14 @@ def iterate_over_stream(stream, data_shape: Tuple[int], new_fname: pathlib.Path,
                 )
             assert len(channel_data) == len(channels)
             for channel_datum in channel_data:
-                # Do something with the single channel data, such as write it to disk:
+                # Do something with the single channel data. We can also make it a 
+                # standard array:
                 # channel_datum.todense()  # numpy array with the original shape
-                # although many operations are available on the sparse representation
-                # of the data
+                # Although many operations are available on the sparse representation
+                # of the data, like summing, averaging and so on.
+                # Here we write it to disk in an interleaved manner:
                 data = channel_datum.todense().squeeze()
                 tif.write(data, contiguous=True)
-
 
 
 if __name__ == '__main__':

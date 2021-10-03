@@ -83,6 +83,7 @@ pub trait PointDisplay {
     fn should_close(&self) -> bool;
 }
 
+/// Display "outputs" for the data, one for each rendered channel
 #[derive(Clone, Copy, Debug)]
 pub struct Channels<T: PointDisplay> {
     channel1: T,
@@ -132,6 +133,7 @@ impl<T: PointDisplay> Channels<T> {
         frame_buffers[3].clear();
     }
 
+    /// Populate the rendering list of a specific channel and render it.
     fn render_single_channel(
         frame_buffer: &mut HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>,
         channel: &mut T,
@@ -142,6 +144,7 @@ impl<T: PointDisplay> Channels<T> {
         channel.render();
     }
 
+    /// Whether the user indicated to close the window
     pub fn should_close(&self) -> bool {
         // We'll use channel_merge as the indicator because it will always be
         // used
@@ -149,6 +152,8 @@ impl<T: PointDisplay> Channels<T> {
     }
 }
 
+/// Available channels to render. The length of this enum is always one more
+/// than [`crate::SUPPORTED_SPECTRAL_CHANNELS`].
 pub enum ChannelNames {
     Channel1,
     Channel2,
@@ -219,7 +224,13 @@ impl DisplayChannel {
 }
 
 /// Main struct that holds the renderers and the needed data streams for
-/// them
+/// them.
+///
+/// It serves as the integrator of all important data for the streaming,
+/// allowing the different methods and parts to pass data around them freely.
+/// The important two fields are the channels field, holding the windows that
+/// will show the point cloud, and the snake, which holds the mapping from the
+/// arrival time of each event to the appropriate coordinates in the volume.
 pub struct AppState<T: PointDisplay, R: Read> {
     pub channels: Channels<T>,
     data_stream_fh: String,
