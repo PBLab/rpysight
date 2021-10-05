@@ -8,7 +8,9 @@ replay_existing = false
 rolling_avg = 5
 line_shift = 1000000
 bidir = "Bidir"
-laser_period = 12500
+
+[laser_period]
+period = 12500
 
 [scan_period]
 period = 126214818

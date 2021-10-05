@@ -305,6 +305,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     /// Called when an event from the frame channel arrives
     fn handle_frame_event(&mut self, time: Picosecond) -> ProcessedEvent {
         debug!("A new frame due to a frame signal");
+        error!("Frame new frame at time and line count: {}, {}", time, self.line_count);
         self.line_count = 0;
         self.lines_vec.clear();
         self.snake.update_snake_for_next_frame(time);
@@ -333,6 +334,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             let new_frame_in_pre_events =
                 previous_events_mut.find_map(|event| self.act_on_single_event(*event));
             if let Some(_) = new_frame_in_pre_events {
+                error!("New frame found in preevents");
                 return Some(previous_events_mut.copied().collect::<Vec<Event>>());
             }
         };
@@ -505,6 +507,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             });
             if let Some(started) = frame_started {
                 self.lines_vec.clear();
+                self.line_count = 0;
                 match started.0 {
                     DataType::Line => {
                         self.line_count = 1;
@@ -547,7 +550,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                         continue;
                     }
                 },
-                None => continue,
+                None => break,
             };
             let event_stream = match self.get_event_stream(&batch) {
                 Some(stream) => stream,
@@ -618,7 +621,6 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
                 self.render();
             };
             frame_number += 1;
-            events_after_newframe = self.advance_till_first_frame_line(events_after_newframe);
             if let None = events_after_newframe {
                 break;
             }
@@ -702,7 +704,7 @@ impl<T: PointDisplay, R: Read> EventStreamHandler for AppState<T, R> {
     /// cases of overflow it's discarded at the moment.
     fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent {
         if event.type_ != 0 {
-            warn!("Event type was not a time tag: {:?}", event);
+            error!("Event type was not a time tag: {:?}", event);
             return ProcessedEvent::NoOp;
         }
         trace!("Received the following event: {:?}", event);
@@ -840,6 +842,7 @@ impl CoordToIndex {
         data: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1],
     ) -> (Vec<u8>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<Point3<f32>>) {
         let length = data[SUPPORTED_SPECTRAL_CHANNELS].len();
+        error!("Length of data: {}", length);
         let mut channels = Vec::<u8>::with_capacity(length);
         let mut xs = Vec::<u32>::with_capacity(length);
         let mut ys = Vec::<u32>::with_capacity(length);
