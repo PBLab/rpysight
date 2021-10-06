@@ -305,11 +305,34 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     /// Called when an event from the frame channel arrives
     fn handle_frame_event(&mut self, time: Picosecond) -> ProcessedEvent {
         debug!("A new frame due to a frame signal");
-        error!("Frame new frame at time and line count: {}, {}", time, self.line_count);
         self.line_count = 0;
         self.lines_vec.clear();
         self.snake.update_snake_for_next_frame(time);
         ProcessedEvent::FrameNewFrame
+    }
+
+    /// Process events in an existing stream of events.
+    /// 
+    /// The method will iterate over each event and "act" on it by calling the
+    /// correct methods. If one of the events is a new frame-signaling event it
+    /// will halt iteration and return the remaining events, not including that
+    /// last new-frame event.
+    /// 
+    /// If the reason for a new frame is a photon arriving after the end of the
+    /// frame, the method will first drain the remaining events until it finds
+    /// start of the next frame and then will return the events from that point
+    /// on.
+    fn drain_existing_data<E>(&mut self, mut events_iter: E) -> Option<Vec<Event>> 
+        where E: core::fmt::Debug + Iterator<Item=Event> {
+        let new_frame_in_pre_events =
+            events_iter.find_map(|event: Event| self.act_on_single_event(event));
+        match new_frame_in_pre_events {
+            Some(ProcessedEvent::FrameNewFrame) | Some(ProcessedEvent::LineNewFrame) => return Some(events_iter.collect::<Vec<Event>>()),
+            Some(ProcessedEvent::PhotonNewFrame) => {
+                self.advance_till_first_frame_line(Some(events_iter.collect::<Vec<Event>>()))
+            },
+            Some(_) | None => None,
+        }
     }
 
     /// One of the main functions of the app, responsible for iterating over
@@ -330,12 +353,8 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
         if let Some(previous_events) = events_after_newframe {
             debug!("Looking for leftover events");
             // Start with the leftover events from the previous frame
-            let mut previous_events_mut = previous_events.iter();
-            let new_frame_in_pre_events =
-                previous_events_mut.find_map(|event| self.act_on_single_event(*event));
-            if let Some(_) = new_frame_in_pre_events {
-                error!("New frame found in preevents");
-                return Some(previous_events_mut.copied().collect::<Vec<Event>>());
+            if let Some(remaining) = self.drain_existing_data(previous_events.iter().copied()) {
+                return Some(remaining)
             }
         };
         // New experiments will start out here, by loading the data and
@@ -377,42 +396,15 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                     continue;
                 }
             };
-            let mut leftover_event_stream = event_stream.iter();
-            match self.check_relevance_of_batch(&event_stream) {
-                true => {}
-                false => {
-                    debug!("Batch irrelevant!");
-                    continue;
-                }
-            };
             info!("Starting iteration on this stream");
             // Main iteration on events from this current batch
-            let new_frame_found =
-                leftover_event_stream.find_map(|event| self.act_on_single_event(event));
-            // If this batch contained a new frame - we return the leftovers
-            if let Some(_) = new_frame_found {
-                debug!("New frame found in the batch!");
-                return Some(leftover_event_stream.collect::<Vec<Event>>());
+            if let Some(remaining_events) = self.drain_existing_data(event_stream.iter()) {
+                debug!("New frame found in the batch. [x={:?}]", remaining_events);
+                return Some(remaining_events);
             }
             info!("Let's loop again, we're still inside a single frame");
         }
         None
-    }
-
-    /// Verifies that the current event stream lies within the boundaries of
-    /// the current frame we're trying to render.
-    fn check_relevance_of_batch(&self, event_stream: &EventStream) -> bool {
-        if let Some(event) = Event::from_stream_idx(&event_stream, event_stream.num_rows() - 1) {
-            if event.time <= self.snake.get_earliest_frame_time() {
-                debug!("The last event in the batch arrived before the first in the frame: received event: {}, earliest in frame: {}", event.time ,self.snake.get_earliest_frame_time());
-                false
-            } else {
-                true
-            }
-        } else {
-            error!("For some reason no last event exists in this stream");
-            false
-        }
     }
 
     /// Adds the point with its color to a pixel list that will be drawn in the
@@ -447,8 +439,9 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     /// It first finds what type of event has it received (a photon that needs
     /// rendering, a line event, etc.) and then acts on it accordingly. The
     /// return value is necessary to fulfil the demands of "find_map" which
-    /// halts only when Some(val) is returned.
-    fn act_on_single_event(&mut self, event: Event) -> Option<i8> {
+    /// halts only when Some(val) is returned, and the values themselves
+    /// only act as identifying helpers.
+    fn act_on_single_event(&mut self, event: Event) -> Option<ProcessedEvent> {
         match self.event_to_coordinate(event) {
             ProcessedEvent::Displayed(point, channel) => {
                 self.add_to_render_queue(point, channel);
@@ -457,18 +450,18 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             ProcessedEvent::NoOp => None,
             ProcessedEvent::FrameNewFrame => {
                 info!("New frame due to frame signal");
-                Some(0)
+                Some(ProcessedEvent::FrameNewFrame)
             }
             ProcessedEvent::PhotonNewFrame => {
                 info!(
                     "New frame due to photon {} while we had {} lines",
                     event.time, self.line_count
                 );
-                Some(0)
+                Some(ProcessedEvent::PhotonNewFrame)
             }
             ProcessedEvent::LineNewFrame => {
                 info!("New frame due to line");
-                Some(0)
+                Some(ProcessedEvent::LineNewFrame)
             }
             ProcessedEvent::Error => {
                 error!("Received an erroneuous event: {:?}", event);
@@ -704,7 +697,7 @@ impl<T: PointDisplay, R: Read> EventStreamHandler for AppState<T, R> {
     /// cases of overflow it's discarded at the moment.
     fn event_to_coordinate(&mut self, event: Event) -> ProcessedEvent {
         if event.type_ != 0 {
-            error!("Event type was not a time tag: {:?}", event);
+            warn!("Event type was not a time tag: {:?}", event);
             return ProcessedEvent::NoOp;
         }
         trace!("Received the following event: {:?}", event);
@@ -842,7 +835,6 @@ impl CoordToIndex {
         data: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1],
     ) -> (Vec<u8>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<Point3<f32>>) {
         let length = data[SUPPORTED_SPECTRAL_CHANNELS].len();
-        error!("Length of data: {}", length);
         let mut channels = Vec::<u8>::with_capacity(length);
         let mut xs = Vec::<u32>::with_capacity(length);
         let mut ys = Vec::<u32>::with_capacity(length);
