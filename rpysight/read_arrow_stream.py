@@ -127,7 +127,7 @@ def iterate_over_stream(
 ):
     """Iterate over the Arrow stream, producing one frame of rendered data
     on each step per channel."""
-    with TiffWriter(str(new_fname)) as tif:
+    with TiffWriter(str(new_fname), bigtiff=True) as tif:
         # Iterate over the Batches in the Arrow stream
         for batch in stream:
             mask_per_channel = _get_row_mask_per_channel(batch[0], channels)
