@@ -21,6 +21,7 @@ pub mod configuration;
 pub mod event_stream;
 pub mod gui;
 pub mod point_cloud_renderer;
+pub mod serialize_and_render;
 pub mod snakes;
 
 use std::net::TcpStream;
