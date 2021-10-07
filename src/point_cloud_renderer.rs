@@ -241,7 +241,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             line_count: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
             batch_readout_count: 0,
-            frame_buffers: FrameBuffers::new(&appconfig),
+            frame_buffers: FrameBuffers::new(appconfig.increment_color_by),
         }
     }
 

@@ -18,7 +18,6 @@ use crossbeam::channel::Receiver;
 use nalgebra::Point3;
 use ordered_float::OrderedFloat;
 
-use crate::configuration::AppConfig;
 use crate::point_cloud_renderer::ImageCoor;
 use crate::snakes::{Coordinate, VoxelDelta};
 use crate::{DISPLAY_COLORS, SUPPORTED_SPECTRAL_CHANNELS};
@@ -183,20 +182,18 @@ pub struct FrameBuffers {
     channel2: HashMapForAggregation,
     channel3: HashMapForAggregation,
     channel4: HashMapForAggregation,
-    colors: [Point3<f32>; SUPPORTED_SPECTRAL_CHANNELS],
     increment_color_by: f32,
 }
 
 impl<'a> FrameBuffers {
-    pub fn new(cfg: &AppConfig) -> Self {
+    pub fn new(increment_color_by: f32) -> Self {
         Self {
             merge: HashMap::with_capacity(600_000),
             channel1: HashMap::with_capacity(600_000),
             channel2: HashMap::with_capacity(600_000),
             channel3: HashMap::with_capacity(600_000),
             channel4: HashMap::with_capacity(600_000),
-            colors: *DISPLAY_COLORS,
-            increment_color_by: cfg.increment_color_by,
+            increment_color_by,
         }
     }
 
@@ -237,7 +234,7 @@ impl<'a> FrameBuffers {
         self.merge
             .entry(*point)
             .and_modify(|c| *c *= inc)
-            .or_insert(self.colors[channel]);
+            .or_insert(DISPLAY_COLORS[channel]);
     }
 
     fn add_to_agg(&mut self, point: &ImageCoor, channel: usize) {
