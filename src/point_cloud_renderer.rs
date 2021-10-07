@@ -560,7 +560,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
                         &DataType::Line => Some((DataType::Line, event.time)),
                         &DataType::Frame => Some((DataType::Frame, event.time)),
                         &DataType::Invalid => {
-                            error!("Out of bounds access: {:?}", event);
+                            warn!("Out of bounds access: {:?}", event);
                             None
                         }
                         _ => None,
