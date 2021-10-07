@@ -260,6 +260,7 @@ pub struct AppConfig {
     pub(crate) replay_existing: bool,
     pub(crate) rolling_avg: u16,
     pub(crate) line_shift: Picosecond,
+    pub(crate) increment_color_by: f32,
     pub(crate) bidir: Bidirectionality,
     pub(crate) laser_period: Period,
     pub(crate) scan_period: Period,
@@ -361,6 +362,12 @@ impl AppConfig {
             "pmt1_ch" => assert!(cfg.pmt1_ch.channel != 0),
             "pmt2_ch" => assert!(cfg.pmt2_ch.channel != 0),
             _ => unreachable!(),
+        }
+        if cfg.increment_color_by <= 1.0 {
+            panic!(
+                "Please keep 'color_increment_by' above 1 (got {})",
+                cfg.increment_color_by
+            );
         }
         Ok(cfg)
     }
@@ -471,6 +478,7 @@ pub struct AppConfigBuilder {
     frame_dead_time: Picosecond,
     replay_existing: bool,
     rolling_avg: u16,
+    increment_color_by: f32,
     laser_period: Period,
     line_shift: Picosecond,
     pmt1_ch: InputChannel,
@@ -494,6 +502,7 @@ impl AppConfigBuilder {
             rows: 256,
             columns: 256,
             planes: 10,
+            increment_color_by: 1.25,
             scan_period: Period::from_freq(7923.0),
             tag_period: Period::from_freq(189800.0),
             bidir: Bidirectionality::Bidir,
@@ -521,6 +530,7 @@ impl AppConfigBuilder {
             rows: self.rows,
             columns: self.columns,
             planes: self.planes,
+            increment_color_by: self.increment_color_by,
             scan_period: self.scan_period,
             tag_period: self.tag_period,
             bidir: self.bidir,
@@ -663,6 +673,11 @@ impl AppConfigBuilder {
 
     pub fn with_demux(&mut self, demux: Demux) -> &mut Self {
         self.demux = demux;
+        self
+    }
+
+    pub fn with_color_increment(&mut self, val: f32) -> &mut Self {
+        self.increment_color_by = val;
         self
     }
 }

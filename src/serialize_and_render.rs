@@ -7,9 +7,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use arrow2::array::{Array, Float32Array, StructArray, UInt32Array, UInt8Array};
+use arrow2::array::{Array, UInt32Array, UInt8Array};
 use arrow2::datatypes::{
-    DataType::{Float32, Struct, UInt32, UInt8},
+    DataType::{UInt32, UInt8},
     Field, Schema,
 };
 use arrow2::io::ipc::write::StreamWriter;
@@ -21,7 +21,7 @@ use ordered_float::OrderedFloat;
 use crate::configuration::AppConfig;
 use crate::point_cloud_renderer::ImageCoor;
 use crate::snakes::{Coordinate, VoxelDelta};
-use crate::SUPPORTED_SPECTRAL_CHANNELS;
+use crate::{DISPLAY_COLORS, SUPPORTED_SPECTRAL_CHANNELS};
 
 /// Write the data to disk in a tabular format.
 ///
@@ -195,13 +195,13 @@ impl<'a> FrameBuffers {
             channel2: HashMap::with_capacity(600_000),
             channel3: HashMap::with_capacity(600_000),
             channel4: HashMap::with_capacity(600_000),
-            colors: cfg.channel_colors.into(),
+            colors: *DISPLAY_COLORS,
             increment_color_by: cfg.increment_color_by,
         }
     }
 
-    pub fn merged_channel(&mut self) -> HashMapForRendering {
-        self.merge
+    pub fn merged_channel(&mut self) -> &mut HashMapForRendering {
+        &mut self.merge
     }
 
     pub fn clear_non_rendered_channels(&mut self) {
@@ -233,27 +233,36 @@ impl<'a> FrameBuffers {
     }
 
     fn add_to_merge(&mut self, point: &ImageCoor, channel: usize) {
+        let inc = self.increment_color_by;
         self.merge
             .entry(*point)
-            .and_modify(|c| c.apply(|d| d * self.increment_color_by))
+            .and_modify(|c| *c *= inc)
             .or_insert(self.colors[channel]);
     }
 
     fn add_to_agg(&mut self, point: &ImageCoor, channel: usize) {
-        self.get_agg_channel(channel)
+        self.get_agg_channel_mut(channel)
             .entry(*point)
-            .and_modify(|c| {
-                *c + 1;
-            })
+            .and_modify(|c| *c += 1)
             .or_insert(0);
     }
 
-    fn get_agg_channel(&mut self, channel: usize) -> HashMapForAggregation {
+    fn get_agg_channel_mut(&mut self, channel: usize) -> &mut HashMapForAggregation {
         match channel {
-            0 => self.channel1,
-            1 => self.channel2,
-            2 => self.channel3,
-            3 => self.channel4,
+            0 => &mut self.channel1,
+            1 => &mut self.channel2,
+            2 => &mut self.channel3,
+            3 => &mut self.channel4,
+            _ => panic!("Wrong channel given: {}", channel),
+        }
+    }
+
+    fn get_agg_channel(&self, channel: usize) -> &HashMapForAggregation {
+        match channel {
+            0 => &self.channel1,
+            1 => &self.channel2,
+            2 => &self.channel3,
+            3 => &self.channel4,
             _ => panic!("Wrong channel given: {}", channel),
         }
     }
@@ -262,13 +271,13 @@ impl<'a> FrameBuffers {
         self.merge.len()
     }
 
-    pub fn iter(&'a self) -> FrameBuffersIter<'a> {
+    pub(crate) fn iter(&'a self) -> FrameBuffersIter<'a> {
         self.into_iter()
     }
 }
 
 impl<'a> IntoIterator for &'a FrameBuffers {
-    type Item = HashMapForAggregation;
+    type Item = &'a HashMapForAggregation;
     type IntoIter = FrameBuffersIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -280,14 +289,14 @@ impl<'a> IntoIterator for &'a FrameBuffers {
     }
 }
 
-struct FrameBuffersIter<'a> {
+pub struct FrameBuffersIter<'a> {
     buf: &'a FrameBuffers,
     idx: usize,
     len: usize,
 }
 
 impl<'a> Iterator for FrameBuffersIter<'a> {
-    type Item = HashMapForAggregation;
+    type Item = &'a HashMapForAggregation;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx < self.len {

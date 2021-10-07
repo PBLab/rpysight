@@ -8,7 +8,12 @@ replay_existing = false
 rolling_avg = 5
 line_shift = 1000000
 bidir = "Bidir"
+# Multiplicative factor when a new photon is detected.
+# Lower it when there's saturation during rendering, but
+# keep it above 1 always
+increment_color_by = 1.25
 
+# Time (in PS) between consecutive laser pulses
 [laser_period]
 period = 12500
 

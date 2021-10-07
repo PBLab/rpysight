@@ -25,16 +25,14 @@ schema = pa.schema(
         ("x", pa.uint32()),
         ("y", pa.uint32()),
         ("z", pa.uint32()),
-        ("color", pa.struct(color_struct_fields)),
+        ("values", pa.uint8()),
     ]
 )
 
 This means that each row has 5 columns - the original channel (=PMT) of the
-data, its coordinates in the array and its color as an RGB triplet. Since each
-channel is rendered in grayscale, the value of the three color fields is
-identical, so we can simply use one of them as the point's color. This schema
-isn't required to read the data (as you'll see below), but it's useful to know
-about it regardless.
+data, its coordinates in the array and its value as the number of detected
+photons. This schema isn't required to read the data (as you'll see below),
+but it's useful to know about it regardless.
 
 The script uses a single stream as an example, and reads its rendering
 parameters from the supplied configuration file. The output is a sparse matrix
@@ -75,7 +73,7 @@ def create_coords_list(recordbatch, mask):
     for col in recordbatch.columns[1:-1]:
         coords.append(col.filter(mask))
 
-    data = recordbatch[-1].filter(mask).field("r")  # use a single color channel
+    data = recordbatch[-1].filter(mask)
     return (coords, data)
 
 
@@ -121,7 +119,7 @@ def _match_channels_to_reference(ch_column: pa.array, channels: List[int]) -> Li
 
 def iterate_over_stream(
     stream: pa.RecordBatchStreamReader,
-    data_shape: Tuple[int],
+    data_shape: Tuple[int, int, int],
     new_fname: pathlib.Path,
     channels: List[int]
 ):
