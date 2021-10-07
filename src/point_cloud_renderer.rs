@@ -20,11 +20,9 @@ use ordered_float::OrderedFloat;
 
 use crate::configuration::{AppConfig, DataType, Inputs};
 use crate::event_stream::{Event, EventStream};
-use crate::serialize_and_render::serialize_data;
+use crate::serialize_and_render::{serialize_data, FrameBuffers};
 use crate::snakes::{Coordinate, Picosecond, Snake, ThreeDimensionalSnake, TwoDimensionalSnake};
-use crate::{
-    COLOR_INCREMENT, DISPLAY_COLORS, GRAYSCALE_START, GRAYSCALE_STEP, SUPPORTED_SPECTRAL_CHANNELS,
-};
+use crate::SUPPORTED_SPECTRAL_CHANNELS;
 
 /// A coordinate in image space, i.e. a float in the range [0, 1].
 /// Used for the rendering part of the code, since that's the type the renderer
@@ -110,20 +108,12 @@ impl<T: PointDisplay> Channels<T> {
     ///
     /// Due to issues with kiss3d we only render a single channel - the merged one -
     /// at this time.
-    pub fn render(
-        &mut self,
-        frame_buffers: &mut [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>],
-    ) {
-        // Channels::render_single_channel(&mut frame_buffers[0], &mut self.channel1);
-        // Channels::render_single_channel(&mut frame_buffers[1], &mut self.channel2);
-        // Channels::render_single_channel(&mut frame_buffers[2], &mut self.channel3);
-        // Channels::render_single_channel(&mut frame_buffers[3], &mut self.channel4);
-        Channels::render_single_channel(&mut frame_buffers[4], &mut self.channel_merge);
-        // Drain the other ununsed channels
-        frame_buffers[0].clear();
-        frame_buffers[1].clear();
-        frame_buffers[2].clear();
-        frame_buffers[3].clear();
+    pub fn render(&mut self, frame_buffers: &mut FrameBuffers) {
+        Channels::render_single_channel(
+            &mut frame_buffers.merged_channel(),
+            &mut self.channel_merge,
+        );
+        frame_buffers.clear_non_rendered_channels();
     }
 
     /// Populate the rendering list of a specific channel and render it.
@@ -234,8 +224,7 @@ pub struct AppState<T: PointDisplay, R: Read> {
     line_count: u32,
     lines_vec: Vec<Picosecond>,
     batch_readout_count: u64,
-    frame_buffers:
-        [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1],
+    frame_buffers: FrameBuffers,
 }
 
 impl<T: PointDisplay, R: Read> AppState<T, R> {
@@ -252,13 +241,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
             line_count: 0,
             lines_vec: Vec::<Picosecond>::with_capacity(3000),
             batch_readout_count: 0,
-            frame_buffers: [
-                HashMap::with_capacity(600_000),
-                HashMap::with_capacity(600_000),
-                HashMap::with_capacity(600_000),
-                HashMap::with_capacity(600_000),
-                HashMap::with_capacity(600_000),
-            ],
+            frame_buffers: FrameBuffers::new(&appconfig),
         }
     }
 
@@ -404,33 +387,6 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
         None
     }
 
-    /// Adds the point with its color to a pixel list that will be drawn in the
-    /// next rendering pass.
-    /// The method is agnostic to the coordinate and the color it has,
-    /// rather its job is to increment the color of the that pixel if this
-    /// isn't the first time a photon has arrived at that pixel. Else it gives
-    /// that pixel its default color.
-    ///
-    /// Each individual color channel is rendered in grayscale since they're
-    /// separate, and thus they're incremented using [`GRAYSALE_STEP`]. But the
-    /// merged channel shows each channel with its respective color, so this
-    /// channel, marked as `frame_buffers[4]` is using a different incrementing
-    /// method.
-    ///
-    /// Due to limitations of kiss3d all frame_buffers others than the 4th one
-    /// (merge) aren't rendered, but their photons are still added to these
-    /// buffers because they'll be used in the serialization process later on.
-    fn add_to_render_queue(&mut self, point: ImageCoor, channel: usize) {
-        self.frame_buffers[channel]
-            .entry(point)
-            .and_modify(|c| c.apply(|d| d + GRAYSCALE_STEP))
-            .or_insert(*GRAYSCALE_START);
-        self.frame_buffers[4]
-            .entry(point)
-            .and_modify(|c| c.apply(|d| d * COLOR_INCREMENT))
-            .or_insert(DISPLAY_COLORS[channel]);
-    }
-
     /// The function called on each event in the processed batch.
     ///
     /// It first finds what type of event has it received (a photon that needs
@@ -441,7 +397,7 @@ impl<T: PointDisplay, R: Read> AppState<T, R> {
     fn act_on_single_event(&mut self, event: Event) -> Option<ProcessedEvent> {
         match self.event_to_coordinate(event) {
             ProcessedEvent::Displayed(point, channel) => {
-                self.add_to_render_queue(point, channel);
+                self.frame_buffers.add_to_render_queue(point, channel);
                 None
             }
             ProcessedEvent::NoOp => None,

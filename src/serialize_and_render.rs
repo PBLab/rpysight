@@ -18,6 +18,8 @@ use crossbeam::channel::Receiver;
 use nalgebra::Point3;
 use ordered_float::OrderedFloat;
 
+use crate::configuration::AppConfig;
+use crate::point_cloud_renderer::ImageCoor;
 use crate::snakes::{Coordinate, VoxelDelta};
 use crate::SUPPORTED_SPECTRAL_CHANNELS;
 
@@ -26,9 +28,7 @@ use crate::SUPPORTED_SPECTRAL_CHANNELS;
 /// This function will take the per-frame data, convert it to a clearer
 /// serialization format and finally write it to disk.
 pub(crate) fn serialize_data<P: AsRef<Path>>(
-    recv: Receiver<
-        [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1],
-    >,
+    recv: Receiver<FrameBuffers>,
     voxel_delta: VoxelDelta<Coordinate>,
     filename: P,
 ) {
@@ -45,8 +45,8 @@ pub(crate) fn serialize_data<P: AsRef<Path>>(
     loop {
         match recv.recv() {
             Ok(new_data) => {
-                let (channels, xs, ys, zs, colors) = coord_to_index.map_data_to_indices(new_data);
-                let rb = coord_to_index.convert_vecs_to_recordbatch(channels, xs, ys, zs, colors);
+                let (channels, xs, ys, zs, values) = coord_to_index.map_data_to_indices(new_data);
+                let rb = coord_to_index.convert_vecs_to_recordbatch(channels, xs, ys, zs, values);
                 match coord_to_index.serialize_to_stream(rb) {
                     Ok(()) => {}
                     Err(e) => {
@@ -90,15 +90,7 @@ impl CoordToIndex {
             Field::new("x", UInt32, false),
             Field::new("y", UInt32, false),
             Field::new("z", UInt32, false),
-            Field::new(
-                "color",
-                Struct(vec![
-                    Field::new("r", Float32, false),
-                    Field::new("g", Float32, false),
-                    Field::new("b", Float32, false),
-                ]),
-                false,
-            ),
+            Field::new("value", UInt8, false),
         ]);
         let f = File::create(filename.as_ref().with_extension("arrow_stream"))?;
         info!("Writing the table to disk at: {:?}", f);
@@ -119,17 +111,17 @@ impl CoordToIndex {
     /// ones.
     pub fn map_data_to_indices(
         &self,
-        data: [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1],
-    ) -> (Vec<u8>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<Point3<f32>>) {
-        let length = data[SUPPORTED_SPECTRAL_CHANNELS].len();
+        data: FrameBuffers,
+    ) -> (Vec<u8>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<u8>) {
+        let length = data.len();
         let mut channels = Vec::<u8>::with_capacity(length);
         let mut xs = Vec::<u32>::with_capacity(length);
         let mut ys = Vec::<u32>::with_capacity(length);
         let mut zs = Vec::<u32>::with_capacity(length);
-        let mut colors = Vec::<Point3<f32>>::with_capacity(length);
-        for (ch, single_channel_data) in data[..SUPPORTED_SPECTRAL_CHANNELS].iter().enumerate() {
-            for (point, color) in single_channel_data.iter() {
-                debug!("Point to push: {:?}", point);
+        let mut values = Vec::<u8>::with_capacity(length);
+        for (ch, single_channel_data) in data.iter().enumerate() {
+            for (point, value) in single_channel_data.iter() {
+                trace!("Point to push: {:?}", point);
                 let r = match self.row_mapping.get(&point.x) {
                     Some(r) => *r,
                     None => continue,
@@ -147,10 +139,10 @@ impl CoordToIndex {
                 xs.push(r);
                 ys.push(c);
                 zs.push(p);
-                colors.push(*color);
+                values.push(*value);
             }
         }
-        (channels, xs, ys, zs, colors)
+        (channels, xs, ys, zs, values)
     }
 
     /// Convert the "raw" table of data into a [`RecordBatch`] that can be
@@ -161,7 +153,7 @@ impl CoordToIndex {
         xs: Vec<u32>,
         ys: Vec<u32>,
         zs: Vec<u32>,
-        colors: Vec<Point3<f32>>,
+        values: Vec<u8>,
     ) -> RecordBatch {
         let channels = Arc::new(UInt8Array::from_trusted_len_values_iter(
             channels.into_iter(),
@@ -169,47 +161,140 @@ impl CoordToIndex {
         let xs = Arc::new(UInt32Array::from_trusted_len_values_iter(xs.into_iter()));
         let ys = Arc::new(UInt32Array::from_trusted_len_values_iter(ys.into_iter()));
         let zs = Arc::new(UInt32Array::from_trusted_len_values_iter(zs.into_iter()));
-        let colors = self.convert_colors_vec_to_arrays(colors);
-        let iter_over_vecs: Vec<Arc<dyn Array>> = vec![channels, xs, ys, zs, colors];
+        let values = Arc::new(UInt8Array::from_trusted_len_values_iter(values.into_iter()));
+        let iter_over_vecs: Vec<Arc<dyn Array>> = vec![channels, xs, ys, zs, values];
         RecordBatch::try_new(self.schema.clone(), iter_over_vecs).unwrap()
-    }
-
-    /// Create the specific structure of the colors (=brightness) to an Arrow-
-    /// centered data representation.
-    pub fn convert_colors_vec_to_arrays(&self, colors: Vec<Point3<f32>>) -> Arc<StructArray> {
-        let length = colors.len();
-        let mut colors_x = Vec::<f32>::with_capacity(length);
-        let mut colors_y = Vec::<f32>::with_capacity(length);
-        let mut colors_z = Vec::<f32>::with_capacity(length);
-        for p in colors {
-            colors_x.push(p.x);
-            colors_y.push(p.y);
-            colors_z.push(p.z);
-        }
-        let colors_x = Arc::new(Float32Array::from_trusted_len_values_iter(
-            colors_x.into_iter(),
-        ));
-        let colors_y = Arc::new(Float32Array::from_trusted_len_values_iter(
-            colors_y.into_iter(),
-        ));
-        let colors_z = Arc::new(Float32Array::from_trusted_len_values_iter(
-            colors_z.into_iter(),
-        ));
-        let colors = Arc::new(StructArray::from_data(
-            Struct(vec![
-                Field::new("r", arrow2::datatypes::DataType::Float32, false),
-                Field::new("g", arrow2::datatypes::DataType::Float32, false),
-                Field::new("b", arrow2::datatypes::DataType::Float32, false),
-            ]),
-            vec![colors_x, colors_y, colors_z],
-            None,
-        ));
-        colors
     }
 
     /// Write the data to disk
     pub fn serialize_to_stream(&mut self, rb: RecordBatch) -> Result<()> {
         self.stream.write(&rb)?;
         Ok(())
+    }
+}
+
+type HashMapForRendering = HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>;
+type HashMapForAggregation = HashMap<Point3<OrderedFloat<f32>>, u8>;
+/// A buffer for the data-to-be-rendered on a per-channel basis.
+#[derive(Clone, Debug)]
+pub struct FrameBuffers {
+    merge: HashMapForRendering,
+    channel1: HashMapForAggregation,
+    channel2: HashMapForAggregation,
+    channel3: HashMapForAggregation,
+    channel4: HashMapForAggregation,
+    colors: [Point3<f32>; SUPPORTED_SPECTRAL_CHANNELS],
+    increment_color_by: f32,
+}
+
+impl<'a> FrameBuffers {
+    pub fn new(cfg: &AppConfig) -> Self {
+        Self {
+            merge: HashMap::with_capacity(600_000),
+            channel1: HashMap::with_capacity(600_000),
+            channel2: HashMap::with_capacity(600_000),
+            channel3: HashMap::with_capacity(600_000),
+            channel4: HashMap::with_capacity(600_000),
+            colors: cfg.channel_colors.into(),
+            increment_color_by: cfg.increment_color_by,
+        }
+    }
+
+    pub fn merged_channel(&mut self) -> HashMapForRendering {
+        self.merge
+    }
+
+    pub fn clear_non_rendered_channels(&mut self) {
+        self.channel1.clear();
+        self.channel2.clear();
+        self.channel3.clear();
+        self.channel4.clear();
+    }
+
+    /// Adds the point with its color to a pixel list that will be drawn in the
+    /// next rendering pass.
+    /// The method is agnostic to the coordinate and the color it has,
+    /// rather its job is to increment the color of the that pixel if this
+    /// isn't the first time a photon has arrived at that pixel. Else it gives
+    /// that pixel its default color.
+    ///
+    /// Each individual color channel is rendered in grayscale since they're
+    /// separate, and thus they're incremented using [`GRAYSALE_STEP`]. But the
+    /// merged channel shows each channel with its respective color, so this
+    /// channel, marked as `frame_buffers[4]` is using a different incrementing
+    /// method.
+    ///
+    /// Due to limitations of kiss3d all frame_buffers others than the 4th one
+    /// (merge) aren't rendered, but their photons are still added to these
+    /// buffers because they'll be used in the serialization process later on.
+    pub fn add_to_render_queue(&mut self, point: ImageCoor, channel: usize) {
+        self.add_to_merge(&point, channel);
+        self.add_to_agg(&point, channel);
+    }
+
+    fn add_to_merge(&mut self, point: &ImageCoor, channel: usize) {
+        self.merge
+            .entry(*point)
+            .and_modify(|c| c.apply(|d| d * self.increment_color_by))
+            .or_insert(self.colors[channel]);
+    }
+
+    fn add_to_agg(&mut self, point: &ImageCoor, channel: usize) {
+        self.get_agg_channel(channel)
+            .entry(*point)
+            .and_modify(|c| {
+                *c + 1;
+            })
+            .or_insert(0);
+    }
+
+    fn get_agg_channel(&mut self, channel: usize) -> HashMapForAggregation {
+        match channel {
+            0 => self.channel1,
+            1 => self.channel2,
+            2 => self.channel3,
+            3 => self.channel4,
+            _ => panic!("Wrong channel given: {}", channel),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.merge.len()
+    }
+
+    pub fn iter(&'a self) -> FrameBuffersIter<'a> {
+        self.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a FrameBuffers {
+    type Item = HashMapForAggregation;
+    type IntoIter = FrameBuffersIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        FrameBuffersIter {
+            buf: self,
+            idx: 0usize,
+            len: SUPPORTED_SPECTRAL_CHANNELS,
+        }
+    }
+}
+
+struct FrameBuffersIter<'a> {
+    buf: &'a FrameBuffers,
+    idx: usize,
+    len: usize,
+}
+
+impl<'a> Iterator for FrameBuffersIter<'a> {
+    type Item = HashMapForAggregation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx < self.len {
+            self.idx += 1;
+            Some(self.buf.get_agg_channel(self.idx))
+        } else {
+            None
+        }
     }
 }
