@@ -58,13 +58,16 @@ def find_expected_channels(config: dict) -> list:
     This excludes the merged channel that was displayed during the acquisition.
     """
     channels = []
+    ch_idx = 0
     key = 'pmt{}_ch'
     for ch in range(1, 5):
         current_key = key.format(ch)
         assigned_channel = config[current_key]['channel']
         if assigned_channel != 0:
-            channels.append(assigned_channel)
+            channels.append(ch_idx)
+            ch_idx += 1
     return channels
+
 
 
 def create_coords_list(recordbatch, mask):

@@ -22,7 +22,7 @@ const MAX_TIMETAGGER_INPUTS: i32 = 18;
 const TOTAL_INPUTS_WITHOUT_VIRTUAL: usize = 2 * (MAX_TIMETAGGER_INPUTS as usize) + 1;
 
 /// Swabian's offset for a virtual channel
-const VIRTUAL_INPUTS_OFFSET: usize = 1000;
+const VIRTUAL_INPUTS_OFFSET: usize = 1000 + (MAX_TIMETAGGER_INPUTS as usize);
 /// Need extra virtual channels
 const VIRTUAL_CHANNELS_MAX_NUM: usize = 8;
 
@@ -184,7 +184,7 @@ impl Inputs {
             Inputs::handle_demux(&mut physical_to_logical_map, &config.demux);
         }
         let inps = Inputs(physical_to_logical_map);
-        debug!("The inputs struct was constructed successfully: {:?}", inps);
+        debug!("The inputs struct was constructed successfully: {:#?}", inps);
         inps
     }
 
@@ -215,6 +215,7 @@ impl Inputs {
             .iter()
             .position(|item| item == &dt)
             .expect("Demux channel somehow doesn't exist, investigate!");
+        debug!("Found demux channel to remove: {}", ch);
         physical_to_logical_map[ch] = DataType::Invalid;
         let periods = demux.periods as usize;
         let mut available_datatypes = vec![
@@ -227,6 +228,7 @@ impl Inputs {
         available_datatypes.truncate(periods);
         let starting_virtual_channel_index = VIRTUAL_INPUTS_OFFSET + periods - 1;
         let ending_virtual_channel_index = VIRTUAL_INPUTS_OFFSET + periods - 1 + periods;
+        debug!("Computed virtual channel indices. Start: {}, end: {}", starting_virtual_channel_index, ending_virtual_channel_index);
         physical_to_logical_map[starting_virtual_channel_index..ending_virtual_channel_index]
             .copy_from_slice(&available_datatypes);
     }

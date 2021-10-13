@@ -113,6 +113,7 @@ impl<T: PointDisplay> Channels<T> {
             &mut frame_buffers.merged_channel(),
             &mut self.channel_merge,
         );
+        info!("Merged channel rendered");
         frame_buffers.clear_non_rendered_channels();
     }
 
@@ -562,8 +563,12 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             info!("Starting the population of single frame");
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             if frame_number % rolling_avg == 0 {
-                sender.send(self.frame_buffers.clone()).unwrap();
-                debug!("Starting render");
+                match sender.send(self.frame_buffers.clone()) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        error!("Couldn't send frame number {} due to an error: {:?}", frame_number, e.0);
+                    },
+                };
                 self.render();
             };
             frame_number += 1;

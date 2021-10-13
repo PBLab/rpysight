@@ -298,7 +298,7 @@ impl<'a> Iterator for FrameBuffersIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx < self.len {
             self.idx += 1;
-            Some(self.buf.get_agg_channel(self.idx))
+            Some(self.buf.get_agg_channel(self.idx - 1))
         } else {
             None
         }

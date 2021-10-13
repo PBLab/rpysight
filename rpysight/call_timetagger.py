@@ -169,6 +169,13 @@ def infer_channel_list_from_cfg(config):
     channels = [ch for ch in relevant_channels if ch["channel"] != 0]
     return channels
 
+class MockDelayedChannel:
+    def __init__(self, ch):
+        self.channel = ch
+    
+    def getChannel(self):
+        return self.channel
+
 
 def set_tt_for_demuxing(tagger, config) -> Tuple[List, List]:
     """Setup the TimeTagger for demultiplexing.
@@ -186,14 +193,14 @@ def set_tt_for_demuxing(tagger, config) -> Tuple[List, List]:
     new_channels = []
     num_demux_channels = config['demux']['periods']
     delay_in_ps = int(config['laser_period']['period'] / num_demux_channels)
-    delayed_channels = [DelayedChannel(tagger, config['laser_ch']['channel'], delay_in_ps)]
+    delayed_channels = [MockDelayedChannel(config['laser_ch']['channel'])]
     for period in range(1, num_demux_channels):
-        delayed_channels.append(DelayedChannel(tagger, config['laser_ch']['channel'], delay_in_ps * period))
+        delay = delay_in_ps * period
+        delayed_channels.append(DelayedChannel(tagger, config['laser_ch']['channel'], delay))
     for idx, ch in enumerate(delayed_channels[:-1]):
         new_channels.append(GatedChannel(tagger, input_channel_to_gate, ch.getChannel(), delayed_channels[idx + 1].getChannel()))
     new_channels.append(GatedChannel(tagger, input_channel_to_gate, delayed_channels[-1].getChannel(), delayed_channels[0].getChannel()))
-    tagger.setConditionalFilter(trigger=[ch.getChannel() for ch in new_channels], filetered=[ch.getChannel() for ch in delayed_channels])
-    [tagger.setEventDivider(ch.getChannel(), 100) for ch in delayed_channels]
+    tagger.setDelayHardware(config['laser_ch']['channel'], 5500)
     return delayed_channels, new_channels
     
 
