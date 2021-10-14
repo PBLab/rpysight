@@ -358,6 +358,7 @@ impl AppConfig {
             .build())
     }
 
+    /// Create an [`AppConfig`] from an existing config file
     pub fn try_from_config_path(config_path: &Path) -> Result<Self> {
         let cfg: AppConfig = toml::from_str(&read_to_string(config_path)?)?;
         if (cfg.demux.demux_ch != "pmt1_ch") && (cfg.demux.demux_ch != "pmt2_ch") {
@@ -455,15 +456,19 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected, f32)
     InputChannel::new(ch, channel.2)
 }
 
-/// Demultiplexing configuration
+/// Demultiplexing configuration.
 #[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Demux {
+    /// Whether rPySight should be demultiplexing or not
     demultiplex: bool,
+    /// Which channel ('pmt1_ch', 'pmt2_ch', ...) should be demultiplexed
     demux_ch: String,
+    /// Number of periods that the data should be demultiplexed into
     periods: u8,
 }
 
 impl Demux {
+    /// Generate a new [`Demux`] instance
     pub fn new(demultiplex: bool, demux_ch: String, periods: u8) -> Self {
         Self {
             demultiplex,
@@ -473,6 +478,7 @@ impl Demux {
     }
 }
 
+/// A builder-pattern oriented companion to [`AppConfig`]
 #[derive(Clone)]
 pub struct AppConfigBuilder {
     filename: String,

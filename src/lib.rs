@@ -1,4 +1,4 @@
-//! Real time parsing and rendering of data coming from a TimeTagger.
+//! Real-time parsing and rendering of data coming from a TimeTagger.
 //!
 //! This crate is designed to render images or volumes of Two Photon
 //! Microscopes that are imaged using the TimeTagger, a unique discriminator
@@ -15,7 +15,7 @@
 //! Photon Microscope since it can't be controlled by an external signal.
 //!
 //! Taken together, rPySight facilitates rapid voluemtric scanning of live
-//! tissue with realtime visualization of the data.
+//! tissue with real-time visualization of the data.
 
 pub mod configuration;
 pub mod event_stream;
@@ -62,7 +62,12 @@ const SUPPORTED_SPECTRAL_CHANNELS: usize = 4;
 
 lazy_static! {
     /// GRAY, GREEN, MAGENTA, CYAN
-    static ref DISPLAY_COLORS: [Point3<f32>; SUPPORTED_SPECTRAL_CHANNELS] = [Point3::<f32>::new(0.05, 0.05, 0.05), Point3::<f32>::new(0.0, 0.05, 0.0), Point3::<f32>::new(0.05, 0.0, 0.05), Point3::<f32>::new(0.0, 0.05, 0.05)];
+    static ref DISPLAY_COLORS: [Point3<f32>; SUPPORTED_SPECTRAL_CHANNELS] = [
+        Point3::<f32>::new(0.05, 0.05, 0.05),
+        Point3::<f32>::new(0.0, 0.05, 0.0),
+        Point3::<f32>::new(0.05, 0.0, 0.05),
+        Point3::<f32>::new(0.0, 0.05, 0.05)
+    ];
 }
 
 /// Load an existing configuration file or generate a new one with default
@@ -84,6 +89,7 @@ pub fn reload_cfg_or_use_default(config_name: Option<PathBuf>) -> AppConfig {
     }
 }
 
+/// Create the configuration directory at a predetemined path
 pub fn make_config_dir() -> PathBuf {
     ProjectDirs::from("lab", "PBLab", "rPySight")
         .unwrap()
@@ -157,6 +163,13 @@ pub fn load_timetagger_run_function(
     Ok(tt_starter.to_object(py))
 }
 
+/// Call the TimeTagger library in Python and run the device.
+///
+/// This function loads the Python code that will run the TimeTagger into memory
+/// and runs it in Rust using PyO3. The Python method doesn't return until the
+/// TT is done, so this function will be running in parallel to the rest of rPySight
+/// and once its done it can also serve as a signal to the broader app that the TT
+/// has finished its role for now.
 pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<()> {
     debug!("Starting timetagger");
     let module_filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
