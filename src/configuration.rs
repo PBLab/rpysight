@@ -184,7 +184,10 @@ impl Inputs {
             Inputs::handle_demux(&mut physical_to_logical_map, &config.demux);
         }
         let inps = Inputs(physical_to_logical_map);
-        debug!("The inputs struct was constructed successfully: {:#?}", inps);
+        debug!(
+            "The inputs struct was constructed successfully: {:#?}",
+            inps
+        );
         inps
     }
 
@@ -228,7 +231,10 @@ impl Inputs {
         available_datatypes.truncate(periods);
         let starting_virtual_channel_index = VIRTUAL_INPUTS_OFFSET + periods - 1;
         let ending_virtual_channel_index = VIRTUAL_INPUTS_OFFSET + periods - 1 + periods;
-        debug!("Computed virtual channel indices. Start: {}, end: {}", starting_virtual_channel_index, ending_virtual_channel_index);
+        debug!(
+            "Computed virtual channel indices. Start: {}, end: {}",
+            starting_virtual_channel_index, ending_virtual_channel_index
+        );
         physical_to_logical_map[starting_virtual_channel_index..ending_virtual_channel_index]
             .copy_from_slice(&available_datatypes);
     }
@@ -525,6 +531,7 @@ impl AppConfigBuilder {
         }
     }
 
+    /// Call this method to finish the builder pattern work.
     pub fn build(&self) -> AppConfig {
         AppConfig {
             filename: self.filename.clone(),
@@ -553,55 +560,66 @@ impl AppConfigBuilder {
         }
     }
 
+    /// Change the TTBIN filename
     pub fn with_filename(&mut self, filename: String) -> &mut Self {
         self.filename = filename;
         self
     }
 
+    /// Change the laser period
     pub fn with_laser_period(&mut self, laser_period: Period) -> &mut Self {
         self.laser_period = laser_period;
         self
     }
 
+    /// Change the number of rendered rows
     pub fn with_rows(&mut self, rows: u32) -> &mut Self {
         assert!(rows < 100_000);
         self.rows = rows;
         self
     }
 
+    /// Change the number of rendered columns
     pub fn with_columns(&mut self, columns: u32) -> &mut Self {
         assert!(columns < 100_000);
         self.columns = columns;
         self
     }
 
+    /// Change the number of rendered planes
     pub fn with_planes(&mut self, planes: u32) -> &mut Self {
         assert!(planes < 100_000);
         self.planes = planes;
         self
     }
 
+    /// Change the period of the scanners
     pub fn with_scan_period(&mut self, scan_period: Period) -> &mut Self {
         self.scan_period = scan_period;
         self
     }
 
+    /// Change the TAG Lens period
     pub fn with_tag_period(&mut self, tag_period: Period) -> &mut Self {
         assert!(*tag_period > 1_000_000);
         self.tag_period = tag_period;
         self
     }
 
+    /// Specify whether the scan was bidirectional or not
     pub fn with_bidir<T: Into<Bidirectionality>>(&mut self, bidir: T) -> &mut Self {
         self.bidir = bidir.into();
         self
     }
 
+    /// Specify the number of frames to be averaged before being displayed
+    /// and serialized
     pub fn with_rolling_avg(&mut self, rolling_avg: u16) -> &mut Self {
         self.rolling_avg = rolling_avg;
         self
     }
 
+    /// Change the fill fraction value
     pub fn with_fill_fraction<T: Into<f32>>(&mut self, fill_fraction: T) -> &mut Self {
         let fill_fraction = fill_fraction.into();
         assert!((0.0..=100.0).contains(&fill_fraction));
@@ -609,75 +627,89 @@ impl AppConfigBuilder {
         self
     }
 
+    /// Change dead time between frames
     pub fn with_frame_dead_time(&mut self, frame_dead_time: Picosecond) -> &mut Self {
         assert!((0..=10_000_000_000_000).contains(&frame_dead_time));
         self.frame_dead_time = frame_dead_time;
         self
     }
 
+    /// Specify PMT1's channel
     pub fn with_pmt1_ch(&mut self, pmt1_ch: InputChannel) -> &mut Self {
         assert!(pmt1_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt1_ch = pmt1_ch;
         self
     }
 
+    /// Specify PMT2's channel
     pub fn with_pmt2_ch(&mut self, pmt2_ch: InputChannel) -> &mut Self {
         assert!(pmt2_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt2_ch = pmt2_ch;
         self
     }
 
+    /// Specify PMT3's channel
     pub fn with_pmt3_ch(&mut self, pmt3_ch: InputChannel) -> &mut Self {
         assert!(pmt3_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt3_ch = pmt3_ch;
         self
     }
 
+    /// Specify PMT4's channel
     pub fn with_pmt4_ch(&mut self, pmt4_ch: InputChannel) -> &mut Self {
         assert!(pmt4_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.pmt4_ch = pmt4_ch;
         self
     }
 
+    /// Specify the laser's sync signal channel
     pub fn with_laser_ch(&mut self, laser_ch: InputChannel) -> &mut Self {
         assert!(laser_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.laser_ch = laser_ch;
         self
     }
 
+    /// Specify the frame sync signal channel
     pub fn with_frame_ch(&mut self, frame_ch: InputChannel) -> &mut Self {
         assert!(frame_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.frame_ch = frame_ch;
         self
     }
 
+    /// Specify the line sync signal channel
     pub fn with_line_ch(&mut self, line_ch: InputChannel) -> &mut Self {
         assert!(line_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.line_ch = line_ch;
         self
     }
 
+    /// Specify the TAG Lens sync signal channel
     pub fn with_taglens_ch(&mut self, taglens_ch: InputChannel) -> &mut Self {
         assert!(taglens_ch.channel.abs() <= MAX_TIMETAGGER_INPUTS);
         self.taglens_ch = taglens_ch;
         self
     }
 
+    /// Whether the filename points at an existing file which should be replayed
     pub fn with_replay_existing(&mut self, replay_existing: bool) -> &mut Self {
         self.replay_existing = replay_existing;
         self
     }
 
+    /// Specify the value for the line shift
     pub fn with_line_shift(&mut self, line_shift: Picosecond) -> &mut Self {
         self.line_shift = line_shift;
         self
     }
 
+    /// Specify whether we're demultiplexing a channel or not
     pub fn with_demux(&mut self, demux: Demux) -> &mut Self {
         self.demux = demux;
         self
     }
 
+    /// Specify the multiplicative factor in the rendered display.
+    /// Enter a higher number under low light conditions
     pub fn with_color_increment(&mut self, val: f32) -> &mut Self {
         self.increment_color_by = val;
         self
