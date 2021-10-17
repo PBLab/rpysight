@@ -39,6 +39,7 @@ crossbeam = "0.8"
 [dev-dependencies]
 ron = "0.6"
 rand = "0.8"
+arrow2 = { version = "0.6", features = ["io_csv"]}
 
 [lib]
 name = "librpysight"

@@ -174,7 +174,11 @@ impl CoordToIndex {
 
 type HashMapForRendering = HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>;
 type HashMapForAggregation = HashMap<Point3<OrderedFloat<f32>>, u8>;
+
 /// A buffer for the data-to-be-rendered on a per-channel basis.
+///
+/// It contains two types of hashmaps - the one used for keeping rendering data
+/// and the one used to keep data for aggregation and serialization.
 #[derive(Clone, Debug)]
 pub struct FrameBuffers {
     merge: HashMapForRendering,

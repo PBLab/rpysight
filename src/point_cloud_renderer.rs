@@ -564,10 +564,13 @@ impl<T: PointDisplay> AppState<T, TcpStream> {
             events_after_newframe = self.populate_single_frame(events_after_newframe);
             if frame_number % rolling_avg == 0 {
                 match sender.send(self.frame_buffers.clone()) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => {
-                        error!("Couldn't send frame number {} due to an error: {:?}", frame_number, e.0);
-                    },
+                        error!(
+                            "Couldn't send frame number {} due to an error: {:?}",
+                            frame_number, e.0
+                        );
+                    }
                 };
                 self.render();
             };
@@ -697,7 +700,6 @@ mod tests {
     use super::*;
     use crate::configuration::{AppConfigBuilder, Bidirectionality, InputChannel, Period};
     use crate::snakes::*;
-    use nalgebra::Point3;
     use std::env::temp_dir;
     use std::path::Path;
 
@@ -724,24 +726,6 @@ mod tests {
             .clone()
     }
 
-    fn create_mock_maps(
-    ) -> [HashMap<Point3<OrderedFloat<f32>>, Point3<f32>>; SUPPORTED_SPECTRAL_CHANNELS + 1] {
-        let mut map = HashMap::new();
-        map.insert(
-            Point3::<OrderedFloat<f32>>::new(
-                OrderedFloat(0.5),
-                OrderedFloat(0.3),
-                OrderedFloat(0.0),
-            ),
-            Point3::<f32>::new(0.1, 0.1, 0.2),
-        );
-        let map2 = HashMap::new();
-        let map3 = map2.clone();
-        let map4 = map2.clone();
-        let map5 = map.clone();
-        [map, map2, map3, map4, map5]
-    }
-
     fn create_record_batch() -> RecordBatch {
         todo!()
     }
@@ -758,7 +742,7 @@ mod tests {
         let fname = filename.clone();
         let voxel_delta = VoxelDelta::<Coordinate>::from_config(&setup_default_config().build());
         std::thread::spawn(move || serialize_data(receiver, voxel_delta, &filename));
-        let base_data = create_mock_maps();
+        let base_data = FrameBuffers::new(1.25);
         sender.send(base_data).unwrap();
         let truth_recordbatch = create_record_batch();
         let streamed_data = read_data_stream(&fname);

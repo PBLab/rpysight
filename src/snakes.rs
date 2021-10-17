@@ -1463,18 +1463,6 @@ mod tests {
     }
 
     #[test]
-    fn time_to_coord_snake_2d_first_item_has_offset() {
-        let config = setup_image_scanning_config().build();
-        let offset = 100;
-        let snake = TwoDimensionalSnake::from_acq_params(&config, offset);
-        assert_eq!(snake.data[0].end_time, offset);
-        assert_eq!(
-            snake.data[snake.data.len() - 1].end_time + snake.voxel_delta_ps.row,
-            snake.frame_duration + offset
-        );
-    }
-
-    #[test]
     fn snake_2d_metadata_bidir() {
         let config = setup_image_scanning_config().with_bidir(true).build();
         let twod_snake = naive_init_2d(&config);
