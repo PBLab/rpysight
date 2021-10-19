@@ -465,15 +465,18 @@ pub struct Demux {
     demux_ch: String,
     /// Number of periods that the data should be demultiplexed into
     periods: u8,
+    /// Hardware delay for the laser clock
+    laser_delay: i32,
 }
 
 impl Demux {
     /// Generate a new [`Demux`] instance
-    pub fn new(demultiplex: bool, demux_ch: String, periods: u8) -> Self {
+    pub fn new(demultiplex: bool, demux_ch: String, periods: u8, laser_delay: i32) -> Self {
         Self {
             demultiplex,
             demux_ch,
             periods,
+            laser_delay,
         }
     }
 }
@@ -847,7 +850,7 @@ mod tests {
         let config = setup_default_config()
             .with_pmt1_ch(InputChannel::new(-1, 0.0))
             .with_pmt2_ch(InputChannel::new(-1, 0.0))
-            .with_demux(Demux::new(true, String::from("pmt1_ch"), 2))
+            .with_demux(Demux::new(true, String::from("pmt1_ch"), 2, 0))
             .build();
         let inps = Inputs::from_config(&config);
         println!("{:?}", inps[1001]);

@@ -200,7 +200,7 @@ def set_tt_for_demuxing(tagger, config) -> Tuple[List, List]:
     for idx, ch in enumerate(delayed_channels[:-1]):
         new_channels.append(GatedChannel(tagger, input_channel_to_gate, ch.getChannel(), delayed_channels[idx + 1].getChannel()))
     new_channels.append(GatedChannel(tagger, input_channel_to_gate, delayed_channels[-1].getChannel(), delayed_channels[0].getChannel()))
-    tagger.setDelayHardware(config['laser_ch']['channel'], 5500)
+    tagger.setDelayHardware(config['laser_ch']['channel'], config['demux']['laser_delay'])
     return delayed_channels, new_channels
     
 
