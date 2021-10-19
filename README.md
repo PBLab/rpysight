@@ -18,7 +18,7 @@ This project is a mixed Rust-Python project - most of the work is done with Rust
 
 ## Installation and Usage
 
-A detailed protocol can be found in the accompanying manuscript (currently being written).
+A detailed protocol can be found in the accompanying manuscript (currently being written), or in the [tutorial file](https://github.com/PBLab/rpysight/blob/main/TUTORIAL.md) in this repo.
 
 ### Install from source (recommended)
 
