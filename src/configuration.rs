@@ -360,24 +360,33 @@ impl AppConfig {
 
     /// Create an [`AppConfig`] from an existing config file
     pub fn try_from_config_path(config_path: &Path) -> Result<Self> {
-        let cfg: AppConfig = toml::from_str(&read_to_string(config_path)?)?;
-        if (cfg.demux.demux_ch != "pmt1_ch") && (cfg.demux.demux_ch != "pmt2_ch") {
-            panic!("Please use demux only on channels 1 or 2")
-        };
-        if (cfg.demux.demultiplex) && (cfg.demux.periods < 2) {
-            panic!("Demultiplexing with a single period doesn't make sense.")
-        }
-        match cfg.demux.demux_ch.as_str() {
-            "pmt1_ch" => assert!(cfg.pmt1_ch.channel != 0),
-            "pmt2_ch" => assert!(cfg.pmt2_ch.channel != 0),
-            _ => unreachable!(),
-        }
-        if cfg.increment_color_by <= 1.0 {
-            panic!(
-                "Please keep 'color_increment_by' above 1 (got {})",
-                cfg.increment_color_by
-            );
-        }
+        let raw_cfg: AppConfig = toml::from_str(&read_to_string(config_path)?)?;
+        let cfg = AppConfigBuilder::default()
+            .with_filename(raw_cfg.filename)
+            .with_laser_period(raw_cfg.laser_period)
+            .with_rows(raw_cfg.rows)
+            .with_columns(raw_cfg.columns)
+            .with_planes(raw_cfg.planes)
+            .with_color_increment(raw_cfg.increment_color_by)
+            .with_scan_period(raw_cfg.scan_period)
+            .with_tag_period(raw_cfg.tag_period)
+            .with_bidir(raw_cfg.bidir)
+            .with_replay_existing(raw_cfg.replay_existing)
+            .with_rolling_avg(raw_cfg.rolling_avg)
+            .with_fill_fraction(raw_cfg.fill_fraction)
+            .with_frame_dead_time(raw_cfg.frame_dead_time)
+            .with_line_shift(raw_cfg.line_shift)
+            .with_pmt1_ch(raw_cfg.pmt1_ch)
+            .with_pmt2_ch(raw_cfg.pmt2_ch)
+            .with_pmt3_ch(raw_cfg.pmt3_ch)
+            .with_pmt4_ch(raw_cfg.pmt4_ch)
+            .with_laser_ch(raw_cfg.laser_ch)
+            .with_frame_ch(raw_cfg.frame_ch)
+            .with_line_ch(raw_cfg.line_ch)
+            .with_taglens_ch(raw_cfg.taglens_ch)
+            .with_demux(raw_cfg.demux)
+            .build();
+
         Ok(cfg)
     }
 
@@ -542,7 +551,7 @@ impl AppConfigBuilder {
 
     /// Call this method to finish the builder pattern work.
     pub fn build(&self) -> AppConfig {
-        AppConfig {
+        let cfg = AppConfig {
             filename: self.filename.clone(),
             laser_period: self.laser_period,
             rows: self.rows,
@@ -566,6 +575,28 @@ impl AppConfigBuilder {
             replay_existing: self.replay_existing,
             line_shift: self.line_shift,
             demux: self.demux.clone(),
+        };
+        Self::assert_cfg_valid(&cfg);
+        cfg
+    }
+
+    fn assert_cfg_valid(cfg: &AppConfig) {
+        if (cfg.demux.demux_ch != "pmt1_ch") && (cfg.demux.demux_ch != "pmt2_ch") {
+            panic!("Please use demux only on channels 1 or 2")
+        };
+        if (cfg.demux.demultiplex) && (cfg.demux.periods < 2) {
+            panic!("Demultiplexing with a single period doesn't make sense.")
+        }
+        match cfg.demux.demux_ch.as_str() {
+            "pmt1_ch" => assert!(cfg.pmt1_ch.channel != 0),
+            "pmt2_ch" => assert!(cfg.pmt2_ch.channel != 0),
+            _ => unreachable!(),
+        }
+        if cfg.increment_color_by <= 1.0 {
+            panic!(
+                "Please keep 'color_increment_by' above 1 (got {})",
+                cfg.increment_color_by
+            );
         }
     }
 
@@ -598,6 +629,7 @@ impl AppConfigBuilder {
     /// Change the number of rendered planes
     pub fn with_planes(&mut self, planes: u32) -> &mut Self {
         assert!(planes < 100_000);
+        assert!(planes % 2 == 0, "Number of planes must be even");
         self.planes = planes;
         self
     }
