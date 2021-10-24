@@ -1,5 +1,10 @@
 # rPySight's Changelog
 
+## 0.2.1 (Oct. 2021)
+* Improved and fixed volumetric rendering.
+* Upgraded to 2021 edition.
+* Small fixes to accompanying Python scripts.
+
 ## 0.2.0 (Oct. 2021)
 * Improvements to the arrow stream serialization format.
 * Improvements to the helper scripts reading the arrow stream.
