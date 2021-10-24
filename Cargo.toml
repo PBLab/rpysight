@@ -2,7 +2,7 @@
 name = "rpysight"
 version = "0.1.0"
 authors = ["HagaiHargil <hagaihargil@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "GPL-3.0"
 description = "Render 2D/3D photon counting data in real time"
 homepage = "https://github.com/PBLab/rpysight"

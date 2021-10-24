@@ -15,7 +15,7 @@ use arrow2::datatypes::{
 use arrow2::io::ipc::write::StreamWriter;
 use arrow2::record_batch::RecordBatch;
 use crossbeam::channel::Receiver;
-use nalgebra::Point3;
+use nalgebra::{Point3, DVector};
 use ordered_float::OrderedFloat;
 
 use crate::point_cloud_renderer::ImageCoor;
@@ -29,9 +29,10 @@ use crate::{DISPLAY_COLORS, SUPPORTED_SPECTRAL_CHANNELS};
 pub(crate) fn serialize_data<P: AsRef<Path>>(
     recv: Receiver<FrameBuffers>,
     voxel_delta: VoxelDelta<Coordinate>,
+    im_planes: Option<DVector<Coordinate>>,
     filename: P,
 ) {
-    let mut coord_to_index = match CoordToIndex::try_new(&voxel_delta, filename) {
+    let mut coord_to_index = match CoordToIndex::try_new(&voxel_delta, im_planes, filename) {
         Ok(cti) => cti,
         Err(e) => {
             error!(
@@ -77,11 +78,28 @@ impl CoordToIndex {
     /// Try to create a new mapping from the voxel delta information
     pub fn try_new<P: AsRef<Path>>(
         voxel_delta: &VoxelDelta<Coordinate>,
+        im_vec: Option<DVector<Coordinate>>,
         filename: P,
     ) -> Result<Self> {
-        let (row, col, plane) = voxel_delta.map_coord_to_index();
+        let (row, col) = voxel_delta.map_coord_to_index();
+        let plane = match im_vec {
+            Some(v) => {
+                let min = v.iter().position(|&x| x == OrderedFloat(-0.5f32)).expect("No minimal -0.5 vlaue in z planes.");
+                let max = v.iter().position(|&x| x == OrderedFloat(0.5f32)).expect("No maximal 0.5 value in planes");
+                let mut map = BTreeMap::new();
+                for (idx, coord) in v.as_slice()[max..min + 1].into_iter().rev().enumerate() {
+                    map.insert(*coord, idx as u32);
+                }
+                map
+            },
+            None => {
+                let mut map = BTreeMap::new();
+                map.insert(OrderedFloat(0.0f32), 0u32);
+                map
+            }
+        };
         info!(
-            "Got the following mapping: Row: {:#?}, Col: {:#?}, Plane: {:#?}",
+            "Got the following mapping for serialization: Row: {:#?}\nCol: {:#?}\nPlane: {:#?}",
             row, col, plane
         );
         let schema = Schema::new(vec![
@@ -123,15 +141,15 @@ impl CoordToIndex {
                 trace!("Point to push: {:?}", point);
                 let r = match self.row_mapping.get(&point.x) {
                     Some(r) => *r,
-                    None => continue,
+                    None => { warn!("Row non-existent: {}", &point.x); continue },
                 };
                 let c = match self.column_mapping.get(&point.y) {
                     Some(c) => *c,
-                    None => continue,
+                    None => { warn!("Column non-existent: {}", &point.y); continue },
                 };
                 let p = match self.plane_mapping.get(&point.z) {
                     Some(p) => *p,
-                    None => continue,
+                    None => { warn!("Plane non-existent: {}", &point.z); continue },
                 };
                 // All points are not NaNs, we can add them to the buffers
                 channels.push(ch as u8);

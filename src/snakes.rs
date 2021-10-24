@@ -64,6 +64,7 @@ pub struct VoxelDelta<T: ImageDelta> {
     plane: T,
     frame: T,
     volsize: VolumeSize,
+    num_planes: u32,
 }
 
 impl VoxelDelta<Coordinate> {
@@ -84,6 +85,7 @@ impl VoxelDelta<Coordinate> {
             plane: jump_between_planes,
             frame: OrderedFloat::nan(),
             volsize: VolumeSize::from_config(config),
+            num_planes: config.planes,
         }
     }
 
@@ -101,24 +103,14 @@ impl VoxelDelta<Coordinate> {
     ) -> (
         BTreeMap<OrderedFloat<f32>, u32>,
         BTreeMap<OrderedFloat<f32>, u32>,
-        BTreeMap<OrderedFloat<f32>, u32>,
     ) {
         let coord_to_index_rows =
             VoxelDelta::create_single_coord_idx_mapping(self.volsize.rows, self.row);
         let coord_to_index_cols =
             VoxelDelta::create_single_coord_idx_mapping(self.volsize.columns, self.column);
-        let coord_to_index_planes = match self.volsize.planes {
-            0 | 1 => {
-                let mut map = BTreeMap::new();
-                map.insert(OrderedFloat(0.0f32), 0u32);
-                map
-            }
-            _ => VoxelDelta::create_single_coord_idx_mapping(self.volsize.planes, self.plane),
-        };
         (
             coord_to_index_rows,
             coord_to_index_cols,
-            coord_to_index_planes,
         )
     }
 
@@ -150,6 +142,7 @@ impl VoxelDelta<Picosecond> {
             plane: time_between_planes,
             frame: time_between_frames,
             volsize: VolumeSize::from_config(config),
+            num_planes: config.planes,
         }
     }
 
@@ -234,6 +227,10 @@ impl IntervalToCoordMap {
             im_vec: DVector::from_vec(vec![OrderedFloat(0.0f32)]),
             time_vec: DVector::from_vec(vec![0i64]),
         }
+    }
+
+    pub fn get_im_vec(&self) -> DVector<Coordinate> {
+        self.im_vec.clone()
     }
 }
 
@@ -400,6 +397,10 @@ pub trait Snake {
     fn update_z_coord(&self, _coord: ImageCoor, _time: Picosecond) -> ImageCoor {
         ImageCoor::new(RENDERING_BOUNDS.1, RENDERING_BOUNDS.1, RENDERING_BOUNDS.1)
     }
+
+    /// Returns the planes imagespace vector, or None if it doesn't exist
+    /// (2D case)
+    fn get_z_imagespace_planes(&self) -> Option<DVector<Coordinate>>;
 
     /// Handles a new TAG lens start-of-cycle event
     fn new_taglens_period(&mut self, _time: Picosecond) -> ProcessedEvent {
@@ -707,30 +708,32 @@ impl ThreeDimensionalSnake {
     /// The rising part (up to pi/2), the decending part (pi/2, 3pi/2) and the
     // last rise (3pi/2, 2pi).
     fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<Coordinate> {
-        let step_size = RENDERING_SPAN / OrderedFloat(planes as f32);
-        let half_planes = planes / 2 + 1;
+        let half_planes = planes / 2 - 1;
+        let phase_limits_1_to_m1 = DVector::<Coordinate>::from_iterator(
+            planes,
+            linspace::<Coordinate>(
+                RENDERING_BOUNDS.2,
+                RENDERING_BOUNDS.0,
+                planes,
+            ),
+        );
+        let phase_limits_0_to_1 = 
+            &mut phase_limits_1_to_m1.rows(1, half_planes).clone_owned();
+        phase_limits_0_to_1.as_mut_slice().reverse();
         let phase_limits_0_to_1 = DVector::<Coordinate>::from_iterator(
             half_planes,
-            linspace::<Coordinate>(RENDERING_BOUNDS.1, RENDERING_BOUNDS.2, half_planes),
+            phase_limits_0_to_1.into_iter().map(|x| *x)
         );
-        let phase_limits_1_to_m1 = DVector::<Coordinate>::from_iterator(
-            planes - 1,
-            linspace::<Coordinate>(
-                RENDERING_BOUNDS.2 - step_size,
-                RENDERING_BOUNDS.0 + step_size,
-                planes - 1,
-            ),
-        );
+        let phase_limits_m1_to_0 =
+            &mut phase_limits_1_to_m1.rows(half_planes + 1, half_planes).clone_owned();
+        phase_limits_m1_to_0.as_mut_slice().reverse();
         let phase_limits_m1_to_0 = DVector::<Coordinate>::from_iterator(
-            half_planes - 1,
-            linspace::<Coordinate>(
-                RENDERING_BOUNDS.0,
-                RENDERING_BOUNDS.1 - step_size,
-                half_planes - 1,
-            ),
+            half_planes,
+            phase_limits_m1_to_0.into_iter().map(|x| *x)
         );
+
         let mut all_phases = DVector::<Coordinate>::repeat(
-            half_planes + half_planes + planes - 2,
+            half_planes + half_planes + planes,
             OrderedFloat(0.0f32),
         );
         all_phases
@@ -766,9 +769,9 @@ impl ThreeDimensionalSnake {
     ) -> DVector<Picosecond> {
         let quarter_period = OrderedFloat::from_i64(period / 4).unwrap();
         let num_planes = planes.len();
-        let firstq = num_planes / 4 + 1;
-        let half = num_planes / 2 - 1;
-        let lastq = 3 * num_planes / 4;
+        let half = num_planes / 2 + 1;
+        let firstq = half / 2 - 1;
+        let lastq = firstq + half;
         let mut asin = planes
             .map(|x| x * OrderedFloat(2.0))
             .map(|x| x.asin() / (PI / 2.0));
@@ -786,10 +789,10 @@ impl ThreeDimensionalSnake {
             .add_scalar_mut(quarter_period);
         // Last quarter
         sine_ps
-            .rows_mut(lastq, firstq - 1)
-            .component_mul_assign(&asin.rows_mut(lastq, firstq - 1).map(|x| OrderedFloat(1.0) + x));
+            .rows_mut(lastq, firstq)
+            .component_mul_assign(&asin.rows_mut(lastq, firstq).map(|x| OrderedFloat(1.0) + x));
         sine_ps
-            .rows_mut(lastq, firstq - 1)
+            .rows_mut(lastq, firstq)
             .add_scalar_mut(OrderedFloat(3.0) * quarter_period);
 
         let sine_ps = sine_ps.map(|x| x.to_i64().unwrap());
@@ -1053,6 +1056,10 @@ impl Snake for TwoDimensionalSnake {
             self.max_frame_time, self.earliest_frame_time
         );
     }
+
+    fn get_z_imagespace_planes(&self) -> Option<DVector<Coordinate>> {
+        None
+    }
 }
 
 /// A three-dimensional volume rendered in a snake
@@ -1144,7 +1151,6 @@ impl Snake for ThreeDimensionalSnake {
             pair.end_time += offset;
         }
         self.max_frame_time = self.data[self.data.len() - 1].end_time;
-        self.last_taglens_time = 0;
         self.earliest_frame_time = next_frame_at;
         info!(
             "Done populating next frame, summary:\nmax_frame_time: {}\nearliest_frame: {}",
@@ -1159,6 +1165,10 @@ impl Snake for ThreeDimensionalSnake {
     fn new_taglens_period(&mut self, time: Picosecond) -> ProcessedEvent {
         self.last_taglens_time = time;
         ProcessedEvent::NoOp
+    }
+
+    fn get_z_imagespace_planes(&self) -> Option<DVector<Coordinate>> {
+        Some(self.tag_deltas_to_coord.get_im_vec())
     }
 }
 
@@ -1329,7 +1339,7 @@ mod tests {
 
     #[test]
     fn voxel_delta_im_map_coord_3d_default() {
-        let config = setup_default_config().with_planes(11).build();
+        let config = setup_default_config().with_planes(12).build();
         let vd = VoxelDelta::<Coordinate>::from_config(&config);
         let result = VoxelDelta::create_single_coord_idx_mapping(config.planes, vd.plane);
         let mut truth = BTreeMap::new();
@@ -1514,24 +1524,23 @@ mod tests {
         assert_eq!(snake.capacity(), 1101);
     }
 
+    #[test]
     /// Numpy code that creates these truth vectors:
     /// def create_plane_coords(planes) -> np.ndarray:
-    ///     step_size = 1.0 / planes
-    ///     q1 = planes // 2
-    ///     q1_coords = np.linspace(0, 0.5 - step_size, q1, dtype=np.float32)
-    ///     q2 = planes + 1
-    ///     q2_coords = np.linspace(0.5, -0.5, q2)
-    ///     q3 = planes // 2 - 1
-    ///     q3_coords = np.linspace(-0.5 + step_size, 0.0 - step_size, q3)
+    ///     elems = int(planes / 2)
+    ///     q2_coords = np.linspace(0.5, -0.5, planes)
+    ///     q1_coords = np.flip(q2_coords[1:elems])
+    ///     q3_coords = np.flip(q2_coords[elems:-1])
     ///     return np.concatenate([q1_coords, q2_coords, q3_coords])
-    #[test]
     fn create_sine_imagespace_many_planes() {
         let config = setup_image_scanning_config().with_planes(10).build();
         let snake = ThreeDimensionalSnake::naive_init(&config);
         let sine = snake.create_planes_snake_imagespace(config.planes as usize);
         let truth: DVector<f32> = DVector::from_vec(vec![
-            0.0f32, 0.1, 0.2, 0.3, 0.4, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, -0.1, -0.2, -0.3, -0.4, -0.5,
-            -0.4, -0.3, -0.2, -0.1,
+            0.05555556f32,  0.16666667,  0.27777778,  0.38888889,  0.5       ,
+            0.38888889,     0.27777778,  0.16666667,  0.05555556, -0.05555556,
+            -0.16666667,    -0.27777778, -0.38888889, -0.5      , -0.38888889,
+            -0.27777778,    -0.16666667, -0.05555556
         ]);
         let _: Vec<_> = sine
             .iter()
@@ -1546,6 +1555,18 @@ mod tests {
     }
 
     #[test]
+    /// Numpy code that create these truth vectors:
+    /// def calc_asin_ps(length, period) -> np.ndarray:
+    ///     coords = create_plane_coords(length)
+    ///     asin = np.arcsin(coords * 2.0) / (np.pi / 2)
+    ///     ps = np.full(len(coords), period / 4)
+    ///     firstq = int(length / 2) - 1
+    ///     ps[:firstq] *= asin[:firstq]
+    ///     sec_slice = slice(firstq, firstq+length)
+    ///     ps[sec_slice] = ps[sec_slice] * (1.0 - asin[sec_slice]) + (period / 4)
+    ///     last_slice = slice(firstq+length, len(coords))
+    ///     ps[last_slice] = ps[last_slice] * (1.0 + asin[last_slice]) + (3 * period / 4)
+    ///     return ps.astype(np.int64)
     fn create_sine_ps_no_offset() {
         let config = setup_image_scanning_config().with_planes(10).build();
         let snake = ThreeDimensionalSnake::naive_init(&config);
@@ -1553,8 +1574,8 @@ mod tests {
         let sine = snake.create_planes_snake_imagespace(planes);
         let sine_ps = snake.create_planes_snake_ps(&sine, 1000);
         let truth = DVector::from_vec(vec![
-            0i64, 32, 65, 102, 147, 250, 352, 397, 434, 467, 500, 532, 565, 602, 647, 750, 852,
-            897, 934, 967,
+            17i64,  54,  93, 141, 250, 358, 406, 445, 482, 517, 554, 593, 641,
+            750, 858, 906, 945, 982
         ]);
         let c = sine_ps
             .iter()

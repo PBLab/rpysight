@@ -894,12 +894,12 @@ mod tests {
     fn inputs_two_periods() {
         let config = setup_default_config()
             .with_pmt1_ch(InputChannel::new(-1, 0.0))
-            .with_pmt2_ch(InputChannel::new(-1, 0.0))
+            .with_pmt2_ch(InputChannel::new(-3, 0.0))
             .with_demux(Demux::new(true, String::from("pmt1_ch"), 2, 0))
             .build();
         let inps = Inputs::from_config(&config);
-        println!("{:?}", inps[1001]);
-        assert!(false);
+        assert_eq!(inps[1001], DataType::Pmt1);
+        assert_eq!(inps[1002], DataType::Pmt3);
     }
 
     #[test]
