@@ -59,3 +59,4 @@ threshold = 0.0
 demultiplex = false
 demux_ch = "pmt1_ch"
 periods = 2
+laser_delay = 0
