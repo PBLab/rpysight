@@ -466,7 +466,7 @@ fn convert_user_channel_input_to_num(channel: (ChannelNumber, EdgeDetected, f32)
 }
 
 /// Demultiplexing configuration.
-#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Demux {
     /// Whether rPySight should be demultiplexing or not
     demultiplex: bool,
@@ -486,6 +486,17 @@ impl Demux {
             demux_ch,
             periods,
             laser_delay,
+        }
+    }
+}
+
+impl Default for Demux {
+    fn default() -> Self {
+        Self {
+            demultiplex: false,
+            demux_ch: "pmt1_ch".to_string(),
+            periods: 2,
+            laser_delay: 0,
         }
     }
 }
@@ -629,7 +640,9 @@ impl AppConfigBuilder {
     /// Change the number of rendered planes
     pub fn with_planes(&mut self, planes: u32) -> &mut Self {
         assert!(planes < 100_000);
-        assert!(planes % 2 == 0, "Number of planes must be even");
+        if planes > 1 {
+            assert!(planes % 2 == 0, "Number of planes must be even");
+        };
         self.planes = planes;
         self
     }
