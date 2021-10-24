@@ -44,6 +44,7 @@ to disk as a TIF file.
 """
 import pathlib
 from typing import List, Tuple
+import re
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -68,6 +69,16 @@ def find_expected_channels(config: dict) -> list:
             ch_idx += 1
     return channels
 
+
+def fix_channels_due_to_demux(channels, cfg):
+    """Hacky fix to support demultiplexing. This should
+    probably be modified when running it with your own use case.
+    """
+    ch_num = int(re.findall(r'\d', cfg['demux']['demux_ch'])[0]) - 1
+    idx = channels.index(ch_num)
+    channels.pop(idx)
+    channels.extend([0, 2])
+    return channels
 
 
 def create_coords_list(recordbatch, mask):
@@ -162,6 +173,8 @@ if __name__ == '__main__':
     assert filename.exists()
     stream = pa.ipc.open_stream(filename)
     channels = find_expected_channels(config)
+    if config['demux']['demultiplex']:
+        channels = fix_channels_due_to_demux(channels, config)
     dense_data_shape = (config['rows'], config['columns'], config['planes'])
 
     iterate_over_stream(stream, dense_data_shape, filename.with_suffix('.tif'), channels)
