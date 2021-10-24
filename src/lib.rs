@@ -340,7 +340,7 @@ pub fn setup_logger(fname: Option<PathBuf>) {
                 message = message,
             ));
         })
-        .level(log::LevelFilter::Trace)
+        .level(log::LevelFilter::Info)
         .chain(File::create(log_fname).unwrap())
         .apply()
         .unwrap();

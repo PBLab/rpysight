@@ -707,18 +707,18 @@ impl ThreeDimensionalSnake {
     /// The rising part (up to pi/2), the decending part (pi/2, 3pi/2) and the
     // last rise (3pi/2, 2pi).
     fn create_planes_snake_imagespace(&self, planes: usize) -> DVector<Coordinate> {
-        let step_size = RENDERING_SPAN / OrderedFloat(planes as f32 - 1.0);
+        let step_size = RENDERING_SPAN / OrderedFloat(planes as f32);
         let half_planes = planes / 2 + 1;
         let phase_limits_0_to_1 = DVector::<Coordinate>::from_iterator(
             half_planes,
             linspace::<Coordinate>(RENDERING_BOUNDS.1, RENDERING_BOUNDS.2, half_planes),
         );
         let phase_limits_1_to_m1 = DVector::<Coordinate>::from_iterator(
-            planes - 2,
+            planes - 1,
             linspace::<Coordinate>(
                 RENDERING_BOUNDS.2 - step_size,
                 RENDERING_BOUNDS.0 + step_size,
-                planes - 2,
+                planes - 1,
             ),
         );
         let phase_limits_m1_to_0 = DVector::<Coordinate>::from_iterator(
@@ -730,7 +730,7 @@ impl ThreeDimensionalSnake {
             ),
         );
         let mut all_phases = DVector::<Coordinate>::repeat(
-            half_planes + half_planes + planes - 3,
+            half_planes + half_planes + planes - 2,
             OrderedFloat(0.0f32),
         );
         all_phases
@@ -745,7 +745,7 @@ impl ThreeDimensionalSnake {
                 phase_limits_m1_to_0.len(),
             )
             .set_column(0, &phase_limits_m1_to_0);
-        info!("The phases vector we made is: {:?}", all_phases);
+        info!("The phases vector we made is: {:#?}", all_phases);
         all_phases
     }
 
@@ -766,8 +766,8 @@ impl ThreeDimensionalSnake {
     ) -> DVector<Picosecond> {
         let quarter_period = OrderedFloat::from_i64(period / 4).unwrap();
         let num_planes = planes.len();
-        let firstq = num_planes / 4;
-        let half = num_planes / 2;
+        let firstq = num_planes / 4 + 1;
+        let half = num_planes / 2 - 1;
         let lastq = 3 * num_planes / 4;
         let mut asin = planes
             .map(|x| x * OrderedFloat(2.0))
@@ -786,13 +786,15 @@ impl ThreeDimensionalSnake {
             .add_scalar_mut(quarter_period);
         // Last quarter
         sine_ps
-            .rows_mut(lastq, firstq)
-            .component_mul_assign(&asin.rows_mut(lastq, firstq).map(|x| OrderedFloat(1.0) + x));
+            .rows_mut(lastq, firstq - 1)
+            .component_mul_assign(&asin.rows_mut(lastq, firstq - 1).map(|x| OrderedFloat(1.0) + x));
         sine_ps
-            .rows_mut(lastq, firstq)
+            .rows_mut(lastq, firstq - 1)
             .add_scalar_mut(OrderedFloat(3.0) * quarter_period);
 
-        sine_ps.map(|x| x.to_i64().unwrap())
+        let sine_ps = sine_ps.map(|x| x.to_i64().unwrap());
+        info!("The PS snake we made: {:#?}", sine_ps);
+        sine_ps
     }
 
     /// Constructs the 1D vector mapping the time of arrival to image-space
@@ -1512,8 +1514,16 @@ mod tests {
         assert_eq!(snake.capacity(), 1101);
     }
 
-    // TODO: A test that verifies that only a 2D snake is formed when the
-    // number of input planes is 1.
+    /// Numpy code that creates these truth vectors:
+    /// def create_plane_coords(planes) -> np.ndarray:
+    ///     step_size = 1.0 / planes
+    ///     q1 = planes // 2
+    ///     q1_coords = np.linspace(0, 0.5 - step_size, q1, dtype=np.float32)
+    ///     q2 = planes + 1
+    ///     q2_coords = np.linspace(0.5, -0.5, q2)
+    ///     q3 = planes // 2 - 1
+    ///     q3_coords = np.linspace(-0.5 + step_size, 0.0 - step_size, q3)
+    ///     return np.concatenate([q1_coords, q2_coords, q3_coords])
     #[test]
     fn create_sine_imagespace_many_planes() {
         let config = setup_image_scanning_config().with_planes(10).build();
@@ -1523,36 +1533,16 @@ mod tests {
             0.0f32, 0.1, 0.2, 0.3, 0.4, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, -0.1, -0.2, -0.3, -0.4, -0.5,
             -0.4, -0.3, -0.2, -0.1,
         ]);
-        let _ = sine
+        let _: Vec<_> = sine
             .iter()
             .zip(truth.iter())
-            .map(|x| assert_approx_eq!(x.0.into_inner(), x.1, 0.001f32));
+            .map(|x| assert_approx_eq!(x.0.into_inner(), x.1)).collect();
     }
 
+    #[should_panic]
     #[test]
-    fn create_sine_imagespace_many_planes_2() {
-        let config = setup_image_scanning_config().with_planes(13).build();
-        let snake = ThreeDimensionalSnake::naive_init(&config);
-        let sine = snake.create_planes_snake_imagespace(config.planes as usize);
-        let truth: DVector<f32> = DVector::from_vec(vec![
-            -0.5,
-            -0.41666667,
-            -0.33333333,
-            -0.25,
-            -0.16666667,
-            -0.08333333,
-            0.,
-            0.08333333,
-            0.16666667,
-            0.25,
-            0.33333333,
-            0.41666667,
-            0.5,
-        ]);
-        let _ = sine
-            .iter()
-            .zip(truth.iter())
-            .map(|x| assert_approx_eq!(x.0.into_inner(), x.1, 0.001f32));
+    fn create_sine_imagespace_uneven_planes() {
+        let _ = setup_image_scanning_config().with_planes(13).build();
     }
 
     #[test]
@@ -1571,7 +1561,6 @@ mod tests {
             .zip(truth.iter())
             .filter(|(a, b)| a == b)
             .count();
-        println!("{:?}", sine_ps);
         assert_eq!(c, sine_ps.len());
     }
 
