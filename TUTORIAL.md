@@ -85,7 +85,7 @@ the 2PM using dedicated software and hardware.
 
 ## General usage scheme
 
-![General usage scheme](resources/rpysight_usage_scheme.png)
+![General usage scheme](resources/rpysight_config_scheme.png)
 
 ## Acquiring Data
 
