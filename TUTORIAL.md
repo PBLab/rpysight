@@ -83,6 +83,10 @@ the 2PM using dedicated software and hardware.
     must first shut down the TT from the settings menu before starting
     rPySight.
 
+## General usage scheme
+
+![General usage scheme](resources/rpysight_usage_scheme.png)
+
 ## Acquiring Data
 
 1.  Prepare your setup for data acquisition. Turn on the laser, any
