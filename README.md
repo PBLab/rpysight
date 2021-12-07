@@ -28,6 +28,13 @@ Download a Rust compiler, preferably using [rustup](https://rustup.rs/), clone t
 
 Download the binary from the Releases page and run it in your shell.
 
+### Usage
+
+Using rPySight is quite simple and can be boiled down to following these simple steps:
+
+![Using rPySight](resources/rpysight_config_scheme.png)
+
+More information can be found in the [tutorial](https://github.com/PBLab/rpysight/blob/main/TUTORIAL.md), or by contacting the authors of this work.
 ### Outputs
 
 rPySight generates two main outputs with names similar to the ones in the "filename" field of the configuration file. The first is a `.ttbin` file that can be used to replay old experiments and generally have access to the raw data as it arrived from the TimeTagger. The second is an `.arrow_stream` file, which is a table of coordinates and data (i.e. a sparse matrix) that can be used to create the same rendered volumes but in post-processing. An example for such processing in Python may be found in the `rpysight` directory.
