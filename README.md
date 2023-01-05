@@ -1,6 +1,6 @@
 # rPySight
 
-Real-time rendering of photon streams in 2D and 3D arriving from a [TimeTagger](https://www.swabianinstruments.com/time-tagger/).
+Real-time rendering of photon streams in 2D and 3D arriving from a [TimeTagger](https://www.swabianinstruments.com/time-tagger/), full project published in [Har-Gil et al 2022 Neurphothonics 9(3): 039120](https://www.spiedigitallibrary.org/journals/neurophotonics/volume-9/issue-3/031920/Versatile-software-and-hardware-combo-enabling-photon-counting-acquisition-and/10.1117/1.NPh.9.3.031920.full)
 
 ## Motivation
 
