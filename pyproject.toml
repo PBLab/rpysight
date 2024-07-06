@@ -1,3 +1,19 @@
 [build-system]
-requires = ["maturin>=0.11,<0.12"]
+requires = ["maturin>=1.6,<1.7"]
 build-backend = "maturin"
+
+[project]
+name = "rpysight"
+requires-python = ">=3.8"
+classifiers = ["Programming Language :: Python", "Programming Language :: Rust"]
+dependencies = [
+    "ipython>=7",
+    "numpy>=1.19",
+    "pandas>=1.2",
+    "pytest>=6.2",
+    "matplotlib>=3.3",
+    "pyarrow>=5.0.0",
+    "toml>=0.10",
+    "docopt>=0.6",
+]
+maintainers = [{ name = "Hagai Har-Gil" }]

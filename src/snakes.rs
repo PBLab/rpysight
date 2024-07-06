@@ -1277,6 +1277,7 @@ mod tests {
             plane: 263_435,
             frame: 1_009_314_712,
             volsize: VolumeSize::from_config(&config),
+            num_planes: config.planes,
         };
         assert_eq!(VoxelDelta::<Picosecond>::from_config(&config), voxel_delta)
     }
@@ -1325,7 +1326,7 @@ mod tests {
         for (idx, float) in (0..1).zip(floats.iter()) {
             truth.insert(OrderedFloat(*float), idx as u32);
         }
-        assert_eq!(result.2, truth);
+        assert_eq!(result.0, truth);
     }
 
     #[test]
