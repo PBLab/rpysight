@@ -149,18 +149,18 @@ pub fn load_timetagger_run_function(
     module_filename: PathBuf,
     replay_existing: bool,
 ) -> PyResult<PyObject> {
-    let gil = Python::acquire_gil();
-    let py = gil.python();
-    let python_code = read_to_string(module_filename)?;
-    let run_tt = PyModule::from_code(py, &python_code, "run_tt.py", "run_tt")?;
-    let tt_starter;
-    if replay_existing {
-        tt_starter = run_tt.getattr(TT_REPLAY_FUNCTION_NAME)?;
-    } else {
-        tt_starter = run_tt.getattr(TT_RUN_FUNCTION_NAME)?;
-    };
     // Generate an owned object to be returned by value
-    Ok(tt_starter.to_object(py))
+    return Python::with_gil(|py| -> PyResult<PyObject> {
+        let python_code = read_to_string(module_filename)?;
+        let run_tt = PyModule::from_code_bound(py, &python_code, "run_tt.py", "run_tt")?;
+        let tt_starter;
+        if replay_existing {
+            tt_starter = run_tt.getattr(TT_REPLAY_FUNCTION_NAME)?;
+        } else {
+            tt_starter = run_tt.getattr(TT_RUN_FUNCTION_NAME)?;
+        };
+        Ok(tt_starter.to_object(py))
+    });
 }
 
 /// Call the TimeTagger library in Python and run the device.
@@ -175,12 +175,15 @@ pub fn start_timetagger_with_python(app_config: &AppConfig) -> PyResult<()> {
     let module_filename = PathBuf::from(CALL_TIMETAGGER_SCRIPT_NAME);
     let tt_module = load_timetagger_run_function(module_filename, app_config.replay_existing)?;
     debug!("Calling Python to start the TT business");
-    tt_module
-        .call1(
-            Python::acquire_gil().python(),
+
+    Python::with_gil(|py| -> PyResult<PyObject> {
+        return tt_module.call1(
+            py,
             (toml::to_string(app_config).expect("Unable to convert configuration to string"),),
-        )
-        .expect("Starting the TimeTagger failed, aborting!");
+        );
+    })
+    .expect("Starting the TimeTagger failed, aborting!");
+
     Ok(())
 }
 

@@ -6,17 +6,30 @@ edition = "2021"
 license = "GPL-3.0"
 description = "Render 2D/3D photon counting data in real time"
 homepage = "https://github.com/PBLab/rpysight"
-documentation = "https://docs.rs/rpysight"  # still offline
-repository = "https://github.com/PBLab/rpysight" 
+documentation = "https://docs.rs/rpysight" # still offline
+repository = "https://github.com/PBLab/rpysight"
 readme = "README.md"
-keywords = ["photon counting", "point cloud", "3D", "rendering", "microscopy", "two-photon", "neuroscience"]
+keywords = [
+    "photon counting",
+    "point cloud",
+    "3D",
+    "rendering",
+    "microscopy",
+    "two-photon",
+    "neuroscience",
+]
 categories = ["rendering", "science", "visualization"]
 default-run = "cli"
 
 [dependencies]
 kiss3d = "0.31"
-nalgebra = { version = "0.26", features = ["serde-serialize"] }  # matches kiss3d's
-pyo3 = { version = "0.14", features = ["extension-module", "auto-initialize"] }
+nalgebra = { version = "0.26", features = [
+    "serde-serialize",
+] } # matches kiss3d's
+pyo3 = { version = "0.22.0", features = [
+    "extension-module",
+    "auto-initialize",
+] }
 arrow2 = { version = "0.6", features = ["io_ipc", "io_ipc_compression"] }
 thiserror = "1.0"
 anyhow = "1.0"
@@ -39,13 +52,22 @@ crossbeam = "0.8"
 [dev-dependencies]
 ron = "0.6"
 rand = "0.8"
-arrow2 = { version = "0.6", features = ["io_csv"]}
+arrow2 = { version = "0.6", features = ["io_csv"] }
 
 [lib]
 name = "librpysight"
 crate-type = ["cdylib", "rlib"]
 
 [package.metadata.maturin]
-requires-dist = ["ipython>=7", "numpy>=1.19", "pandas>=1.2", "pytest>=6.2", "matplotlib>=3.3", "pyarrow>=5.0.0", "toml>=0.10", "docopt>=0.6"]
+requires-dist = [
+    "ipython>=7",
+    "numpy>=1.19",
+    "pandas>=1.2",
+    "pytest>=6.2",
+    "matplotlib>=3.3",
+    "pyarrow>=5.0.0",
+    "toml>=0.10",
+    "docopt>=0.6",
+]
 classifier = ["Programming Language :: Python", "Programming Language :: Rust"]
 maintainer = "Hagai Har-Gil"
