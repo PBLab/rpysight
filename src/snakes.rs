@@ -108,7 +108,10 @@ impl VoxelDelta<Coordinate> {
             VoxelDelta::create_single_coord_idx_mapping(self.volsize.rows, self.row);
         let coord_to_index_cols =
             VoxelDelta::create_single_coord_idx_mapping(self.volsize.columns, self.column);
-        (coord_to_index_rows, coord_to_index_cols)
+        (
+            coord_to_index_rows,
+            coord_to_index_cols,
+        )
     }
 
     /// Create a single mapping between a coordinate vector and its index
@@ -302,7 +305,7 @@ pub trait Snake {
         });
         // Manually add the cell corresponding to events arriving during mirror
         // rotation
-        let end_of_rotation_value = column_deltas_ps[num_columns - 1] + voxel_delta_ps.row;
+        let end_of_rotation_value = column_deltas_ps[(num_columns - 1)] + voxel_delta_ps.row;
         let column_deltas_ps = column_deltas_ps.insert_rows(num_columns, 1, end_of_rotation_value);
         column_deltas_ps
     }
@@ -708,25 +711,31 @@ impl ThreeDimensionalSnake {
         let half_planes = planes / 2 - 1;
         let phase_limits_1_to_m1 = DVector::<Coordinate>::from_iterator(
             planes,
-            linspace::<Coordinate>(RENDERING_BOUNDS.2, RENDERING_BOUNDS.0, planes),
+            linspace::<Coordinate>(
+                RENDERING_BOUNDS.2,
+                RENDERING_BOUNDS.0,
+                planes,
+            ),
         );
-        let phase_limits_0_to_1 = &mut phase_limits_1_to_m1.rows(1, half_planes).clone_owned();
+        let phase_limits_0_to_1 = 
+            &mut phase_limits_1_to_m1.rows(1, half_planes).clone_owned();
         phase_limits_0_to_1.as_mut_slice().reverse();
         let phase_limits_0_to_1 = DVector::<Coordinate>::from_iterator(
             half_planes,
-            phase_limits_0_to_1.into_iter().map(|x| *x),
+            phase_limits_0_to_1.into_iter().map(|x| *x)
         );
-        let phase_limits_m1_to_0 = &mut phase_limits_1_to_m1
-            .rows(half_planes + 1, half_planes)
-            .clone_owned();
+        let phase_limits_m1_to_0 =
+            &mut phase_limits_1_to_m1.rows(half_planes + 1, half_planes).clone_owned();
         phase_limits_m1_to_0.as_mut_slice().reverse();
         let phase_limits_m1_to_0 = DVector::<Coordinate>::from_iterator(
             half_planes,
-            phase_limits_m1_to_0.into_iter().map(|x| *x),
+            phase_limits_m1_to_0.into_iter().map(|x| *x)
         );
 
-        let mut all_phases =
-            DVector::<Coordinate>::repeat(half_planes + half_planes + planes, OrderedFloat(0.0f32));
+        let mut all_phases = DVector::<Coordinate>::repeat(
+            half_planes + half_planes + planes,
+            OrderedFloat(0.0f32),
+        );
         all_phases
             .rows_mut(0, phase_limits_0_to_1.len())
             .set_column(0, &phase_limits_0_to_1);
@@ -1277,7 +1286,6 @@ mod tests {
             plane: 263_435,
             frame: 1_009_314_712,
             volsize: VolumeSize::from_config(&config),
-            num_planes: config.planes,
         };
         assert_eq!(VoxelDelta::<Picosecond>::from_config(&config), voxel_delta)
     }
@@ -1326,7 +1334,7 @@ mod tests {
         for (idx, float) in (0..1).zip(floats.iter()) {
             truth.insert(OrderedFloat(*float), idx as u32);
         }
-        assert_eq!(result.0, truth);
+        assert_eq!(result.2, truth);
     }
 
     #[test]
@@ -1529,30 +1537,15 @@ mod tests {
         let snake = ThreeDimensionalSnake::naive_init(&config);
         let sine = snake.create_planes_snake_imagespace(config.planes as usize);
         let truth: DVector<f32> = DVector::from_vec(vec![
-            0.05555556f32,
-            0.16666667,
-            0.27777778,
-            0.38888889,
-            0.5,
-            0.38888889,
-            0.27777778,
-            0.16666667,
-            0.05555556,
-            -0.05555556,
-            -0.16666667,
-            -0.27777778,
-            -0.38888889,
-            -0.5,
-            -0.38888889,
-            -0.27777778,
-            -0.16666667,
-            -0.05555556,
+            0.05555556f32,  0.16666667,  0.27777778,  0.38888889,  0.5       ,
+            0.38888889,     0.27777778,  0.16666667,  0.05555556, -0.05555556,
+            -0.16666667,    -0.27777778, -0.38888889, -0.5      , -0.38888889,
+            -0.27777778,    -0.16666667, -0.05555556
         ]);
         let _: Vec<_> = sine
             .iter()
             .zip(truth.iter())
-            .map(|x| assert_approx_eq!(x.0.into_inner(), x.1))
-            .collect();
+            .map(|x| assert_approx_eq!(x.0.into_inner(), x.1)).collect();
     }
 
     #[should_panic]
@@ -1581,8 +1574,8 @@ mod tests {
         let sine = snake.create_planes_snake_imagespace(planes);
         let sine_ps = snake.create_planes_snake_ps(&sine, 1000);
         let truth = DVector::from_vec(vec![
-            17i64, 54, 93, 141, 250, 358, 406, 445, 482, 517, 554, 593, 641, 750, 858, 906, 945,
-            982,
+            17i64,  54,  93, 141, 250, 358, 406, 445, 482, 517, 554, 593, 641,
+            750, 858, 906, 945, 982
         ]);
         let c = sine_ps
             .iter()
