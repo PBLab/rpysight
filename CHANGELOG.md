@@ -1,5 +1,9 @@
 # rPySight's Changelog
 
+## Unreleased
+* `build.rs` now provides a `main()` on Linux and Windows (previously macOS-only, broke builds on the other targets).
+* `README.md` documents the required `--no-default-features` build flag for the `cli`/`gui` binaries and per-OS (Windows/macOS/Linux) build and runtime notes.
+
 ## 0.2.1 (Oct. 2021)
 * Improved and fixed volumetric rendering.
 * Upgraded to 2021 edition.

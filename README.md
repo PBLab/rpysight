@@ -22,7 +22,40 @@ A detailed protocol can be found in the accompanying manuscript (currently being
 
 ### Install from source (recommended)
 
-Download a Rust compiler, preferably using [rustup](https://rustup.rs/), clone the repo and run `cargo build --release`. Next, go to `rpysight/call_timetagger.py` and modify the marked directories there to point to your existing TimeTagger installation. To run, use `cargo run --release CONFIG_FILENAME`, where the configuration filename is a custom configuration file you created (a default one can be found under the `resources` folder). There's also a GUI available using `cargo run --release --bin gui`, but it's a bit more clunky at the moment.
+Download a Rust compiler, preferably using [rustup](https://rustup.rs/), clone the repo, then build the binary with:
+
+```
+cargo build --release --bin cli --no-default-features
+```
+
+The `--no-default-features` flag is required for the standalone binaries on every OS. `Cargo.toml` ships `default = ["extension-module"]` so that the crate also builds as a Python extension via `maturin`; the `extension-module` PyO3 feature tells PyO3 *not* to link `libpython`, which is wrong for the `cli`/`gui` binaries (they *embed* Python via `auto-initialize` and need `libpython` linked). Disabling defaults restores the embed-style link.
+
+Next, edit `rpysight/call_timetagger.py` and point the marked directories at your TimeTagger installation. To run:
+
+```
+cargo run --release --bin cli --no-default-features -- CONFIG_FILENAME
+```
+
+(the `--` separates cargo's args from the rPySight CLI's args; the config TOML follows). A GUI build is also available via `--bin gui` but is clunkier.
+
+#### Per-OS build notes
+
+**Windows (the TimeTagger workstation target).** Set PowerShell environment variables before building so PyO3 finds the right Python:
+
+```
+$Env:PYTHONHOME = "C:\Users\USERNAME\.conda\envs\timetagger\"
+$Env:PYO3_PYTHON = "C:\Users\USERNAME\.conda\envs\timetagger\python.exe"
+```
+
+These same variables must be set in the shell that runs `cli.exe` — Windows finds `python3X.dll` via `PYTHONHOME`'s `DLLs` neighbours and the conda env's root. See `TUTORIAL.md` step 4 for the canonical example.
+
+**macOS.** The bundled `.cargo/config.toml` already adds `-undefined dynamic_lookup` for both `x86_64-apple-darwin` and `aarch64-apple-darwin`. `build.rs` adds an rpath for the CommandLineTools framework directory. No extra flags should be needed beyond `--no-default-features`. Make sure `python3-config --prefix` resolves to the Python whose `libpython3X.dylib` you intend to embed (set `PYO3_PYTHON` to override).
+
+**Linux.** Beyond `--no-default-features`, the runtime needs `libpython3X.so.1.0` discoverable at exec time. The typical incantation is `LD_LIBRARY_PATH=$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))') ./target/release/cli config.toml`.
+
+If `cc`/lld fails with `unable to find library -lstdc++`, the system is missing the unversioned `libstdc++.so` dev symlink for the active GCC — install `libstdc++-N-dev` matching the output of `gcc -dumpversion` (e.g. `apt install libstdc++-12-dev` for GCC 12).
+
+Per-host workstation setups (e.g. specific conda paths, headless build flags) are kept on dedicated branches rather than here — see `git branch -a` for the host-specific overlays available.
 
 ### Download binary file
 
