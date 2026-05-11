@@ -3,3 +3,10 @@ rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
 
 [target.aarch64-apple-darwin]
 rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+
+# Claustrum overlay (Ubuntu 22.04, GCC 12 default with only libstdc++-11-dev
+# installed). Points the linker at the GCC-11 directory that ships the
+# unversioned `libstdc++.so` symlink. Harmless on other Linux hosts: lld
+# silently ignores `-L` paths that don't exist.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-L/usr/lib/gcc/x86_64-linux-gnu/11"]

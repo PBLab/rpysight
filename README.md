@@ -57,6 +57,16 @@ If `cc`/lld fails with `unable to find library -lstdc++`, the system is missing 
 
 Per-host workstation setups (e.g. specific conda paths, headless build flags) are kept on dedicated branches rather than here — see `git branch -a` for the host-specific overlays available.
 
+#### Building on claustrum
+
+Claustrum is a headless Linux dev box (Ubuntu 22.04, x86_64) with conda Python at `/opt/miniconda3` and `libstdc++-11-dev` installed (GCC 12 is the default but has no matching dev package). This branch's `.cargo/config.toml` adds an `-L/usr/lib/gcc/x86_64-linux-gnu/11` linker flag so the missing `libstdc++.so` symlink is found and `cargo build --no-default-features` links cleanly. To run the binary:
+
+```
+LD_LIBRARY_PATH=/opt/miniconda3/lib ./target/release/cli path/to/config.toml
+```
+
+Claustrum has no usable GPU/display, so the renderer will segfault at `kiss3d::Window::new` — code paths up to and including TimeTagger/Python initialisation are exercised, but live rendering requires a graphical host. Run `cargo test --no-default-features --lib --tests` for full validation on this host (currently 43/44 pass; the one snake-mapping failure in `src/snakes.rs:1329` is a logic issue unrelated to platform).
+
 ### Download binary file
 
 Download the binary from the Releases page and run it in your shell.
